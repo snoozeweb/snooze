@@ -145,7 +145,70 @@
   `record` implements no write hook, so bulk ack/close/tag keep working.
   Retro-applying a snooze goes through the same gate.
 
+### Changed
+
+- **The `snooze` plugin now owns the `snoozed` field outright.** It is the
+  `plugins.SuppressionOwner`: the only code that sets, keeps or clears an
+  alert's suppression attribution, and every branch of its `Process` settles
+  the field explicitly — a matching filter sets it, no match clears it, a
+  bypassed severity clears it (that severity is never silenced, so a stale
+  attribution must not keep it hidden), and a recovery of an alert already on
+  the books keeps it untouched.
+
+  `aggregaterule` previously reached into the record collection and **deleted**
+  `snoozed` itself whenever its own verdict was `continue`, predicting that the
+  snooze plugin was about to re-decide. That prediction is false for a `close`
+  — snooze passes a close against an existing aggregate straight through
+  without re-stamping — so a recovery wiped the attribution and the next
+  occurrence, held by the aggregate throttle, never reached snooze to rebuild
+  it. It now hands the stored value *forward* onto the in-flight record,
+  alongside the notify-ref and escalation context it already ferried, and
+  leaves the decision to the owner. `/api/v1/snooze/{uid}/retro_apply` reads
+  the field name from the owner instead of repeating the literal, so
+  retro-apply and the pipeline cannot disagree about which field means
+  "silenced".
+
+  Operator-visible effect: a filter's **Hits** counter now counts every
+  occurrence it suppresses, throttled repeats included, so it climbs faster
+  than the number of notifications prevented.
+
 ### Fixed
+
+- **A snooze filter had no effect on an alert already inside its aggregate's
+  throttle window.** `aggregaterule` answers a throttled duplicate — and a
+  held-back flapping re-open — with `abort_update`, which persists the record
+  *and* ends the pipeline, so the `snooze` plugin sitting behind it in
+  `core.process_plugins` never ran. With the day-long throttle that long-lived
+  aggregates typically carry, an alert repeating every 30 seconds ignored every
+  matching filter for a full 24 hours: it stayed in the alerts list, open and
+  un-silenced, with `duplicates` ticking up and no notification either.
+
+  Suppression is now decoupled from the aggregation verdict. A processor may
+  implement the new optional `plugins.Filter` interface to declare that its
+  verdict is a suppression decision; whenever an earlier plugin
+  aborts-and-persists, the pipeline gives every remaining `Filter` a say before
+  the write lands. A `discard` filter cancels the write outright, a tagging
+  filter stamps `snoozed`, and the original plugin's write semantics are
+  preserved — a throttled duplicate still persists without re-stamping
+  `date_epoch`, so the suppression pass cannot restart the throttle window it
+  was held by. The `snooze` plugin is the only implementer, and this is what
+  lets it own the field on *every* persisted occurrence rather than only some;
+  plugins that are not suppression decisions (notifications, above all) stay
+  suppressed by the abort exactly as before.
+
+  In production the two defects met in the middle: a flap
+  (`warning → ok → warning`) had the close wipe the attribution and the
+  re-open held as flapping, after which every repeat was throttled for 24h. The
+  row went back to `open` with nothing left saying why it should be hidden.
+
+- **Deleting a snooze filter left the alerts it had silenced hidden behind it.**
+  Every record the deleted filter had stamped stayed out of the alerts list —
+  permanently, for any alert that never fires again. The `snooze` plugin now
+  clears its own attribution when a filter is deleted (a `DeleteGuard` captures
+  the name, since the document is gone by the time `AfterDelete` runs). On the
+  live server one deleted catch-all filter had left 305 such rows, one of them
+  an open critical. Renaming a filter is unchanged: records re-attribute on
+  their next occurrence.
 
 - **The `ro_all` read catch-all now satisfies `ro_*` gates on bespoke routes**
   (`GET /api/v1/inputs`, the agentic read) exactly as it already did on plugin

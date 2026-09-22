@@ -43,6 +43,70 @@ type Processor interface {
 	Process(ctx context.Context, rec snoozetypes.Record) (Result, error)
 }
 
+// SuppressionOwner is implemented by the plugin that owns an alert's
+// suppression attribution — the record field naming the rule that silenced it.
+// Today that is the `snooze` plugin and the field is `snoozed`.
+//
+// Ownership is a hard boundary, and it exists because breaking it caused a
+// production outage. `aggregaterule` used to delete `snoozed` from the record
+// collection itself, on the assumption that a verdict of ActionContinue meant
+// the snooze plugin was about to re-decide. That assumption was wrong for a
+// `close` — the snooze plugin passes a close against an existing aggregate
+// straight through without re-stamping — so a recovery wiped the attribution
+// with nothing left to rebuild it, and the next occurrence was held by the
+// aggregate throttle and never reached the snooze plugin at all. The alert sat
+// open and un-silenced for a full throttle window.
+//
+// The rules that fall out of that:
+//
+//   - Only the owning plugin sets, keeps or clears the field. Everything else
+//     that needs it — the retro-apply endpoint, a query, the UI — asks for the
+//     name here rather than hard-coding it, and mutates the field only through
+//     the owner.
+//   - A plugin that has state to carry across occurrences (aggregaterule)
+//     hands the stored value FORWARD onto the in-flight record and lets the
+//     owner decide, rather than predicting what the owner will do.
+//   - The owner must be consulted on every occurrence that gets persisted, or
+//     it cannot own anything: see Filter.
+type SuppressionOwner interface {
+	Plugin
+	// SuppressionField returns the record field this plugin owns.
+	SuppressionField() string
+}
+
+// Filter is an optional refinement a Processor may implement to declare that
+// its verdict is a *suppression* decision — "should this alert be on the books
+// at all" — rather than an ordinary processing step.
+//
+// Why it exists: the pipeline stops at the first plugin that returns an abort
+// verdict, and two of those verdicts (ActionAbortWrite and ActionAbortUpdate)
+// still persist the record. A plugin that short-circuits that way therefore
+// writes an alert to the database without the plugins *after* it ever seeing
+// it. For `aggregaterule`, whose throttle and anti-flapping holds
+// abort-and-persist by design, that meant every throttled duplicate was
+// written while the `snooze` plugin — which sits behind it in the default
+// order — never got to suppress it. With an aggregate throttle of a day, a
+// repeating alert stayed open and un-snoozed for that whole window however
+// many snooze filters matched it.
+//
+// So: whenever a processor aborts-and-persists, the pipeline gives every
+// remaining Filter processor a say before the write lands (see
+// Core.runFilters). A Filter returning ActionAbort cancels the write outright;
+// any other verdict contributes its Record and the original plugin's write
+// semantics are preserved — so a throttled duplicate still persists without
+// bumping date_epoch, and the suppression pass cannot restart the very
+// throttle window that held it.
+//
+// Filter must be side-effect-compatible with Process: the pipeline may call
+// either one for a given record, never both. The canonical implementer is the
+// `snooze` plugin, which delegates Filter straight to Process — it is also the
+// SuppressionOwner, and this is what guarantees it runs on every persisted
+// occurrence.
+type Filter interface {
+	Processor
+	Filter(ctx context.Context, rec snoozetypes.Record) (Result, error)
+}
+
 // Notifier plugins deliver outbound notifications (mail, webhook, chat …).
 type Notifier interface {
 	Plugin

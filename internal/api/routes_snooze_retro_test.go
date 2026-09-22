@@ -16,6 +16,8 @@ import (
 	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/db/sqlite"
+	snoozeplugin "github.com/snoozeweb/snooze/internal/pluginimpl/snooze"
+	"github.com/snoozeweb/snooze/internal/plugins"
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
@@ -42,8 +44,10 @@ func authReq(method, target string, body []byte, perms ...string) *http.Request 
 }
 
 // retroApplyHarness brings up a SQLite-backed Router with just enough wiring
-// to exercise the retro-apply route. We don't load the full plugin set —
-// the route only needs DB access.
+// to exercise the retro-apply route: DB access, plus the real snooze plugin,
+// which owns the attribution field the tagging path writes
+// (plugins.SuppressionOwner). The plugin needs no host here — naming its own
+// field is a pure function.
 func retroApplyHarness(t *testing.T) (chi.Router, db.Driver) {
 	t.Helper()
 	ctx := snoozetypes.WithTenant(context.Background(), snoozetypes.DefaultTenant)
@@ -51,7 +55,9 @@ func retroApplyHarness(t *testing.T) (chi.Router, db.Driver) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = d.Close() })
 
-	rt := &Router{DB: d}
+	rt := &Router{DB: d, Plugins: map[string]plugins.Plugin{
+		"snooze": &snoozeplugin.Plugin{},
+	}}
 	r := chi.NewRouter()
 	rt.mountSnoozeRetro(r)
 	return r, d

@@ -49,6 +49,52 @@ The alert matched the Snooze filter, therefore it got stopped before being execu
 
 Any alert matching a Snooze filter will have a new field `snoozed` added with the Snooze filter name.
 
+## The `snoozed` field is decided on every occurrence
+
+`snoozed` names the filter that silenced an alert, and the alerts list treats a
+record carrying it as silenced. The Snooze plugin owns that field outright: it
+is re-decided every time an occurrence of the alert reaches the server, and
+nothing else in the server writes or removes it.
+
+Re-deciding means one of three outcomes per occurrence:
+
+| The occurrence… | `snoozed` becomes |
+|---|---|
+| matches a filter | that filter's name |
+| matches no filter — it changed, the window closed, or the filter was deleted | removed; the alert returns to the list |
+| has a severity in `general.snooze_bypass_severities` | removed; that severity is never silenced |
+| is a **recovery** (`close`) of an alert already on the books | left exactly as it was |
+
+The recovery row is the deliberate exception. A filter must never suppress a
+close — that would wedge the alert open forever — so the plugin passes it
+straight through without re-deciding, and an alert silenced for its whole life
+does not resurface at the moment it recovers.
+
+This holds for occurrences an [aggregate rule](./aggregaterules.md) holds back
+inside its throttle window or its anti-flapping budget, too. Those are
+persisted (the `duplicates` counter has to keep moving) but not notified, and
+the filter still gets the final say: a `discard` filter drops the write
+outright, a tagging filter re-stamps `snoozed`.
+
+That last point matters because aggregate throttles are often long — a day is a
+common setting. Without it, an alert already on the books and repeating every
+30 seconds would ignore a filter you create now for the whole rest of the
+window, staying open and un-silenced in the alerts list.
+
+One consequence to expect: a filter's **Hits** counter now counts every
+occurrence it suppresses, including throttled repeats, so it climbs faster than
+the number of notifications it prevented.
+
+## Deleting a filter releases the alerts it silenced
+
+Deleting a filter clears `snoozed` from every record it had stamped, so nothing
+stays hidden behind a filter that no longer exists. Alerts that are still
+firing would re-decide on their next occurrence anyway; this covers the ones
+that never fire again.
+
+Renaming a filter is not the same thing: records stamped with the old name keep
+it until their next occurrence re-attributes them.
+
 ## Web interface
 
 ![](./images/web_snooze.png)

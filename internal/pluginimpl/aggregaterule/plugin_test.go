@@ -531,16 +531,19 @@ func TestAggregate_WritesLifecycleComments(t *testing.T) {
 	})
 }
 
-// TestAggregate_ClearsStaleSnoozed guards the warning→emergency regression: a
-// record snoozed under one severity must drop its `snoozed` attribution when it
-// re-aggregates non-throttled, so the snooze plugin (next in the real pipeline)
-// re-evaluates it against the *current* record. Throttled duplicates abort
-// before snooze runs, so they must keep the prior `snoozed`.
+// TestAggregate_CarriesSnoozedForward pins this plugin's whole remaining
+// involvement with the suppression attribution: it ferries the stored value
+// onto the in-flight record and touches nothing in storage.
 //
-// These call Process directly (not runProcess) and inspect the DB immediately:
-// runProcess persists via ReplaceOne (full replace), which would itself drop
-// the field and mask whether aggregaterule actually unset it.
-func TestAggregate_ClearsStaleSnoozed(t *testing.T) {
+// It used to DELETE `snoozed` from the record collection whenever its own
+// verdict was ActionContinue, predicting that the snooze plugin was about to
+// re-decide. That prediction is false for a `close` — snooze passes a close
+// against an existing aggregate straight through without re-stamping — so a
+// recovery wiped the attribution, and the next occurrence, held by the
+// throttle, never reached snooze to rebuild it. The alert sat open and
+// un-silenced for a whole throttle window. Deciding is the owner's job now
+// (see plugins.SuppressionOwner); carrying state forward is this plugin's.
+func TestAggregate_CarriesSnoozedForward(t *testing.T) {
 	t.Parallel()
 
 	snoozedCount := func(t *testing.T, host *testHost) int {
@@ -551,58 +554,74 @@ func TestAggregate_ClearsStaleSnoozed(t *testing.T) {
 		return total
 	}
 
-	t.Run("non-throttled-reaggregation-clears", func(t *testing.T) {
-		t.Parallel()
-		host := newTestHost(t)
-		writeRule(t, host, db.Document{
-			"name": "AggS", "condition": []any{"=", "a", "1"},
-			"fields": []string{"a"}, "watch": []string{"c"},
-			"throttle": int64(900), "flapping": int64(3),
+	// Every verdict: the stored attribution rides onto the outgoing record so
+	// the owner can keep, replace or clear it, and the stored row is left
+	// exactly as it was.
+	cases := []struct {
+		name   string
+		rule   db.Document
+		repeat snoozetypes.Record
+		want   plugins.Action
+	}{
+		{
+			name: "non-throttled re-aggregation",
+			rule: db.Document{
+				"name": "AggS", "condition": []any{"=", "a", "1"},
+				"fields": []string{"a"}, "watch": []string{"c"},
+				"throttle": int64(900), "flapping": int64(3),
+			},
+			repeat: snoozetypes.Record{Extra: map[string]any{"a": "1", "c": "2"}},
+			want:   plugins.ActionContinue,
+		},
+		{
+			name: "throttled duplicate",
+			rule: db.Document{
+				"name": "AggT", "condition": []any{"=", "a", "1"},
+				"fields": []string{"a"}, "throttle": int64(900),
+			},
+			repeat: snoozetypes.Record{Extra: map[string]any{"a": "1", "c": "1"}},
+			want:   plugins.ActionAbortUpdate,
+		},
+		{
+			name: "close transition",
+			rule: db.Document{
+				"name": "AggC", "condition": []any{"=", "a", "1"},
+				"fields": []string{"a"}, "throttle": int64(900),
+			},
+			repeat: snoozetypes.Record{State: "close", Extra: map[string]any{"a": "1", "c": "1"}},
+			want:   plugins.ActionContinue,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			host := newTestHost(t)
+			writeRule(t, host, tc.rule)
+			p := freshPlugin(t, host)
+
+			out, _ := runProcess(t, p, host, snoozetypes.Record{Extra: map[string]any{"a": "1", "c": "1"}})
+			require.NotEmpty(t, out.Hash)
+
+			// Simulate the snooze plugin having attributed it.
+			_, err := host.driver.SetFields(tctx(), recordCollection,
+				db.Document{"snoozed": "Warnings"}, condition.Equals("hash", out.Hash))
+			require.NoError(t, err)
+			require.Equal(t, 1, snoozedCount(t, host))
+
+			// Process directly (not runProcess): runProcess persists via a full
+			// replace, which would drop the field by itself and mask whether
+			// this plugin left storage alone.
+			res, err := p.Process(tctx(), tc.repeat)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, res.Action)
+
+			require.Equal(t, "Warnings", res.Record.Extra["snoozed"],
+				"the stored attribution must ride forward so the owner can decide")
+			require.Equal(t, 1, snoozedCount(t, host),
+				"this plugin must not touch the stored attribution on any verdict")
 		})
-		p := freshPlugin(t, host)
-
-		out, _ := runProcess(t, p, host, snoozetypes.Record{Extra: map[string]any{"a": "1", "c": "1"}})
-		require.NotEmpty(t, out.Hash)
-
-		// Simulate the snooze plugin having snoozed it in the warning era.
-		_, err := host.driver.SetFields(tctx(), recordCollection,
-			db.Document{"snoozed": "Warnings"}, condition.Equals("hash", out.Hash))
-		require.NoError(t, err)
-		require.Equal(t, 1, snoozedCount(t, host))
-
-		// Re-aggregate with a watched-field change → non-throttled ActionContinue.
-		res, err := p.Process(tctx(), snoozetypes.Record{Extra: map[string]any{"a": "1", "c": "2"}})
-		require.NoError(t, err)
-		require.Equal(t, plugins.ActionContinue, res.Action)
-
-		require.Equal(t, 0, snoozedCount(t, host),
-			"stale snoozed must be cleared so snooze re-evaluates the escalated record")
-	})
-
-	t.Run("throttled-duplicate-keeps-snoozed", func(t *testing.T) {
-		t.Parallel()
-		host := newTestHost(t)
-		writeRule(t, host, db.Document{
-			"name": "AggT", "condition": []any{"=", "a", "1"},
-			"fields": []string{"a"}, "throttle": int64(900),
-		})
-		p := freshPlugin(t, host)
-
-		out, _ := runProcess(t, p, host, snoozetypes.Record{Extra: map[string]any{"a": "1"}})
-		_, err := host.driver.SetFields(tctx(), recordCollection,
-			db.Document{"snoozed": "Warnings"}, condition.Equals("hash", out.Hash))
-		require.NoError(t, err)
-		require.Equal(t, 1, snoozedCount(t, host))
-
-		// Plain duplicate inside the throttle window → ActionAbortUpdate, never
-		// reaches snooze, so its snoozed attribution must survive.
-		res, err := p.Process(tctx(), snoozetypes.Record{Extra: map[string]any{"a": "1"}})
-		require.NoError(t, err)
-		require.Equal(t, plugins.ActionAbortUpdate, res.Action)
-
-		require.Equal(t, 1, snoozedCount(t, host),
-			"throttled duplicate must keep snoozed (snooze never re-runs to re-assert it)")
-	})
+	}
 }
 
 // TestAggregate_Flapping ports test_aggregate_flapping: state churn decrements

@@ -363,7 +363,7 @@ func (p *Plugin) matchAggregate(
 	flapping int64,
 	watch []string,
 	now time.Time,
-) (outRec map[string]any, outAction plugins.Action, outErr error) {
+) (map[string]any, plugins.Action, error) {
 	if host == nil || host.DB() == nil {
 		// In tests with no DB the plugin is a no-op pass-through.
 		rec["duplicates"] = int64(1)
@@ -402,10 +402,21 @@ func (p *Plugin) matchAggregate(
 	// delivery to a notifier, or it would create a second ticket for an
 	// incident it is already tracking.
 	//
+	// The suppression attribution (`snoozed`) rides forward on the same
+	// principle, and this plugin's involvement with it ENDS there. It belongs
+	// to the snooze plugin (plugins.SuppressionOwner), which decides on every
+	// occurrence whether to keep, replace or clear it. This plugin used to
+	// delete it from the record collection whenever its own verdict was
+	// ActionContinue, predicting that snooze was about to re-decide — a
+	// prediction that is false for a `close` (snooze passes those through
+	// untouched), so a recovery wiped the attribution and the next occurrence,
+	// held by the throttle below, never reached snooze to rebuild it. Carrying
+	// the value forward and letting the owner decide replaces that guess.
+	//
 	// Incoming keys win on collision — the alert payload stays authoritative
 	// for everything it does carry.
 	for k, v := range existing {
-		if !plugins.IsNotifyRefField(k) && !escalationCarryFields[k] {
+		if !plugins.IsNotifyRefField(k) && !carryForwardFields[k] {
 			continue
 		}
 		if _, ok := rec[k]; !ok {
@@ -431,28 +442,6 @@ func (p *Plugin) matchAggregate(
 	newSeverity, _ := rec["severity"].(string)
 	trendCmp := snoozetypes.CompareSeverity(newSeverity, prevSeverity)
 	stampTrendFields(rec, prevSeverity, newSeverity)
-
-	// If this record carried a stale `snoozed` attribution and is about to
-	// continue to the snooze plugin (ActionContinue → next in the pipeline),
-	// clear it so snooze re-evaluates the *current* record and re-asserts
-	// `snoozed` only if it still matches a filter. Without this, an alert
-	// snoozed as a warning keeps `snoozed` after escalating to emergency and
-	// never returns to the Alerts tab. Paths that abort (throttled, flapping,
-	// already-closed) never reach snooze, so their attribution is left intact.
-	// The merge write at pipeline end cannot remove a key, hence the explicit
-	// UnsetFields against the existing row.
-	if _, hadSnoozed := existing["snoozed"]; hadSnoozed && prevUID != "" {
-		defer func() {
-			if outErr != nil || outAction != plugins.ActionContinue {
-				return
-			}
-			if _, err := host.DB().UnsetFields(ctx, recordCollection,
-				[]string{"snoozed"}, condition.Equals("uid", prevUID)); err != nil && host.Logger() != nil {
-				host.Logger().Warn("aggregaterule: clear stale snoozed",
-					"uid", prevUID, "error", err)
-			}
-		}()
-	}
 
 	incomingState, _ := rec["state"].(string)
 	incomingDateEpoch := toInt64(rec["date_epoch"], now.Unix())
@@ -668,12 +657,15 @@ func trendString(cmp int) string {
 	}
 }
 
-// escalationCarryFields are the escalation-context fields that must ride
-// forward from the stored aggregate onto a duplicate occurrence, alongside the
-// notifier handle fields. The incoming alert never carries them (they are
-// server-stamped by the escalation producers), so without this a duplicate of
-// an escalated alert reaches the notifiers as a first delivery.
-var escalationCarryFields = map[string]bool{
+// carryForwardFields are the server-stamped fields that must ride forward from
+// the stored aggregate onto a duplicate occurrence, alongside the notifier
+// handle fields. The incoming alert never carries them, so without this a
+// duplicate of an escalated alert reaches the notifiers as a first delivery,
+// and a duplicate of a silenced alert reaches the snooze plugin looking like
+// an alert that was never silenced.
+var carryForwardFields = map[string]bool{
+	// Owned by the snooze plugin; ferried, never interpreted here.
+	"snoozed":           true,
 	"escalation_count":  true,
 	"escalated_at":      true,
 	"escalation_reason": true,

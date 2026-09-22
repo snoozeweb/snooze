@@ -79,7 +79,7 @@ func (c *Core) processRecordInner(ctx context.Context, rec snoozetypes.Record) (
 	c.stripProtected(&rec, logger)
 	c.stampOKSeverityClose(ctx, &rec)
 	c.stampDefaultTTL(ctx, &rec)
-	for _, p := range c.processOrder {
+	for i, p := range c.processOrder {
 		name := p.Name()
 		rec.Plugins = append(rec.Plugins, name)
 
@@ -101,20 +101,7 @@ func (c *Core) processRecordInner(ctx context.Context, rec snoozetypes.Record) (
 		}
 
 		if perr != nil {
-			logger.Error("pipeline: plugin returned error",
-				"plugin", name, "err", perr)
-			rec.Extra = ensureExtra(rec.Extra)
-			rec.Extra["exception"] = map[string]any{
-				"plugin":  name,
-				"message": perr.Error(),
-			}
-			if werr := c.writeRecord(ctx, rec, true); werr != nil {
-				logger.Error("pipeline: write after plugin error failed",
-					"plugin", name, "err", werr)
-			}
-			c.recordHit(name, plugins.ActionAbort)
-			c.recordStatHit(ctx, rec)
-			return rec, plugins.ActionAbort, fmt.Errorf("pipeline: plugin %q: %w", name, perr)
+			return c.abortWithException(ctx, rec, name, perr)
 		}
 
 		rec = res.Record
@@ -125,20 +112,29 @@ func (c *Core) processRecordInner(ctx context.Context, rec snoozetypes.Record) (
 			c.recordHit(name, plugins.ActionAbort)
 			c.recordStatHit(ctx, rec)
 			return rec, plugins.ActionAbort, nil
-		case plugins.ActionAbortWrite:
-			if err := c.writeRecord(ctx, rec, true); err != nil {
-				return rec, plugins.ActionAbortWrite, fmt.Errorf("pipeline: write after abort_write: %w", err)
+		case plugins.ActionAbortWrite, plugins.ActionAbortUpdate:
+			// Both verdicts persist, so the suppression plugins behind this
+			// one must still get a say before the write lands — see
+			// plugins.Filter. A Filter that drops the record cancels the
+			// write; anything else keeps this plugin's write semantics
+			// (abort_write bumps date_epoch, abort_update does not).
+			filtered, drop, fname, ferr := c.runFilters(ctx, rec, i+1)
+			rec = filtered
+			if ferr != nil {
+				return c.abortWithException(ctx, rec, fname, ferr)
 			}
-			c.recordHit(name, plugins.ActionAbortWrite)
-			c.recordStatHit(ctx, rec)
-			return rec, plugins.ActionAbortWrite, nil
-		case plugins.ActionAbortUpdate:
-			if err := c.writeRecord(ctx, rec, false); err != nil {
-				return rec, plugins.ActionAbortUpdate, fmt.Errorf("pipeline: write after abort_update: %w", err)
+			if drop {
+				c.recordHit(fname, plugins.ActionAbort)
+				c.recordStatHit(ctx, rec)
+				return rec, plugins.ActionAbort, nil
 			}
-			c.recordHit(name, plugins.ActionAbortUpdate)
+			updateTime := res.Action == plugins.ActionAbortWrite
+			if err := c.writeRecord(ctx, rec, updateTime); err != nil {
+				return rec, res.Action, fmt.Errorf("pipeline: write after %s: %w", res.Action, err)
+			}
+			c.recordHit(name, res.Action)
 			c.recordStatHit(ctx, rec)
-			return rec, plugins.ActionAbortUpdate, nil
+			return rec, res.Action, nil
 		default:
 			c.recordHit(name, res.Action)
 			c.recordStatHit(ctx, rec)
@@ -153,6 +149,68 @@ func (c *Core) processRecordInner(ctx context.Context, rec snoozetypes.Record) (
 	c.recordHit("__final__", plugins.ActionContinue)
 	c.recordStatHit(ctx, rec)
 	return rec, plugins.ActionContinue, nil
+}
+
+// runFilters gives every plugins.Filter processor at or after index start a
+// say on a record whose pipeline run was cut short by an abort-and-persist
+// verdict. It returns the (possibly mutated) record, whether the record must
+// be dropped instead of written, and — when a filter errored — that filter's
+// name and the error.
+//
+// The pass is deliberately narrow: it runs only on the abort-and-persist
+// paths, never instead of the normal loop, so a plugin is never asked twice
+// about the same record. Plugins that do not implement Filter are skipped —
+// they are not suppression decisions, and their side effects (notifications,
+// above all) must stay suppressed by the abort.
+func (c *Core) runFilters(ctx context.Context, rec snoozetypes.Record, start int) (snoozetypes.Record, bool, string, error) {
+	if start < 0 || start >= len(c.processOrder) {
+		return rec, false, "", nil
+	}
+	for _, p := range c.processOrder[start:] {
+		f, ok := p.(plugins.Filter)
+		if !ok {
+			continue
+		}
+		name := p.Name()
+		rec.Plugins = append(rec.Plugins, name)
+
+		startFilter := time.Now()
+		res, err := f.Filter(ctx, rec)
+		if c.Reg != nil {
+			c.Reg.PluginDuration.
+				WithLabelValues(name, "filter").
+				Observe(time.Since(startFilter).Seconds())
+		}
+		if err != nil {
+			return rec, false, name, err
+		}
+		rec = res.Record
+		if res.Action == plugins.ActionAbort {
+			return rec, true, name, nil
+		}
+	}
+	return rec, false, "", nil
+}
+
+// abortWithException is the shared failure path for a processor (or filter)
+// that returned an error: the record gets an `exception` field naming the
+// plugin, is written for forensics, and Abort is returned with the wrapped
+// error.
+func (c *Core) abortWithException(ctx context.Context, rec snoozetypes.Record, name string, perr error) (snoozetypes.Record, plugins.Action, error) {
+	logger := c.Logger()
+	logger.Error("pipeline: plugin returned error", "plugin", name, "err", perr)
+	rec.Extra = ensureExtra(rec.Extra)
+	rec.Extra["exception"] = map[string]any{
+		"plugin":  name,
+		"message": perr.Error(),
+	}
+	if werr := c.writeRecord(ctx, rec, true); werr != nil {
+		logger.Error("pipeline: write after plugin error failed",
+			"plugin", name, "err", werr)
+	}
+	c.recordHit(name, plugins.ActionAbort)
+	c.recordStatHit(ctx, rec)
+	return rec, plugins.ActionAbort, fmt.Errorf("pipeline: plugin %q: %w", name, perr)
 }
 
 // writeRecord upserts rec into the record collection. The updateTime flag

@@ -25,7 +25,8 @@ type capturedIncrement struct {
 type fakeDB struct {
 	mu          sync.Mutex
 	collections map[string][]db.Document
-	writes      map[string]int // collection → write call count
+	writes      map[string]int               // collection → write call count
+	writeOpts   map[string][]db.WriteOptions // collection → opts of each write
 	increments  []capturedIncrement
 }
 
@@ -35,6 +36,7 @@ func newFakeDB() *fakeDB {
 	return &fakeDB{
 		collections: map[string][]db.Document{},
 		writes:      map[string]int{},
+		writeOpts:   map[string][]db.WriteOptions{},
 	}
 }
 
@@ -64,6 +66,19 @@ func (f *fakeDB) docs(collection string) []db.Document {
 }
 
 // writeCount returns the number of Write() calls that have targeted collection.
+// lastWriteOpts returns the WriteOptions of the most recent Write to
+// collection. Tests use it to assert the UpdateTime flag, which is what
+// decides whether the driver re-stamps date_epoch.
+func (f *fakeDB) lastWriteOpts(collection string) db.WriteOptions {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	opts := f.writeOpts[collection]
+	if len(opts) == 0 {
+		return db.WriteOptions{}
+	}
+	return opts[len(opts)-1]
+}
+
 func (f *fakeDB) writeCount(collection string) int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -113,6 +128,7 @@ func (f *fakeDB) Write(_ context.Context, collection string, docs []db.Document,
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.writes[collection]++
+	f.writeOpts[collection] = append(f.writeOpts[collection], opts)
 	var res db.WriteResult
 	for _, doc := range docs {
 		var match db.Document

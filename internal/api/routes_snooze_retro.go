@@ -8,9 +8,11 @@
 // Semantics:
 //   - Snooze.discard == true  → delete every record matching the snooze's
 //     condition (the legacy plugin's behaviour).
-//   - Snooze.discard == false → set `snoozed: <snooze-name>` on every
-//     matching record so dashboards / filters
-//     can hide them.
+//   - Snooze.discard == false → set the snooze plugin's attribution field to
+//     the snooze's name on every matching record so dashboards / filters can
+//     hide them. The field name comes from the plugin
+//     (plugins.SuppressionOwner), which owns it — see that interface for why
+//     nothing outside the owning plugin hard-codes it.
 //
 // The handler is gated on the `rw_record` permission because it mutates
 // the alert collection. We also bump the snooze's hit counter by the
@@ -30,6 +32,7 @@ import (
 	"github.com/snoozeweb/snooze/internal/api/middleware"
 	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/plugins"
 )
 
 func (rt *Router) mountSnoozeRetro(r chi.Router) {
@@ -101,7 +104,16 @@ func (rt *Router) handleSnoozeRetroApply(w http.ResponseWriter, r *http.Request)
 		// WriteGuard nor WriteTransformer, so guardBulk falls to its no-hook
 		// case. The nil check keeps the tests that wire no plugin host at all
 		// on the historical straight-to-driver path.
-		set := db.Document{"snoozed": name}
+		// The attribution field belongs to the snooze plugin
+		// (plugins.SuppressionOwner), so ask it for the name rather than
+		// repeating the literal here: retro-apply and the pipeline must never
+		// be able to disagree about which field means "silenced".
+		owner, ok := rt.plugin("snooze").(plugins.SuppressionOwner)
+		if !ok {
+			WriteError(w, r, ErrInternal.WithMessage("snooze plugin does not own a suppression field"))
+			return
+		}
+		set := db.Document{owner.SuppressionField(): name}
 		if p := rt.plugin("record"); p != nil {
 			if !rt.guardBulk(w, r, p, set, nil, nil) {
 				return

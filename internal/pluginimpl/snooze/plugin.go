@@ -4,6 +4,33 @@
 // and Reload from the "snooze" collection) and bumps a per-rule hit counter
 // on each match.
 //
+// # Ownership of the `snoozed` attribution
+//
+// This plugin is the plugins.SuppressionOwner: it is the only code that sets,
+// keeps or clears a record's `snoozed` field. Every branch of Process states
+// its decision about the field explicitly, and the five together are total:
+//
+//	close against an existing aggregate → KEEP  (not re-deciding — see below)
+//	severity in snooze_bypass_severities → CLEAR (this severity is never silenced)
+//	rule matches, discard               → keep  (nothing is persisted at all)
+//	rule matches, tag                   → SET   (the matching rule's name)
+//	no rule matches                     → CLEAR
+//
+// The field survives across occurrences because `aggregaterule` hands the
+// stored value FORWARD onto the in-flight record, the same way it ferries
+// notify-ref and escalation context. It does not, and must not, delete the
+// field itself: it used to, whenever its own verdict was ActionContinue, on
+// the assumption that Continue meant "snooze is about to re-decide". A `close`
+// breaks that assumption — this plugin passes a close straight through without
+// re-stamping — so a recovery wiped the attribution and the next occurrence,
+// held by the aggregate throttle, never reached this plugin to rebuild it. The
+// alert sat open and un-silenced for a whole throttle window. Predicting the
+// owner's decision is the bug; carrying state forward and letting the owner
+// decide is the fix.
+//
+// Being the owner only works if the plugin actually runs on every occurrence
+// that gets persisted, which is why it also implements plugins.Filter.
+//
 // Porting notes (vs src/snooze/plugins/core/snooze/plugin.py):
 //
 //   - Python's `Abort()` maps to plugins.ActionAbort (discard, no persist).
@@ -36,12 +63,29 @@ import (
 //go:embed metadata.yaml
 var metaYAML []byte
 
-// collectionName is the DB collection holding snooze rules.
-const collectionName = "snooze"
+const (
+	// collectionName is the DB collection holding snooze rules.
+	collectionName = "snooze"
+	// recordCollection is the alert collection this plugin attributes.
+	recordCollection = "record"
+	// attributionField is the record field this plugin owns: the name of the
+	// rule that silenced the alert. Nothing outside this package may write or
+	// delete it — see plugins.SuppressionOwner.
+	attributionField = "snoozed"
+	// maxPendingDeletes caps the GuardDelete → AfterDelete handover map.
+	maxPendingDeletes = 1024
+)
 
 func init() {
 	plugins.Register("snooze", metaYAML, factory)
 }
+
+var (
+	_ plugins.SuppressionOwner = (*Plugin)(nil)
+	_ plugins.Filter           = (*Plugin)(nil)
+	_ plugins.DeleteGuard      = (*Plugin)(nil)
+	_ plugins.DeleteHook       = (*Plugin)(nil)
+)
 
 func factory(meta plugins.Metadata) (plugins.Plugin, error) {
 	return &Plugin{
@@ -85,6 +129,10 @@ type Plugin struct {
 	mu    sync.RWMutex
 	rules map[string][]rule // tenantID → rules
 	host  plugins.Host
+	// pendingDelete remembers uid → rule name between GuardDelete and
+	// AfterDelete: by the time AfterDelete runs the document — and with it the
+	// name records were attributed under — is already gone.
+	pendingDelete map[string]string
 }
 
 // Name returns the registered plugin name.
@@ -150,13 +198,36 @@ func (p *Plugin) Reload(ctx context.Context) error {
 	return nil
 }
 
+// SuppressionField implements plugins.SuppressionOwner: the record field this
+// plugin owns. Callers that need to name the field (the retro-apply endpoint,
+// for one) read it from here instead of repeating the literal.
+func (p *Plugin) SuppressionField() string { return attributionField }
+
+// Filter implements plugins.Filter: the snooze verdict is a suppression
+// decision, so the pipeline must be able to ask for it even when an earlier
+// processor short-circuited with an abort-and-persist verdict — which is what
+// aggregaterule's throttle and anti-flapping holds do. Without it a throttled
+// duplicate of a matching alert was written un-snoozed and stayed open for the
+// whole throttle window, and this plugin could not own `snoozed` at all
+// because it never ran.
+//
+// The decision is identical to an ordinary pass, so this delegates to Process;
+// the pipeline guarantees only one of the two runs per record.
+func (p *Plugin) Filter(ctx context.Context, rec snoozetypes.Record) (plugins.Result, error) {
+	return p.Process(ctx, rec)
+}
+
 // Process walks the cached rules in load order. The first enabled rule that
 // matches the record and is active for the current moment wins:
 //
 //   - rule.Discard → ActionAbort (drop the record entirely).
-//   - otherwise    → ActionAbortWrite (persist a `snoozed` field on rec).
+//   - otherwise    → ActionAbortWrite (persist the attribution on rec).
 //
-// Misses fall through with ActionContinue and an unchanged record.
+// Misses fall through with ActionContinue.
+//
+// Every return path also settles the `snoozed` attribution this plugin owns —
+// keep, set or clear, never "leave it to someone else". See the package doc
+// for the table and for the outage that made the ownership explicit.
 func (p *Plugin) Process(ctx context.Context, rec snoozetypes.Record) (plugins.Result, error) {
 	now := p.now()
 	asMap := recordToMap(rec)
@@ -173,13 +244,17 @@ func (p *Plugin) Process(ctx context.Context, rec snoozetypes.Record) (plugins.R
 	// aggregate existed) is the pipeline retiring an alert already on the
 	// books, not a new alert to filter. Suppressing it — especially a
 	// discard filter's ActionAbort — drops the close write entirely and
-	// wedges the row open forever, on top of losing its `snoozed`
-	// attribution (aggregaterule strips that on the way through). So this
-	// runs before any rule is even tested, ahead of the severity-bypass
-	// block below, as the strongest invariant. A first-occurrence close
-	// (duplicates < 2 — aggregaterule stamps duplicates=1 when no existing
-	// aggregate matched) still runs the rules below, so a fully-discarded
-	// alert's recovery event cannot leak a phantom closed row.
+	// wedges the row open forever. So this runs before any rule is even
+	// tested, ahead of the severity-bypass block below, as the strongest
+	// invariant. A first-occurrence close (duplicates < 2 — aggregaterule
+	// stamps duplicates=1 when no existing aggregate matched) still runs the
+	// rules below, so a fully-discarded alert's recovery event cannot leak a
+	// phantom closed row.
+	//
+	// ATTRIBUTION: keep. This is the one branch that does not re-decide, so
+	// clearing here would strip the reason a row was hidden with nothing left
+	// to restore it — the shape of the original bug. An alert silenced for its
+	// whole life should not resurface at the moment it recovers.
 	if rec.State == "close" {
 		if dup, ok := toInt64(rec.Extra["duplicates"]); ok && dup >= 2 {
 			return plugins.Result{Action: plugins.ActionContinue, Record: rec}, nil
@@ -193,10 +268,16 @@ func (p *Plugin) Process(ctx context.Context, rec snoozetypes.Record) (plugins.R
 	// read from the DB-backed runtime settings when available (so operator
 	// edits in the settings UI take effect live), falling back to the
 	// boot-time file config otherwise.
+	//
+	// ATTRIBUTION: clear. "This severity is never silenced" has to mean the
+	// record is visible, and a stale attribution carried over from a lower
+	// severity would keep it hidden — an alert snoozed as a warning would stay
+	// out of the alerts list after escalating to critical.
 	if bypass := bypassSeverities(ctx, host); len(bypass) > 0 {
 		sev := strings.ToLower(strings.TrimSpace(rec.Severity))
 		for _, b := range bypass {
 			if sev == b {
+				p.clearAttribution(ctx, host, &rec)
 				return plugins.Result{Action: plugins.ActionContinue, Record: rec}, nil
 			}
 		}
@@ -206,11 +287,16 @@ func (p *Plugin) Process(ctx context.Context, rec snoozetypes.Record) (plugins.R
 		if !r.match(asMap, now) {
 			continue
 		}
-		// Tag the record so downstream sees the snooze attribution.
+		// ATTRIBUTION: set — this rule is now the reason the alert is
+		// silenced, replacing whatever aggregaterule carried forward. The
+		// pipeline's write is a merge, so an overwrite needs no explicit
+		// unset. On the discard path below nothing is persisted at all, so
+		// there is no attribution to settle: the stored row (if any) keeps
+		// what it had and stays hidden either way.
 		if rec.Extra == nil {
 			rec.Extra = map[string]any{}
 		}
-		rec.Extra["snoozed"] = r.Name
+		rec.Extra[attributionField] = r.Name
 
 		// Persist alert_snoozed metric for dashboard aggregation.
 		plugins.RecordStat(ctx, host, rec.DateEpoch, "alert_snoozed", map[string]string{"name": r.Name}, 1)
@@ -228,7 +314,122 @@ func (p *Plugin) Process(ctx context.Context, rec snoozetypes.Record) (plugins.R
 		}
 		return plugins.Result{Action: plugins.ActionAbortWrite, Record: rec}, nil
 	}
+	// ATTRIBUTION: clear. No rule covers this record any more — because it
+	// changed, because the window closed, or because the filter was deleted —
+	// so it must go back to being a visible alert.
+	p.clearAttribution(ctx, host, &rec)
 	return plugins.Result{Action: plugins.ActionContinue, Record: rec}, nil
+}
+
+// clearAttribution removes the attribution from the in-flight record and from
+// the stored row.
+//
+// Both halves are needed: dropping the key from rec keeps it out of everything
+// downstream and out of the document the pipeline writes, but that write is a
+// MERGE — it cannot remove a key already in storage — so the stored row needs
+// an explicit unset.
+//
+// It is a no-op unless the in-flight record actually carries an attribution,
+// which only happens when aggregaterule ferried one forward from an existing
+// row. A first occurrence therefore costs nothing, and the DB round-trip is
+// paid only on the occurrence that genuinely changes the answer.
+func (p *Plugin) clearAttribution(ctx context.Context, host plugins.Host, rec *snoozetypes.Record) {
+	if rec.Extra == nil {
+		return
+	}
+	if _, carried := rec.Extra[attributionField]; !carried {
+		return
+	}
+	delete(rec.Extra, attributionField)
+	if rec.UID == "" || host == nil || host.DB() == nil {
+		return
+	}
+	if _, err := host.DB().UnsetFields(ctx, recordCollection,
+		[]string{attributionField}, condition.Equals("uid", rec.UID)); err != nil {
+		if lg := host.Logger(); lg != nil {
+			lg.Warn("snooze: clear stale attribution",
+				"uid", rec.UID, "err", err)
+		}
+	}
+}
+
+// GuardDelete never blocks a delete — it exists only to capture the names of
+// the filters about to be removed, so AfterDelete can strip the attribution
+// they left on records. The names are unavailable afterwards (the documents
+// are gone) and reading them from the in-memory cache would race the syncer's
+// reload.
+func (p *Plugin) GuardDelete(ctx context.Context, uids []string) error {
+	p.mu.RLock()
+	host := p.host
+	p.mu.RUnlock()
+	if host == nil || host.DB() == nil {
+		return nil
+	}
+	for _, uid := range uids {
+		if uid == "" {
+			continue
+		}
+		doc, err := host.DB().GetOne(ctx, collectionName, db.Document{"uid": uid})
+		if err != nil || doc == nil {
+			continue
+		}
+		name, _ := doc["name"].(string)
+		if name == "" {
+			continue
+		}
+		p.mu.Lock()
+		if p.pendingDelete == nil {
+			p.pendingDelete = make(map[string]string)
+		}
+		// Bound the map: a GuardDelete whose delete then fails leaves an entry
+		// behind, and this must never grow without limit.
+		if len(p.pendingDelete) > maxPendingDeletes {
+			p.pendingDelete = make(map[string]string)
+		}
+		p.pendingDelete[uid] = name
+		p.mu.Unlock()
+	}
+	return nil
+}
+
+// AfterDelete clears the attribution a deleted filter left behind.
+//
+// An alert that is still firing re-decides on its next occurrence anyway (that
+// is what the no-match clear above is for). This hook is what covers the rest:
+// a record that never fires again would otherwise stay hidden for good behind
+// a filter that no longer exists. Deleting one broad filter left 305 such rows
+// on the live server, one of them an open critical.
+func (p *Plugin) AfterDelete(ctx context.Context, uids []string) error {
+	p.mu.RLock()
+	host := p.host
+	p.mu.RUnlock()
+	if host == nil || host.DB() == nil {
+		return nil
+	}
+	names := make([]string, 0, len(uids))
+	p.mu.Lock()
+	for _, uid := range uids {
+		if name, ok := p.pendingDelete[uid]; ok {
+			names = append(names, name)
+			delete(p.pendingDelete, uid)
+		}
+	}
+	p.mu.Unlock()
+
+	var firstErr error
+	for _, name := range names {
+		if _, err := host.DB().UnsetFields(ctx, recordCollection,
+			[]string{attributionField}, condition.Equals(attributionField, name)); err != nil {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("snooze: clear attribution of deleted filter %q: %w", name, err)
+			}
+			continue
+		}
+		if lg := host.Logger(); lg != nil {
+			lg.Info("snooze: cleared attribution of deleted filter", "name", name)
+		}
+	}
+	return firstErr
 }
 
 // bypassSeverities returns the current general.snooze_bypass_severities list
