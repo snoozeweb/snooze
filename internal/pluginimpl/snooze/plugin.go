@@ -36,25 +36,12 @@ import (
 //go:embed metadata.yaml
 var metaYAML []byte
 
-const (
-	// collectionName is the DB collection holding snooze rules.
-	collectionName = "snooze"
-	// recordCollection is the alert collection carrying the `snoozed`
-	// attribution this plugin stamps.
-	recordCollection = "record"
-	// maxPendingDeletes caps the GuardDelete → AfterDelete handover map.
-	maxPendingDeletes = 1024
-)
+// collectionName is the DB collection holding snooze rules.
+const collectionName = "snooze"
 
 func init() {
 	plugins.Register("snooze", metaYAML, factory)
 }
-
-var (
-	_ plugins.Filter      = (*Plugin)(nil)
-	_ plugins.DeleteGuard = (*Plugin)(nil)
-	_ plugins.DeleteHook  = (*Plugin)(nil)
-)
 
 func factory(meta plugins.Metadata) (plugins.Plugin, error) {
 	return &Plugin{
@@ -98,11 +85,6 @@ type Plugin struct {
 	mu    sync.RWMutex
 	rules map[string][]rule // tenantID → rules
 	host  plugins.Host
-	// pendingDelete remembers uid → rule name between GuardDelete and
-	// AfterDelete, because by the time AfterDelete runs the document (and
-	// therefore the name that records were attributed with) is already gone.
-	// See GuardDelete.
-	pendingDelete map[string]string
 }
 
 // Name returns the registered plugin name.
@@ -247,100 +229,6 @@ func (p *Plugin) Process(ctx context.Context, rec snoozetypes.Record) (plugins.R
 		return plugins.Result{Action: plugins.ActionAbortWrite, Record: rec}, nil
 	}
 	return plugins.Result{Action: plugins.ActionContinue, Record: rec}, nil
-}
-
-// Filter implements plugins.Filter: the snooze verdict is a suppression
-// decision, so the pipeline must be able to ask for it even when an earlier
-// processor short-circuited with an abort-and-persist verdict (the
-// aggregaterule throttle / anti-flapping holds do exactly that). Without it a
-// throttled duplicate of a matching alert was written to the record
-// collection un-snoozed, and stayed open for the whole throttle window.
-//
-// The decision is identical to a normal pass, so this delegates to Process;
-// the pipeline guarantees only one of the two runs per record.
-func (p *Plugin) Filter(ctx context.Context, rec snoozetypes.Record) (plugins.Result, error) {
-	return p.Process(ctx, rec)
-}
-
-// GuardDelete never blocks a delete — it exists only to capture the names of
-// the filters about to be removed, so AfterDelete can strip the `snoozed`
-// attribution they left on records. The names are unavailable afterwards (the
-// documents are gone) and reading them from the in-memory cache would race
-// the syncer's reload.
-func (p *Plugin) GuardDelete(ctx context.Context, uids []string) error {
-	p.mu.RLock()
-	host := p.host
-	p.mu.RUnlock()
-	if host == nil || host.DB() == nil {
-		return nil
-	}
-	for _, uid := range uids {
-		if uid == "" {
-			continue
-		}
-		doc, err := host.DB().GetOne(ctx, collectionName, db.Document{"uid": uid})
-		if err != nil || doc == nil {
-			continue
-		}
-		name, _ := doc["name"].(string)
-		if name == "" {
-			continue
-		}
-		p.mu.Lock()
-		if p.pendingDelete == nil {
-			p.pendingDelete = make(map[string]string)
-		}
-		// Bound the map: a GuardDelete whose delete then fails leaves an
-		// entry behind, and this must never grow without limit.
-		if len(p.pendingDelete) > maxPendingDeletes {
-			p.pendingDelete = make(map[string]string)
-		}
-		p.pendingDelete[uid] = name
-		p.mu.Unlock()
-	}
-	return nil
-}
-
-// AfterDelete clears the `snoozed` attribution a deleted filter left behind.
-//
-// `snoozed` is an attribution *by name*, and the alerts list treats a record
-// carrying it as silenced. Deleting the filter therefore used to leave every
-// record it had ever stamped hidden behind a filter that no longer exists —
-// permanently, for any alert that never fires again. Records that do fire
-// again re-decide on their next occurrence (aggregaterule clears the stale
-// value whenever snooze is about to re-evaluate), so this hook is what
-// handles the rest.
-func (p *Plugin) AfterDelete(ctx context.Context, uids []string) error {
-	p.mu.RLock()
-	host := p.host
-	p.mu.RUnlock()
-	if host == nil || host.DB() == nil {
-		return nil
-	}
-	names := make([]string, 0, len(uids))
-	p.mu.Lock()
-	for _, uid := range uids {
-		if name, ok := p.pendingDelete[uid]; ok {
-			names = append(names, name)
-			delete(p.pendingDelete, uid)
-		}
-	}
-	p.mu.Unlock()
-
-	var firstErr error
-	for _, name := range names {
-		if _, err := host.DB().UnsetFields(ctx, recordCollection,
-			[]string{"snoozed"}, condition.Equals("snoozed", name)); err != nil {
-			if firstErr == nil {
-				firstErr = fmt.Errorf("snooze: clear attribution of deleted filter %q: %w", name, err)
-			}
-			continue
-		}
-		if lg := host.Logger(); lg != nil {
-			lg.Info("snooze: cleared attribution of deleted filter", "name", name)
-		}
-	}
-	return firstErr
 }
 
 // bypassSeverities returns the current general.snooze_bypass_severities list

@@ -49,38 +49,6 @@ The alert matched the Snooze filter, therefore it got stopped before being execu
 
 Any alert matching a Snooze filter will have a new field `snoozed` added with the Snooze filter name.
 
-## Filters apply to repeats too, not just first occurrences
-
-A filter is evaluated on **every** occurrence of an alert that reaches the
-server, including the ones an [aggregate rule](./aggregaterules.md) holds back
-inside its throttle window or its anti-flapping budget. Those occurrences are
-persisted (the `duplicates` counter has to keep moving) but not notified, and
-the filter still gets the final say on them: a `discard` filter drops the
-write outright, and a tagging filter re-stamps `snoozed`.
-
-That matters because aggregate throttles are often long — a day is a common
-setting. Without it, an alert already on the books and repeating every
-30 seconds would ignore a filter you create now for the whole rest of the
-window, staying open and un-silenced in the alerts list.
-
-Two exceptions, both deliberate:
-
-- A **recovery** (`close`) against an alert already on the books passes
-  through untouched, so a filter can never wedge an alert open. It keeps
-  whatever `snoozed` attribution it already had.
-- Severities listed in `general.snooze_bypass_severities` bypass every filter.
-
-## Deleting a filter releases the alerts it silenced
-
-`snoozed` is an attribution *by name*, and the alerts list treats a record
-carrying it as silenced. Deleting a filter therefore clears `snoozed` from
-every record it had stamped, so nothing stays hidden behind a filter that no
-longer exists. Alerts that are still firing re-decide on their next
-occurrence anyway; this covers the ones that never fire again.
-
-Renaming a filter is not the same thing: records stamped with the old name
-keep it until their next occurrence re-attributes them.
-
 ## Web interface
 
 ![](./images/web_snooze.png)

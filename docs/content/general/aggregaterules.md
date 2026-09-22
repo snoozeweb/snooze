@@ -132,12 +132,6 @@ Two things always break through, whatever the throttle: a severity that **rises*
 
 Note that the notification's own `frequency` is not a second rate limit: only `total: 0` is honoured (as "skip"), while `delay` / `every` / `total > 1` are forwarded to the notifier and otherwise unused. The aggregate rule's throttle is the only rate control on this path.
 
-What the throttle holds back is the **notification**, not the suppression
-decision: a held occurrence is still evaluated against the
-[snooze filters](./snooze.md) before its write lands, so a filter created
-while an alert is mid-window takes effect on the very next occurrence rather
-than at the end of the window.
-
 ## Flapping
 
 Even during the throttle period, closed alerts getting new hits are being re-opened and therefore notified. However, an anti-flapping feature is present to cap the number of the times this behavior can happen. by default it is set to 3, meaning only 3 subsequent hits can be notified until the throttle period ends.

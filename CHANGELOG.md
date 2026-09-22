@@ -147,43 +147,6 @@
 
 ### Fixed
 
-- **A snooze filter had no effect on an alert already inside its aggregate's
-  throttle window.** `aggregaterule` answers a throttled duplicate — and a
-  held-back flapping re-open — with `abort_update`, which persists the record
-  *and* ends the pipeline, so the `snooze` plugin sitting behind it in
-  `core.process_plugins` never ran. With the day-long throttle that long-lived
-  aggregates typically carry, an alert repeating every 30 seconds ignored every
-  matching filter for a full 24 hours: it stayed in the alerts list, open and
-  un-silenced, with `duplicates` ticking up and no notification either.
-
-  Suppression is now decoupled from the aggregation verdict. A processor may
-  implement the new optional `plugins.Filter` interface to declare that its
-  verdict is a suppression decision; whenever an earlier plugin
-  aborts-and-persists, the pipeline gives every remaining `Filter` a say before
-  the write lands. A `discard` filter cancels the write outright, a tagging
-  filter stamps `snoozed`, and the original plugin's write semantics are
-  preserved — a throttled duplicate still persists without re-stamping
-  `date_epoch`, so the suppression pass cannot restart the throttle window it
-  was held by. The `snooze` plugin is the only implementer; plugins that are
-  not suppression decisions (notifications, above all) stay suppressed by the
-  abort exactly as before.
-
-  Relatedly, `aggregaterule` now clears a stale `snoozed` attribution on every
-  verdict that persists, not only on `continue`, since all of them now reach
-  the snooze plugin. The one case it deliberately leaves alone is a record
-  being retired as `close`: the snooze plugin passes those straight through
-  without re-stamping (the close-wedge invariant), so clearing would strip the
-  attribution off a row nothing re-attributes.
-
-- **Deleting a snooze filter left the alerts it had silenced hidden behind it.**
-  `snoozed` is an attribution by name and the alerts list reads it as "this is
-  silenced", so every record a deleted filter had ever stamped stayed out of
-  the list — permanently, for any alert that never fires again. The `snooze`
-  plugin now clears its own attribution from the record collection when a
-  filter is deleted (a `DeleteGuard` captures the name, since the document is
-  gone by the time `AfterDelete` runs). Renaming a filter is unchanged:
-  records re-attribute on their next occurrence.
-
 - **The `ro_all` read catch-all now satisfies `ro_*` gates on bespoke routes**
   (`GET /api/v1/inputs`, the agentic read) exactly as it already did on plugin
   CRUD routes; it still grants no `rw_*` permission and no literal one.

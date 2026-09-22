@@ -532,14 +532,10 @@ func TestAggregate_WritesLifecycleComments(t *testing.T) {
 }
 
 // TestAggregate_ClearsStaleSnoozed guards the warning→emergency regression: a
-// record snoozed under one severity must drop its `snoozed` attribution
-// whenever the snooze plugin is going to re-decide, so it re-evaluates the
-// *current* record. That is every verdict that persists — plain
-// ActionContinue, and the abort-and-persist verdicts, which get a
-// plugins.Filter pass (snooze implements it) before their write lands. The one
-// exception is a record being retired as `close`: snooze deliberately passes
-// those straight through without re-stamping, so clearing would strip the
-// attribution off a row nobody re-attributes.
+// record snoozed under one severity must drop its `snoozed` attribution when it
+// re-aggregates non-throttled, so the snooze plugin (next in the real pipeline)
+// re-evaluates it against the *current* record. Throttled duplicates abort
+// before snooze runs, so they must keep the prior `snoozed`.
 //
 // These call Process directly (not runProcess) and inspect the DB immediately:
 // runProcess persists via ReplaceOne (full replace), which would itself drop
@@ -583,13 +579,7 @@ func TestAggregate_ClearsStaleSnoozed(t *testing.T) {
 			"stale snoozed must be cleared so snooze re-evaluates the escalated record")
 	})
 
-	// The live bug: with a day-long aggregate throttle, an alert that keeps
-	// repeating is answered ActionAbortUpdate for the whole window. That used
-	// to keep the previous `snoozed` value frozen on the row, which is wrong
-	// now that the pipeline gives the snooze plugin a Filter pass before the
-	// abort's write lands — the stale value must go so snooze re-asserts the
-	// filter that matches the record *today*.
-	t.Run("throttled-duplicate-clears", func(t *testing.T) {
+	t.Run("throttled-duplicate-keeps-snoozed", func(t *testing.T) {
 		t.Parallel()
 		host := newTestHost(t)
 		writeRule(t, host, db.Document{
@@ -604,40 +594,14 @@ func TestAggregate_ClearsStaleSnoozed(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, 1, snoozedCount(t, host))
 
+		// Plain duplicate inside the throttle window → ActionAbortUpdate, never
+		// reaches snooze, so its snoozed attribution must survive.
 		res, err := p.Process(tctx(), snoozetypes.Record{Extra: map[string]any{"a": "1"}})
 		require.NoError(t, err)
 		require.Equal(t, plugins.ActionAbortUpdate, res.Action)
 
-		require.Equal(t, 0, snoozedCount(t, host),
-			"a throttled duplicate now reaches snooze through the Filter pass, so the stale attribution must be cleared for it to re-assert")
-	})
-
-	// A close is the pipeline retiring a row. The snooze plugin passes those
-	// through untouched (the close-wedge invariant), so nothing would put the
-	// attribution back — clearing it here loses the reason the row was hidden.
-	t.Run("close-transition-keeps-snoozed", func(t *testing.T) {
-		t.Parallel()
-		host := newTestHost(t)
-		writeRule(t, host, db.Document{
-			"name": "AggC", "condition": []any{"=", "a", "1"},
-			"fields": []string{"a"}, "throttle": int64(900),
-		})
-		p := freshPlugin(t, host)
-
-		out, _ := runProcess(t, p, host, snoozetypes.Record{Extra: map[string]any{"a": "1"}})
-		_, err := host.driver.SetFields(tctx(), recordCollection,
-			db.Document{"snoozed": "Warnings"}, condition.Equals("hash", out.Hash))
-		require.NoError(t, err)
-		require.Equal(t, 1, snoozedCount(t, host))
-
-		res, err := p.Process(tctx(), snoozetypes.Record{
-			State: "close", Extra: map[string]any{"a": "1"},
-		})
-		require.NoError(t, err)
-		require.Equal(t, plugins.ActionContinue, res.Action)
-
 		require.Equal(t, 1, snoozedCount(t, host),
-			"a close keeps its snoozed attribution — snooze passes closes through without re-stamping")
+			"throttled duplicate must keep snoozed (snooze never re-runs to re-assert it)")
 	})
 }
 
