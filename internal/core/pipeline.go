@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 
 	"github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/plugins"
+	"github.com/snoozeweb/snooze/internal/protected"
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
@@ -74,6 +76,7 @@ func (c *Core) processRecordInner(ctx context.Context, rec snoozetypes.Record) (
 	if tenant, ok := snoozetypes.TenantFrom(ctx); !ok || tenant == "" {
 		return rec, plugins.ActionAbort, fmt.Errorf("pipeline: refusing to process record without a tenant: %w", snoozetypes.ErrNoTenant)
 	}
+	c.stripProtected(&rec, logger)
 	c.stampOKSeverityClose(ctx, &rec)
 	c.stampDefaultTTL(ctx, &rec)
 	for _, p := range c.processOrder {
@@ -253,6 +256,29 @@ func severityInList(severity string, list []string) bool {
 // (cleanup_timeout's $match: ttl >= 0 spares those), so we leave it
 // alone. A positive TTL set by the caller (e.g. tests, integrations
 // posting a custom expiry) is also respected.
+// stripProtected drops protected fields (internal/protected) an inbound alert
+// carries before any plugin sees the record.
+//
+// Protected fields are owned by a dedicated, schema-validating, separately
+// permissioned endpoint; an alert payload claiming to carry one is either a
+// mistake or an attempt to forge it. Ingestion strips rather than rejects: an
+// alert is a signal about production, and refusing it outright would let a
+// sender that guesses a protected name silently break its own alerting.
+//
+// A stored value on an EXISTING record is unaffected — the pipeline's final
+// write is a merge, and a key the incoming document no longer mentions is
+// left alone. So a re-fire of an already-analysed alert keeps its analysis.
+func (c *Core) stripProtected(rec *snoozetypes.Record, logger *slog.Logger) {
+	removed := protected.Strip(rec.Extra)
+	if len(removed) == 0 {
+		return
+	}
+	if logger != nil {
+		logger.Warn("pipeline: dropped protected field(s) from inbound alert",
+			"fields", removed, "host", rec.Host, "source", rec.Source)
+	}
+}
+
 func (c *Core) stampDefaultTTL(ctx context.Context, rec *snoozetypes.Record) {
 	if rec.TTL != 0 {
 		return

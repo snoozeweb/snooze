@@ -28,6 +28,7 @@ func newRecordCmd() *cobra.Command {
 		newRecordShowCmd(),
 		newRecordAckCmd(),
 		newRecordCloseCmd(),
+		newRecordAgenticCmd(),
 	)
 	return cmd
 }

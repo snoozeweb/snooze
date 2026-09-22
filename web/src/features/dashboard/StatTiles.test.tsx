@@ -101,6 +101,62 @@ describe("clickable tiles", () => {
   });
 });
 
+describe("the Analysed tile", () => {
+  it("stays off the strip until the analysed count is known", () => {
+    renderTiles();
+    expect(screen.queryByText("Analysed")).not.toBeInTheDocument();
+    // Same while the query is in flight but the viewer may see it.
+    renderTiles({ analysed: {} });
+    expect(screen.queryByText("Analysed")).not.toBeInTheDocument();
+  });
+
+  it("reads its count against the open queue and opens the Analyses view", async () => {
+    const onAnalysedClick = vi.fn();
+    const user = userEvent.setup();
+    renderTiles({ analysed: { count: 12, open: 37 }, onAnalysedClick });
+
+    const live = screen.getByRole("region", { name: "Right now" });
+    expect(within(live).getByText("12")).toBeInTheDocument();
+    // The number only means something against the population it is a share of
+    // — which is NOT the "Needs attention" queue beside it: that one drops the
+    // acknowledged and snoozed rows this count deliberately keeps.
+    expect(within(live).getByText("of 37 open")).toBeInTheDocument();
+    expect(within(live).queryByText("of 214 open")).not.toBeInTheDocument();
+
+    await user.click(screen.getByText("Analysed"));
+    expect(onAnalysedClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("prints the numerator alone while the denominator is still in flight", () => {
+    renderTiles({ analysed: { count: 12 } });
+    const live = screen.getByRole("region", { name: "Right now" });
+    expect(within(live).getByText("12")).toBeInTheDocument();
+    // "12 of 0 open" is worse than no denominator at all.
+    expect(within(live).queryByText(/of \d+ open/)).not.toBeInTheDocument();
+  });
+
+  it("keeps the tile with an em-dash when the count query failed", () => {
+    renderTiles({ analysed: { error: true, open: 37 } });
+    const live = screen.getByRole("region", { name: "Right now" });
+    expect(within(live).getByText("Analysed")).toBeInTheDocument();
+    expect(within(live).getByText("\u2014")).toBeInTheDocument();
+    expect(within(live).queryByText(/of \d+ open/)).not.toBeInTheDocument();
+  });
+
+  it("separates the value from its denominator in the accessible name", () => {
+    renderTiles({ analysed: { count: 7, open: 6 }, onAnalysedClick: vi.fn() });
+    // The hint is glued to the value by CSS margin only; without a real space
+    // the button announces "7of 6 openAnalysed".
+    const tile = screen.getByRole("button", { name: /Analysed/ });
+    expect(tile.textContent).toContain("7 of 6 open");
+  });
+
+  it("is not interactive without a handler", () => {
+    renderTiles({ analysed: { count: 12, open: 37 } });
+    expect(screen.queryAllByRole("button")).toHaveLength(0);
+  });
+});
+
 describe("trend deltas", () => {
   it("renders a ▲ percent badge for windowed tiles when a delta is given", () => {
     renderTiles({ deltas: { throttled: 12.4, snoozed: -50 } });

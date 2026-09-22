@@ -1,0 +1,51 @@
+/* The time-range picker's segmented-control recipe (TimeRangePicker.module.css),
+   one size up: this switch changes the whole page, so it carries a label and an
+   icon per segment rather than a two-character preset. Same frame, same active
+   treatment — amber for the segment that is on, and nothing else. */
+.bar {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 2px;
+}
+
+.segment {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: none;
+  border: 0;
+  padding: var(--space-1) var(--space-3);
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.segment:hover {
+  color: var(--text-strong);
+}
+/* No bespoke :focus-visible here — the global ring (styles/base.css, 2px at
+   2px offset) sits on the bar behind the segment and reads against it. The
+   one it could not read against is the active segment, whose amber fill IS
+   the focus colour in dark (--accent-solid and --focus-ring are both #ffb000),
+   so that state draws its own rim in the on-accent ink instead. */
+.segment[data-active="true"] {
+  background: var(--accent-solid);
+  color: var(--accent-solid-fg);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.segment[data-active="true"]:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent-solid-fg);
+}
+
+/* Touch: the segments are the page's primary navigation between the two
+   views, so they get the full target height. */
+@media (pointer: coarse) {
+  .segment {
+    min-height: var(--touch-target);
+  }
+}

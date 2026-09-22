@@ -571,13 +571,25 @@ export function DataTable<T>({
     if (focusedIndex >= data.length) setFocusedIndex(data.length - 1);
   }, [data.length, focusedIndex]);
 
-  // Auto-close the drawer when the open row leaves the data (page change,
-  // filter, or refetch that drops the row — or a deep-linked ?record= that
-  // isn't on the current page). Guarded on !loading so the transient empty-data
-  // render during a fetch doesn't close a valid open record.
+  // Auto-close a deep-linked key that never named a row on this page — a
+  // ?record= uid from another page, another filter, or a stale link. Guarded on
+  // !loading so the transient empty-data render during a fetch doesn't close a
+  // valid open record.
+  //
+  // A key that DID resolve is deliberately left alone when it later leaves the
+  // data (a refetch that drops the row, a filter that stops matching it): the
+  // drawer is the surface an operator writes in — comments, the analysis
+  // editor — and closing it under them destroys that draft with no prompt.
+  // RowDetailsDrawer keeps rendering the row it resolved, so the drawer stays
+  // on its subject until the operator closes or retargets it.
+  const resolvedDetailsKeyRef = useRef<string | null>(null);
+  if (activeDetailsKey != null && allKeys.includes(activeDetailsKey)) {
+    resolvedDetailsKeyRef.current = activeDetailsKey;
+  }
   useEffect(() => {
     if (loading) return;
     if (activeDetailsKey == null) return;
+    if (resolvedDetailsKeyRef.current === activeDetailsKey) return;
     if (!allKeys.includes(activeDetailsKey)) {
       setDetailsKey(null);
     }

@@ -1,0 +1,47 @@
+.plan {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Section headings inside the inspector pane: one step below the root-cause
+   lead sentence, which is the largest type here. */
+.heading {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--text-strong);
+}
+.subheading {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--text-strong);
+}
+
+.steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The claim and the rule that backs it, stacked so the rule is always read
+   with the answer rather than hidden behind a tooltip. */
+.automatable {
+  margin: var(--space-2) 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+.automatableValue strong {
+  font-weight: var(--weight-semibold);
+  color: var(--text-strong);
+}
+.automatableHint {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}

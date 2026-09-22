@@ -7,6 +7,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/snoozeweb/snooze/internal/plugins"
+	"github.com/snoozeweb/snooze/internal/protected"
 )
 
 // mountSchema wires GET /api/v1/schema/{plugin}.
@@ -57,6 +58,11 @@ func (rt *Router) handlePermissions(w http.ResponseWriter, _ *http.Request) {
 	set := map[string]struct{}{
 		"rw_all": {},
 		"ro_all": {},
+		// Protected-field writes are gated on a literal permission that no
+		// plugin declares (the guard lives in internal/protected, not in a
+		// metadata.yaml policy), so it has to be listed explicitly or roles
+		// could never be granted it from the UI.
+		protected.WritePermission: {},
 	}
 	add := func(perm string) {
 		// Skip the empty string and the `any` sentinel: `any` is an implicit

@@ -1,0 +1,10 @@
+/* The default fallback: the message, then the one action that can recover a
+   failed chunk. Column-stacked so the button never crowds the sentence in a
+   narrow surface (a drawer tab is the first consumer). */
+.fallback {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+}

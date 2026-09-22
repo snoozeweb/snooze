@@ -123,9 +123,12 @@ func TestHousekeepingRun_NoAuth_401(t *testing.T) {
 
 func TestHousekeepingRun_WrongPerm_403(t *testing.T) {
 	r := hkRouter(t, hkWith(t, "cleanup_ok", nil))
-	// A read-only permission must not satisfy the rw_all gate.
-	req := authReq(http.MethodPost, "/api/v1/housekeeping/run", nil, "ro_record")
-	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, req)
-	require.Equal(t, http.StatusForbidden, rec.Code)
+	// A read-only permission must not satisfy the rw_all gate — neither a
+	// collection one nor the read catch-all, which covers ro_* wants only.
+	for _, perm := range []string{"ro_record", "ro_all"} {
+		req := authReq(http.MethodPost, "/api/v1/housekeeping/run", nil, perm)
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		require.Equalf(t, http.StatusForbidden, rec.Code, "caller holding %s", perm)
+	}
 }

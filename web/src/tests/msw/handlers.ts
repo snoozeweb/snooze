@@ -64,6 +64,17 @@ export const handlers = [
     }),
   ),
 
+  // An alert's agentic analysis. 404 is the route's way of saying "this alert
+  // carries no analysis", which is the state of almost every record — so it is
+  // the default any suite that opens the alert inspector gets. A test about
+  // the analysis overrides this with mswServer.use().
+  http.get("/api/v1/record/:uid/agentic", () =>
+    HttpResponse.json(
+      { error: { code: "not_found", message: "record carries no analysis" } },
+      { status: 404 },
+    ),
+  ),
+
   // Catch-all list endpoint for resource-factory smoke tests.
   http.get("/api/v1/:plugin", ({ params }) => {
     return HttpResponse.json({

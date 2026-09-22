@@ -12,6 +12,10 @@ const adminClaims: JwtClaims = { sub: "admin", permissions: ["rw_rule", "rw_reco
 const readOnlyClaims: JwtClaims = { sub: "ro", permissions: ["ro_rule", "ro_record"] };
 const noPermsClaims: JwtClaims = { sub: "weird" };
 const nullClaims = null;
+// The analysis-agent identity: read everything, write only the protected
+// field. Mirrors the server's read set {ro_all, rw_all} in
+// internal/plugins/authz.go.
+const readAllClaims: JwtClaims = { sub: "agent", permissions: ["ro_all", "rw_protected"] };
 
 describe("hasPermission", () => {
   it("returns true when the claim is in the list", () => {
@@ -25,6 +29,16 @@ describe("hasPermission", () => {
   });
   it("returns false when permissions array is absent", () => {
     expect(hasPermission(noPermsClaims, "rw_rule")).toBe(false);
+  });
+  it("treats ro_all as a wildcard over any ro_* read", () => {
+    expect(hasPermission(readAllClaims, "ro_record")).toBe(true);
+    expect(hasPermission(readAllClaims, "ro_rule")).toBe(true);
+  });
+  it("never lets ro_all stand in for a write", () => {
+    expect(hasPermission(readAllClaims, "rw_record")).toBe(false);
+  });
+  it("still honours the literal permissions held beside ro_all", () => {
+    expect(hasPermission(readAllClaims, "rw_protected")).toBe(true);
   });
 });
 
@@ -41,6 +55,12 @@ describe("hasAnyPermission", () => {
   it("returns false on empty list", () => {
     expect(hasAnyPermission(adminClaims, [])).toBe(false);
   });
+  it("lets ro_all satisfy the record read of the Alerts gate", () => {
+    expect(hasAnyPermission(readAllClaims, ["ro_record", "rw_record"])).toBe(true);
+  });
+  it("returns false when ro_all is offered only writes", () => {
+    expect(hasAnyPermission(readAllClaims, ["rw_record", "rw_rule"])).toBe(false);
+  });
 });
 
 describe("hasAllPermissions", () => {
@@ -52,6 +72,12 @@ describe("hasAllPermissions", () => {
   });
   it("returns true on empty list (vacuous)", () => {
     expect(hasAllPermissions(adminClaims, [])).toBe(true);
+  });
+  it("requires every entry, so ro_all alone fails a list holding a write", () => {
+    expect(hasAllPermissions(readAllClaims, ["ro_record", "rw_record"])).toBe(false);
+  });
+  it("passes an all-read list on ro_all", () => {
+    expect(hasAllPermissions(readAllClaims, ["ro_record", "ro_rule"])).toBe(true);
   });
 });
 
@@ -101,5 +127,9 @@ describe("hasPlatformPermission", () => {
   });
   it("returns false on an empty permission list", () => {
     expect(hasPlatformPermission(defaultAdmin, [])).toBe(false);
+  });
+  it("returns false for ro_all — the read wildcard is not a platform perm", () => {
+    const readAll: JwtClaims = { sub: "agent", tenant_id: "default", permissions: ["ro_all"] };
+    expect(hasPlatformPermission(readAll, platformPerms)).toBe(false);
   });
 });

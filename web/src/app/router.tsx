@@ -571,13 +571,19 @@ type AlertsSearchParams = {
   // Open detail-drawer record key. AlertsPage syncs the modal detail drawer's
   // open alert here so it's shareable / deep-linkable.
   record?: string;
+  // Rides with `record`: open the inspector on the Analysis tab rather than
+  // Timeline. Written by the dashboard's Analyses panel, whose subject is the
+  // analysis rather than the alert.
+  analysis?: boolean;
 };
 
-const alertsRoute = createRoute({
-  getParentRoute: () => webLayoutRoute,
-  path: "/web/alerts",
-  component: lazyRouteComponent(() => import("@/features/alerts/AlertsPage"), "AlertsPage"),
-  validateSearch: (raw): AlertsSearchParams => {
+/**
+ * Exported for its own test: this is the one validator with real rules in it
+ * (two spellings of a boolean, a key that is rejected when empty), and a route
+ * definition is not reachable from a test.
+ */
+export function validateAlertsSearch(raw: Record<string, unknown>): AlertsSearchParams {
+  {
     const out: Record<string, unknown> = {};
     const s = (k: string) => (typeof raw[k] === "string" ? raw[k] : undefined);
     const n = (k: string) => {
@@ -606,9 +612,27 @@ const alertsRoute = createRoute({
     setIf("uid", s("uid"));
     setIf("tab", s("tab"));
     setIf("env", s("env"));
-    setIf("record", s("record"));
+    // An empty `?record=` is not "open nothing", it's a key that matches no
+    // row — the same reason the notifications route refuses an empty
+    // `?details=`. Reject it the way an absent param is rejected.
+    const recordKey = s("record");
+    if (recordKey !== undefined && recordKey !== "") out["record"] = recordKey;
+    // Only the truthy spellings survive. `analysis=false` IS the default open,
+    // so keeping it round-trips as litter in every link the page builds from
+    // then on. A deep link here is as likely to be typed as clicked, hence the
+    // `1` forms beside `b()`'s `true` (AlertsPage reads the same set).
+    if (b("analysis") === true || raw["analysis"] === 1 || raw["analysis"] === "1") {
+      out["analysis"] = true;
+    }
     return out as AlertsSearchParams;
-  },
+  }
+}
+
+const alertsRoute = createRoute({
+  getParentRoute: () => webLayoutRoute,
+  path: "/web/alerts",
+  component: lazyRouteComponent(() => import("@/features/alerts/AlertsPage"), "AlertsPage"),
+  validateSearch: (raw): AlertsSearchParams => validateAlertsSearch(raw),
 });
 
 type SnoozesSearchParams = {
@@ -750,12 +774,15 @@ const notificationsRoute = createRoute({
   },
 });
 
-// Dashboard time-range deep-link. `range` is the picker preset key; for the
-// "custom" preset, `from`/`to` carry the window bounds as epoch milliseconds.
-// All optional — no params means the page's default 1d range, exactly as
-// before. Types are validated defensively (numeric strings coerced to number)
-// so a hand-edited URL can't poison the picker.
+// Dashboard deep-link. `view` picks which of the page's two views is on
+// screen; `range` is the time picker's preset key and, for the "custom"
+// preset, `from`/`to` carry the window bounds as epoch milliseconds.
+// All optional — no params means the Overview on its default 1d range,
+// exactly as before. Types are validated defensively (numeric strings coerced
+// to number, an unknown `view` dropped) so a hand-edited URL can't poison the
+// page.
 type DashboardSearchParams = {
+  view?: "overview" | "analyses";
   range?: "1d" | "1w" | "1m" | "1y" | "custom";
   from?: number;
   to?: number;
@@ -770,6 +797,10 @@ const dashboardRoute = createRoute({
   ),
   validateSearch: (raw): DashboardSearchParams => {
     const out: Record<string, unknown> = {};
+    // Anything but the one named view falls through to the Overview — the
+    // param is omitted from the URL in that case, so `?view=overview` and no
+    // param at all are the same state.
+    if (raw["view"] === "analyses") out["view"] = "analyses";
     const rangeRaw = raw["range"];
     if (
       rangeRaw === "1d" ||

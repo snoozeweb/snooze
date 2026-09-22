@@ -82,3 +82,20 @@
     flex-shrink: 0;
   }
 }
+
+/*
+ * Opt-in single-row strip (`<TabList overflow="scroll">`). Declared last so it
+ * beats the equal-specificity `flex-wrap: wrap` the desktop rule above sets:
+ * a strip that opts in never wraps, at any width, and scrolls instead. The
+ * scrollbar is the app-wide thin themed one from base.css, so the overflow is
+ * visible rather than silently clipped.
+ */
+.scroll {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.scroll > .trigger {
+  white-space: nowrap;
+  flex-shrink: 0;
+}

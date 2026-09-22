@@ -29,6 +29,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -37,6 +38,7 @@ import (
 	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/plugins"
+	"github.com/snoozeweb/snooze/internal/protected"
 )
 
 // recordCollection is the collection the bulk_state endpoint mutates.
@@ -73,9 +75,41 @@ func (rt *Router) mountBulk(r chi.Router) {
 		g.Use(middleware.RequirePerm("rw_" + recordCollection))
 		g.Post("/api/v1/record/bulk_state", rt.handleBulkState)
 	})
-	// bulk_update gates on rw_<plugin>, which is only known once {plugin} is
-	// resolved, so the permission check lives in the handler.
+	// bulk_update gates on rw_<plugin>, which is only known once the
+	// collection is resolved, so the permission check lives in the handler.
+	//
+	// The route is registered STATICALLY, once per plugin, rather than only as
+	// the parameterised /api/v1/{plugin}/bulk_update. chi resolves a static
+	// path segment before a parameter sibling, so `/api/v1/record/...` descends
+	// into the record plugin's CRUD mount and never backtracks to `{plugin}`;
+	// the mount has no /bulk_update, so the parameterised form alone answered
+	// 405 for EVERY collection (bulk_state works precisely because its path is
+	// static). One static registration per plugin puts the route inside the
+	// trie node chi actually reaches.
+	//
+	// `tenant` is excluded for the same reason the CRUD loop in router.go
+	// excludes it: the registry is mounted separately behind
+	// RequirePlatformPerm (literal permission + platform-tenant origin), and
+	// bulk_update's own gate is auth.HasPermission(rw_tenant), which the rw_all
+	// wildcard satisfies. Mounting it here would be a way around the platform
+	// gate, not a convenience.
+	for name := range rt.Plugins {
+		if name == auth.TenantCollection {
+			continue
+		}
+		r.Post("/api/v1/"+name+"/bulk_update", rt.bulkUpdateFor(name))
+	}
+	// Kept for collections with no plugin CRUD mount of their own, where
+	// nothing shadows the parameterised form.
 	r.Post("/api/v1/{plugin}/bulk_update", rt.handleBulkUpdate)
+}
+
+// bulkUpdateFor binds the collection name for the statically-mounted form of
+// the route, where there is no {plugin} URL parameter to read.
+func (rt *Router) bulkUpdateFor(name string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		rt.bulkUpdate(w, r, name)
+	}
 }
 
 // bulkStateRequest is the bulk_state body. message is recorded once in the
@@ -169,7 +203,11 @@ func (rt *Router) handleBulkState(w http.ResponseWriter, r *http.Request) {
 // plugin must be a registered plugins.DataModel (rejecting audit, notifiers,
 // etc.); the caller must hold rw_<plugin>.
 func (rt *Router) handleBulkUpdate(w http.ResponseWriter, r *http.Request) {
-	name := chi.URLParam(r, "plugin")
+	rt.bulkUpdate(w, r, chi.URLParam(r, "plugin"))
+}
+
+// bulkUpdate is the shared body of both mounted forms of the endpoint.
+func (rt *Router) bulkUpdate(w http.ResponseWriter, r *http.Request, name string) {
 	if name == "" {
 		WriteError(w, r, ErrBadRequest.WithMessage("missing plugin"))
 		return
@@ -212,6 +250,17 @@ func (rt *Router) handleBulkUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
+
+	// A protected field is never writable through a bulk set: the whole point
+	// of the concept is that one schema-validating endpoint owns those keys,
+	// and a query-wide SetFields would rewrite them on every matching record
+	// at once. Refused loudly, exactly as the single-document CRUD path does.
+	if names := protected.Names(req.Set); len(names) > 0 {
+		WriteError(w, r, ErrForbidden.WithMessage(
+			"protected field(s) "+strings.Join(names, ", ")+
+				" cannot be written through bulk_update; use their dedicated endpoint"))
+		return
+	}
 
 	// Authorize the request as a whole BEFORE any driver call, so bulk_update
 	// is not a hole in the chain the generic CRUD handlers enforce.

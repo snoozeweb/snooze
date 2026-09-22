@@ -31,16 +31,84 @@ var (
 	// Package-scoped rather than returned from Build because the whole
 	// registry is: Build runs exactly once per process (it panics on a second
 	// call), so there is one set of background work per process too, and
-	// threading a WaitGroup through Build's signature would only move the
+	// threading a tracker through Build's signature would only move the
 	// single global somewhere less obvious. resetForTest deliberately does NOT
-	// touch it — a WaitGroup cannot be reset while a goroutine still holds a
-	// count, and a test's dispatched pass is exactly that.
-	background sync.WaitGroup
+	// touch it: a test's dispatched pass may still be running, and it must
+	// still be able to report its own completion.
+	background backgroundTracker
 )
+
+// backgroundTracker counts in-flight background goroutines and lets a waiter
+// block until they drain, with a context deadline.
+//
+// It replaces a plain sync.WaitGroup, which cannot express this safely. A
+// WaitGroup forbids Add running concurrently with Wait, and an abandoned wait
+// (the ctx expired) leaves a goroutine parked in Wait for as long as the work
+// runs — so the next Build's Add races it. That is a real data race, not a
+// theoretical one: it fires whenever two Builds overlap a wait, which is the
+// normal shape of a test binary that builds the registry more than once.
+//
+// The generation channel makes the two operations independent: a waiter holds
+// the channel that was current when it started, and a later add() installs a
+// fresh one. An abandoned waiter observes its own generation and nothing else,
+// and it parks on a channel rather than in a goroutine that outlives the call.
+type backgroundTracker struct {
+	mu sync.Mutex
+	n  int
+	// idle is non-nil exactly while n > 0, and is closed when n reaches 0.
+	idle chan struct{}
+}
+
+// add registers one dispatched goroutine.
+func (t *backgroundTracker) add() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.n == 0 {
+		t.idle = make(chan struct{})
+	}
+	t.n++
+}
+
+// done reports one dispatched goroutine as finished, releasing any waiter
+// once the last one returns.
+//
+// A done() with nothing in flight is ignored rather than fatal: resetForTest
+// rebuilds the registry around goroutines that are still running, so a stray
+// completion from a previous test's pass is expected, and panicking on it
+// would turn a test-isolation detail into a crash.
+func (t *backgroundTracker) done() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.n == 0 {
+		return
+	}
+	t.n--
+	if t.n == 0 {
+		close(t.idle)
+		t.idle = nil
+	}
+}
+
+// wait blocks until every goroutine counted at call time has returned, or ctx
+// expires. It returns immediately when nothing is in flight.
+func (t *backgroundTracker) wait(ctx context.Context) error {
+	t.mu.Lock()
+	idle := t.idle
+	t.mu.Unlock()
+	if idle == nil {
+		return nil
+	}
+	select {
+	case <-idle:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
 
 // WaitBackground blocks until every goroutine Build dispatched has returned,
 // or ctx expires (returning ctx.Err()). Safe to call when Build never ran, or
-// dispatched nothing: the WaitGroup is then at zero and this returns
+// dispatched nothing: the tracked count is then already zero and this returns
 // immediately.
 //
 // Callers are expected to cancel the context they passed to Build FIRST —
@@ -57,17 +125,7 @@ var (
 // defer anything internally, so their DDL really is executing on that
 // goroutine).
 func WaitBackground(ctx context.Context) error {
-	done := make(chan struct{})
-	go func() {
-		background.Wait()
-		close(done)
-	}()
-	select {
-	case <-done:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+	return background.wait(ctx)
 }
 
 // Register is called from a plugin package's init() to add itself to the
@@ -265,9 +323,9 @@ func Build(ctx context.Context, host Host, processOrder []string) (map[string]Pl
 		}
 		if len(jobs) > 0 {
 			lg := host.Logger()
-			background.Add(1)
+			background.add()
 			go func() {
-				defer background.Done()
+				defer background.done()
 				for _, job := range jobs {
 					if err := drv.CreateIndex(ctx, job.collection, job.fields); err != nil {
 						if lg != nil {

@@ -2,6 +2,74 @@
 
 ### Added
 
+- **Agentic analysis on alerts, and the protected-field concept behind it.**
+  An alert can now carry a machine-authored `agentic` subtree — `root_cause`
+  (summary, scope, evidence, `confidence: high|medium|low`),
+  `remediation_plan` (ordered `steps` and `rollback`, each
+  `{action, command?, risk: low|medium|high}`, plus `automatable`), and a
+  server-stamped `analysis` provenance block (`at`, `by`, `source`) that a
+  client may not supply. It is written through one endpoint —
+  `GET`/`PUT`/`DELETE /api/v1/record/{uid}/agentic` — which validates strictly
+  (unknown fields rejected; every violation returned at once in
+  `error.details`, keyed by JSON path), replaces rather than merges, and
+  leaves `date_epoch` alone so analysing an old alert does not make it look
+  freshly seen. Also exposed as `snooze record agentic {get,set,clear}` (with
+  client-side validation, so a malformed payload never leaves the machine) and
+  as the `get_alert_analysis` / `set_alert_analysis` MCP tools.
+
+  `agentic` is the first **protected field** (`internal/protected`): a
+  recursively-protected document key that only that endpoint may write.
+  Ingestion **strips** a protected field an inbound alert carries (logging a
+  warning) so a noisy sender cannot break its own alerting; the generic CRUD
+  surface, `bulk_update`'s `set`, rule modifications (`SET`, `DELETE`,
+  `ARRAY_APPEND`, `ARRAY_DELETE`, `REGEX_SUB`, `REGEX_PARSE` capture groups and
+  `KV_SET`'s `out_field`) and the notifier inject chokepoint
+  (`inject_response`, notify-ref stamps) all **refuse** one — a rule targeting
+  a protected field is rejected when saved and again at runtime, which catches
+  a field name computed from a template. A `PUT` that omits the field carries
+  the stored value forward, so a full replace cannot be a back-door delete, and
+  it fails closed if that read errors rather than silently dropping the field.
+  A re-fire of an analysed alert keeps its analysis (the pipeline's final write
+  is a merge).
+
+  A `PUT`/`PATCH` that echoes a protected field back with its unchanged value
+  is accepted — a read-modify-write client round-tripping the record is not a
+  write — while a different value still 403s. The endpoint's body is capped at
+  512 KiB (derived from the schema maxima); the decoder rejects trailing data
+  after the JSON object, reports type mismatches by JSON path, and refuses
+  strings containing a NUL character.
+
+  Writes require the new **`rw_protected`** permission, checked **literally**:
+  the `rw_all` admin wildcard does NOT satisfy it, so existing admin roles do
+  not silently inherit write access to agent-authored analysis. Reads need
+  only `ro_record`. Both mutations emit an audit row (`agentic_set` /
+  `agentic_clear`). See `general/agentic_analysis.md`.
+
+- **Agentic analysis in the web UI.** The alert inspector gained an
+  **Analysis** tab — cause, scope, evidence, the ordered remediation plan with
+  each step's risk and command — labelled with the confidence
+  (`Analysis · High`), plus a one-line `Cause:` summary in the drawer header;
+  an analysed alert also carries a confidence-coloured dot beside its severity
+  badge in the alerts table. The tab reads for anyone who can read the alert,
+  but **Edit** / **Remove** / **Write analysis** appear only for a session
+  holding `rw_protected` literally — an `rw_all` admin gets the read-only view,
+  the same answer the endpoint gives — and a save replaces the whole analysis,
+  restamping provenance with the signed-in user and `source: snooze-web`. The
+  dashboard gained a second view, **Analyses**, reached from a segmented
+  control beside the page title or from a new **Analysed** tile in the "Right
+  now" strip ("17 of 42 open"): the 50 most recently analysed open alerts in one
+  full-width list, with analysed-of-open counts (the "open" half links to the
+  alerts table filtered to `NOT agentic?`) and confidence / automatable filters.
+  The view is a deep link (`/web/dashboard?view=analyses`), and any row there —
+  or any other link — opens an alert straight onto its Analysis tab through
+  `/web/alerts?tab=all&record=<uid>&analysis=1`. "Open" here counts every
+  alert that is not closed, shelved or expired — acknowledged and snoozed
+  included — so the ratio cannot read "7 analysed of 6 open" after a triage
+  pass; the tile and the view are shown only to sessions that can read
+  records. Leaving the inspector's editor by prev/next, a tab switch, or a row
+  that paged out asks before discarding the draft, and a draft can no longer
+  be saved onto the wrong alert.
+
 - **Notification delivery history.** Every actual send an action performs —
   not just a matched notification — is now recorded as a permanent row in a
   new tenant-scoped `notificationlog` collection: send time, duration,
@@ -78,6 +146,35 @@
   Retro-applying a snooze goes through the same gate.
 
 ### Fixed
+
+- **The `ro_all` read catch-all now satisfies `ro_*` gates on bespoke routes**
+  (`GET /api/v1/inputs`, the agentic read) exactly as it already did on plugin
+  CRUD routes; it still grants no `rw_*` permission and no literal one.
+
+- **`POST /api/v1/{plugin}/bulk_update` answered 405 for every collection.**
+  The route was only registered in its parameterised form, and chi resolves a
+  static path segment before a parameter sibling: a request to
+  `/api/v1/record/bulk_update` descended into the record plugin's CRUD mount,
+  which has no such sub-path, and never backtracked. (`bulk_state` was
+  unaffected because its path is static.) The alerts table's bulk tag /
+  attribute dialog posts exactly this route, so it could not have worked. The
+  endpoint is now registered statically per plugin, with the parameterised form
+  kept for collections that have no CRUD mount of their own; `tenant` is
+  excluded so the platform gate on the registry cannot be side-stepped through
+  `bulk_update`'s weaker `rw_tenant` check. The existing bulk tests mounted only
+  the bulk routes, which is why the shadowing was invisible to them; the new
+  test mounts both surfaces in the order the router does.
+
+- **Data race between `plugins.WaitBackground` and a subsequent `Build`.**
+  The background pass was tracked by a package-level `sync.WaitGroup`, whose
+  contract forbids `Add` concurrent with `Wait`. A waiter whose context expired
+  stayed parked inside `Wait` (and leaked its goroutine), so the next `Build`'s
+  `Add` raced it — reliably reproducible as an intermittent `-race -shuffle`
+  failure in whichever two `TestBuild_*` tests happened to interleave. Replaced
+  with a mutex-guarded counter and a generation channel: waiters observe the
+  generation current when they started, an abandoned wait parks on a channel
+  instead of a goroutine, and a stray `done()` after `resetForTest` is ignored
+  rather than driving the counter negative.
 
 - **A `notificationlog` write no longer reloads the `notification` plugin's
   cache.** The syncer's topic-prefix match was a plain string prefix, so a

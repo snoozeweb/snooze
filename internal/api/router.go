@@ -187,6 +187,11 @@ func (rt *Router) Build() chi.Router {
 	//     handlers chi installs). -------------------------------------------
 	rt.mountBulk(r)
 
+	// --- protected agentic analysis (mounted BEFORE plugin CRUD for the same
+	//     reason: `/record/{uid}/agentic` must win over the record plugin's
+	//     generic `/{uid}` handlers). --------------------------------------
+	rt.mountAgentic(r)
+
 	// --- self-service /api/v1/user/me/* (mounted BEFORE the user plugin's
 	//     CRUD so /me/password wins over the generic /{uid} matcher chi
 	//     would otherwise route to). ----------------------------------------

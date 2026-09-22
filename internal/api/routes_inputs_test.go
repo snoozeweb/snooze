@@ -124,3 +124,16 @@ func TestInputs_DefaultWindowExcludesOldSources(t *testing.T) {
 	require.False(t, hasAncient, "source older than the 30-day default window must be excluded")
 	require.Equal(t, int64(1), got["recent"].Count)
 }
+
+// The read catch-all must open a bespoke ro_* route exactly as it opens a
+// plugin CRUD read route — the SPA shows the Inputs page to an ro_all-only
+// caller on that assumption. rw_stats-style writes stay out of reach.
+func TestInputs_ReadAllCatchAllGrantsAccess(t *testing.T) {
+	t.Parallel()
+	r, _ := inputsHarness(t)
+
+	req := authReq("GET", "/api/v1/inputs?since=0", nil, "ro_all")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+}

@@ -18,6 +18,17 @@ if (typeof window !== "undefined") {
   if (!window.HTMLElement.prototype.scrollIntoView) {
     window.HTMLElement.prototype.scrollIntoView = () => undefined;
   }
+  // Radix's `useSize` (Switch's and RadioGroup's hidden bubble input, which
+  // only mounts inside a <form>) observes its node with a ResizeObserver.
+  // jsdom ships none, so any form containing one of those primitives threw on
+  // mount. A no-op observer is enough: nothing in a jsdom test lays out.
+  if (typeof globalThis.ResizeObserver === "undefined") {
+    globalThis.ResizeObserver = class {
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {}
+    };
+  }
 }
 
 // jsdom 25 ships its own AbortController/AbortSignal which Node's undici

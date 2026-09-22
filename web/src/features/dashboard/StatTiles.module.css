@@ -1,10 +1,11 @@
 /* Two clusters, not six co-equal tiles: live counts on the left, windowed
    counter sums on the right. The split is the whole point — a shared frame
    plus one label per group is what tells the reader that "Open" and
-   "Ingested" answer different questions. */
+   "Ingested" answer different questions. Both clusters carry three tiles, so
+   the two halves are even. */
 .strip {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: var(--space-3);
 }
 
@@ -77,6 +78,17 @@
   color: var(--text-strong);
   display: block;
   line-height: 1.1;
+}
+
+/* The denominator the value is read against ("of 37 open"): part of the same
+   line, deliberately not a second number of equal weight. The markup puts a
+   real space in front of it (the accessible name has to read "7 of 6 open",
+   not "7of 6 open"), so the margin only tops the gap up. */
+.hint {
+  margin-left: var(--space-1);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-regular);
+  color: var(--text-muted);
 }
 
 /* Direction vs the prior window. Deliberately uncoloured: more throttling can

@@ -10,8 +10,12 @@ import (
 )
 
 // RequirePerm returns a middleware that lets the request through only when
-// the caller's Claims carry at least one of perms (or the wildcard rw_all).
-// Missing claims yields 401; mismatched permissions yields 403.
+// the caller's Claims carry at least one of perms, or a catch-all that covers
+// one of them: `rw_all` covers everything, `ro_all` covers the `ro_*` entries
+// only (see auth.HasPermission). Missing claims yields 401; mismatched
+// permissions yields 403.
+//
+// Use RequireLiteralPerm instead when no catch-all may satisfy the gate.
 func RequirePerm(perms ...string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -56,6 +60,34 @@ func RequirePlatformPerm(perms ...string) func(http.Handler) http.Handler {
 				return
 			}
 			// Literal membership only — rw_all must not satisfy a platform perm.
+			if hasLiteralPerm(claims, perms) {
+				next.ServeHTTP(w, r)
+				return
+			}
+			writeForbidden(w, r)
+		})
+	}
+}
+
+// RequireLiteralPerm gates a route on LITERAL permission membership: the
+// caller's claims must carry one of perms verbatim and the rw_all wildcard
+// does NOT satisfy it. Unlike RequirePlatformPerm it places no constraint on
+// the caller's tenant — any tenant may hold the permission, it just has to
+// hold it explicitly.
+//
+// This is the gate for protected fields (protected.WritePermission): an
+// existing admin role carrying rw_all must not silently inherit the right to
+// write agent-authored analysis, or the protection is decorative.
+//
+// Missing claims yields 401; a caller without the literal permission gets 403.
+func RequireLiteralPerm(perms ...string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			claims, ok := auth.ClaimsFrom(r.Context())
+			if !ok {
+				writeUnauthorized(w, r, "authentication required")
+				return
+			}
 			if hasLiteralPerm(claims, perms) {
 				next.ServeHTTP(w, r)
 				return

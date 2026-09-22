@@ -3,11 +3,14 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
 	"github.com/snoozeweb/snooze/pkg/snoozeclient"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // commentMethod is the `method` stamped on every comment/snooze the MCP
@@ -60,6 +63,20 @@ func objSchema(props map[string]any, required ...string) map[string]any {
 		s["required"] = required
 	}
 	return s
+}
+
+// stepSchema is the JSON-schema node for one remediation step, shared by the
+// steps and rollback arrays so the two cannot drift.
+func stepSchema() map[string]any {
+	return objSchema(map[string]any{
+		"action":  map[string]any{"type": "string", "description": "What to do, in plain words. Required."},
+		"command": map[string]any{"type": "string", "description": "The exact command implementing the action, when there is one."},
+		"risk": map[string]any{
+			"type":        "string",
+			"enum":        []any{"low", "medium", "high"},
+			"description": "Blast radius of this step. Required.",
+		},
+	}, "action", "risk")
 }
 
 // catalog is the static tool catalog returned by tools/list. Built once.
@@ -117,6 +134,57 @@ func catalog() []tool {
 					"description": "The comment text. Required.",
 				},
 			}, "uid", "message"),
+		},
+		{
+			Name: "get_alert_analysis",
+			Description: "Read the agentic analysis (root cause + remediation plan) stored on a Snooze alert. " +
+				"Returns 'no analysis' when the alert has not been analysed yet.",
+			InputSchema: objSchema(map[string]any{"uid": uidProp}, "uid"),
+		},
+		{
+			Name: "set_alert_analysis",
+			Description: "Store the agentic analysis on a Snooze alert: why it fired and what to do about it. " +
+				"Replaces any previous analysis. The server validates the schema strictly and rejects unknown " +
+				"fields; provenance (who/when) is stamped server-side. Requires the rw_protected permission.",
+			InputSchema: objSchema(map[string]any{
+				"uid": uidProp,
+				"root_cause": objSchema(map[string]any{
+					"summary": map[string]any{
+						"type":        "string",
+						"description": "One sentence naming the cause. Required.",
+					},
+					"scope": map[string]any{
+						"type":        "string",
+						"description": "What is broken, addressed however fits: \"srv-1:/var\", \"ovh/velero/kopia-maintain\".",
+					},
+					"evidence": map[string]any{
+						"type":        "array",
+						"items":       map[string]any{"type": "string"},
+						"description": "Short observations the conclusion rests on (a command and its telling line, a query result). Max 10.",
+					},
+					"confidence": map[string]any{
+						"type":        "string",
+						"enum":        []any{"high", "medium", "low"},
+						"description": "Required. Use `low` for an inconclusive investigation rather than omitting the analysis.",
+					},
+				}, "summary", "confidence"),
+				"remediation_plan": objSchema(map[string]any{
+					"steps": map[string]any{
+						"type":        "array",
+						"description": "Ordered fix actions, at least one. Each: {action, command?, risk: low|medium|high}.",
+						"items":       stepSchema(),
+					},
+					"rollback": map[string]any{
+						"type":        "array",
+						"description": "Ordered undo for the steps, same shape.",
+						"items":       stepSchema(),
+					},
+					"automatable": map[string]any{
+						"type":        "boolean",
+						"description": "True only when the steps are safe for an unattended agent to run.",
+					},
+				}, "steps"),
+			}, "uid", "root_cause", "remediation_plan"),
 		},
 		{
 			Name:        "snooze_alert",
@@ -177,6 +245,10 @@ func (s *Server) handleToolsCall(ctx context.Context, params json.RawMessage) (t
 		return s.toolComment(ctx, args, "", "commented"), nil
 	case "snooze_alert":
 		return s.toolSnooze(ctx, args), nil
+	case "get_alert_analysis":
+		return s.toolGetAnalysis(ctx, args), nil
+	case "set_alert_analysis":
+		return s.toolSetAnalysis(ctx, args), nil
 	default:
 		// An unknown tool is a protocol error per the MCP spec.
 		return toolCallResult{}, &rpcError{Code: codeMethodNotFound, Message: "unknown tool: " + p.Name}
@@ -412,4 +484,80 @@ func asInt(v any) (int, bool) {
 		}
 	}
 	return 0, false
+}
+
+// agenticPath is the protected-analysis sub-resource of one record.
+func agenticPath(uid string) string { return "/api/v1/record/" + uid + "/agentic" }
+
+// agenticEnvelope is the {uid, agentic} body the analysis endpoint returns.
+type agenticEnvelope struct {
+	UID     string         `json:"uid"`
+	Agentic map[string]any `json:"agentic"`
+}
+
+// toolGetAnalysis reads the agentic subtree of one alert. A 404 (no analysis
+// yet) is reported as a plain answer rather than an error: "has this been
+// analysed?" is a question the caller is entitled to ask, and the answer "no"
+// is not a failure.
+func (s *Server) toolGetAnalysis(ctx context.Context, args map[string]any) toolCallResult {
+	uid, ok := requireUID(args)
+	if !ok {
+		return errResult("get_alert_analysis: missing or empty `uid`")
+	}
+	var env agenticEnvelope
+	if err := s.api.Get(ctx, agenticPath(uid), &env); err != nil {
+		if apiErr, isAPI := snoozeclient.IsAPIError(err); isAPI && apiErr.Status == http.StatusNotFound {
+			return textResult(fmt.Sprintf("Alert %s has no agentic analysis yet.", uid))
+		}
+		return errResult("get_alert_analysis: %v", err)
+	}
+	return jsonResult(env.Agentic)
+}
+
+// toolSetAnalysis stores the agentic subtree on one alert.
+//
+// The payload is re-encoded through snoozetypes.AgenticRequest and validated
+// locally before the call, so a malformed analysis costs the model one
+// message with the exact offending paths instead of a round-trip and an
+// opaque 422. The server validates again — this is a convenience, not the
+// gate.
+func (s *Server) toolSetAnalysis(ctx context.Context, args map[string]any) toolCallResult {
+	uid, ok := requireUID(args)
+	if !ok {
+		return errResult("set_alert_analysis: missing or empty `uid`")
+	}
+	// Round-trip the arguments through JSON so the strict decoder sees the
+	// same bytes an HTTP caller would send, unknown fields included.
+	payload := map[string]any{}
+	for k, v := range args {
+		if k == "uid" {
+			continue
+		}
+		payload[k] = v
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return errResult("set_alert_analysis: could not encode arguments: %v", err)
+	}
+	req, err := snoozetypes.DecodeAgenticRequest(raw)
+	if err != nil {
+		var verrs snoozetypes.ValidationErrors
+		if errors.As(err, &verrs) {
+			return errResult("set_alert_analysis: invalid analysis — %s", verrs.Error())
+		}
+		return errResult("set_alert_analysis: could not read arguments: %v", err)
+	}
+	if req.Source == "" {
+		req.Source = commentMethod
+	}
+
+	var env agenticEnvelope
+	if err := s.api.Put(ctx, agenticPath(uid), req, &env); err != nil {
+		if apiErr, isAPI := snoozeclient.IsAPIError(err); isAPI && len(apiErr.Details) > 0 {
+			return errResult("set_alert_analysis: rejected by the server — %v", apiErr.Details)
+		}
+		return errResult("set_alert_analysis: %v", err)
+	}
+	return textResult(fmt.Sprintf("Stored the analysis on alert %s (confidence %s, %d remediation step(s)).",
+		uid, req.RootCause.Confidence, len(req.RemediationPlan.Steps)))
 }

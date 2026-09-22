@@ -1,0 +1,16 @@
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* An advisory, not a failure: warning tone rather than the critical red an
+   InlineError paints, and no box — it sits under the hint it qualifies. */
+.advisory {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--severity-warning);
+}

@@ -1,0 +1,37 @@
+.rootCause {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* The lead sentence — the largest type in the pane. Everything below it is
+   support, so nothing else here goes above --text-md. */
+.summary {
+  margin: 0;
+  font-size: var(--text-lg);
+  line-height: var(--leading-tight);
+  font-weight: var(--weight-medium);
+  color: var(--text-strong);
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+/* What is broken, in whatever addressing scheme the analysis used
+   ("srv-victoria1:/var", "ovh/velero/kopia-maintain") — an identifier, so mono
+   like every other identifier in the app. */
+.scope {
+  font-family: var(--font-mono);
+}
+
+.heading {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--text-strong);
+}

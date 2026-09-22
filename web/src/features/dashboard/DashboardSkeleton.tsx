@@ -39,9 +39,9 @@ function ClusterSkeleton({ tiles }: { tiles: number }) {
 export function DashboardSkeleton() {
   return (
     <div className={styles.page} data-testid="dashboard-skeleton">
-      {/* KPI strip — live cluster (2 tiles) + windowed cluster (3 tiles) */}
+      {/* KPI strip — live cluster (3 tiles) + windowed cluster (3 tiles) */}
       <div className={styles.strip}>
-        <ClusterSkeleton tiles={2} />
+        <ClusterSkeleton tiles={3} />
         <ClusterSkeleton tiles={3} />
       </div>
 

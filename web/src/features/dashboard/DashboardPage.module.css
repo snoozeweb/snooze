@@ -5,11 +5,19 @@
   gap: var(--space-4);
 }
 
+/* Title, then the view switch (it changes the page), then the time picker
+   pushed to the far edge (it only qualifies the Overview's numbers). The
+   picker is absent in the Analyses view, and the row then ends after the
+   switch. */
 .header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-3);
+}
+
+.headerEnd {
+  margin-left: auto;
 }
 
 .title {
@@ -54,7 +62,7 @@
    loading layout matches the real grid (no jump when data arrives). */
 .strip {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: var(--space-3);
 }
 .tileSkeleton {

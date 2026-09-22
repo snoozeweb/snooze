@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -18,6 +19,7 @@ import (
 	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/protected"
 )
 
 // auditCollection is the collection name the audit plugin owns. We avoid
@@ -405,6 +407,11 @@ func createHandler(host Host, p Plugin, collection string) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "bad_request", err.Error())
 			return
 		}
+		for _, d := range docs {
+			if rejectProtected(w, d) {
+				return
+			}
+		}
 		if dm, ok := p.(DataModel); ok {
 			for _, d := range docs {
 				if err := dm.Validate(d); err != nil {
@@ -463,6 +470,11 @@ func createHandler(host Host, p Plugin, collection string) http.HandlerFunc {
 }
 
 // replaceHandler PUT /api/v1/{plugin}/{uid}
+//
+// Protected fields: a protected field may appear in the body only if it is
+// the value already stored; anything else is refused with 403 protected_field.
+// Omitting one is fine — the stored value is carried onto the replacement so
+// a full replace cannot delete it.
 func replaceHandler(host Host, p Plugin, collection string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		uid := chi.URLParam(r, "uid")
@@ -481,6 +493,37 @@ func replaceHandler(host Host, p Plugin, collection string) http.HandlerFunc {
 		// match when the request renames the row — and so the replacement keeps
 		// its uid even if the client omitted it.
 		body["uid"] = uid
+		// The stored document is read BEFORE the protected-field check, because
+		// the check needs it: a body may echo a protected field back as long as
+		// it is the value already stored (see rejectProtectedChange). Reading
+		// second would make every read-modify-write client a 403.
+		//
+		// The same read then carries the stored protected values onto the
+		// replacement, so a full replace that omits one cannot delete it and
+		// the only way to clear one stays its own endpoint. The extra read is
+		// confined to PUT, a rare single-document call.
+		//
+		// Fail closed on a read error. Treating "could not read" as "nothing
+		// to carry" would turn a transient DB blip into a silent deletion of
+		// the very data this guard exists to protect — the replace would
+		// succeed and the analysis would be gone with no trace. A missing row
+		// is not an error here: ReplaceOne below reports that as the 404, and
+		// a nil `existing` correctly refuses a protected field in the body
+		// (there is no stored value it could be equal to).
+		existing, err := host.DB().GetOne(r.Context(), collection, db.Document{"uid": uid})
+		switch {
+		case err == nil:
+		case errors.Is(err, db.ErrNotFound):
+			existing = nil
+		default:
+			writeError(w, http.StatusInternalServerError, "db_error",
+				"could not read the existing document to preserve its protected fields: "+err.Error())
+			return
+		}
+		if _, refused := rejectProtectedChange(w, body, existing); refused {
+			return
+		}
+		protected.Carry(body, existing)
 		if dm, ok := p.(DataModel); ok {
 			if err := dm.Validate(body); err != nil {
 				writeError(w, http.StatusUnprocessableEntity, "validation_error", err.Error())
@@ -520,6 +563,11 @@ func replaceHandler(host Host, p Plugin, collection string) http.HandlerFunc {
 }
 
 // patchHandler PATCH /api/v1/{plugin}/{uid}
+//
+// Protected fields: a protected field may appear in the patch only if it is
+// the value already stored; anything else is refused with 403 protected_field.
+// An echoed key is dropped from the patch before it is applied, so it is
+// neither re-written nor reported as a changed field in the audit trail.
 func patchHandler(host Host, p Plugin, collection string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		uid := chi.URLParam(r, "uid")
@@ -536,6 +584,35 @@ func patchHandler(host Host, p Plugin, collection string) http.HandlerFunc {
 		// being patched (e.g. a duplicate-guard that excludes self by uid). uid
 		// is excluded from the audit summary and is a no-op on the merge.
 		patch["uid"] = uid
+		// A patch carrying a protected field is only allowed to echo the stored
+		// value back, so it needs the stored document to compare against. That
+		// read is paid ONLY when the patch actually names a protected field —
+		// the overwhelmingly common patch touches none and stays a single
+		// driver call. Fail closed on a read error for the same reason PUT
+		// does: a DB blip must not decide whether protected data is writable.
+		if len(protected.Names(patch)) > 0 {
+			existing, err := host.DB().GetOne(r.Context(), collection, db.Document{"uid": uid})
+			switch {
+			case err == nil:
+			case errors.Is(err, db.ErrNotFound):
+				existing = nil
+			default:
+				writeError(w, http.StatusInternalServerError, "db_error",
+					"could not read the existing document to compare its protected fields: "+err.Error())
+				return
+			}
+			echoed, refused := rejectProtectedChange(w, patch, existing)
+			if refused {
+				return
+			}
+			// An echo is a no-op, so drop it from the patch outright rather
+			// than re-writing an identical value: it keeps the protected key
+			// out of the driver call (nothing downstream can mangle it) and
+			// out of the audit summary, which must list what changed.
+			for _, k := range echoed {
+				delete(patch, k)
+			}
+		}
 		if dm, ok := p.(DataModel); ok {
 			if err := dm.Validate(patch); err != nil {
 				writeError(w, http.StatusUnprocessableEntity, "validation_error", err.Error())
@@ -688,6 +765,78 @@ func bulkDeleteHandler(host Host, p Plugin, collection string) http.HandlerFunc 
 }
 
 // ---- helpers ---------------------------------------------------------------
+
+// rejectProtected refuses a write body that carries a protected field at all
+// and reports whether it did. This is the CREATE rule: a document being
+// brought into existence has no stored value to match, so any protected field
+// on it is necessarily an attempt to author one.
+//
+// Protected fields (internal/protected) have a dedicated, schema-validating
+// endpoint; the generic CRUD layer validates nothing by design, so letting a
+// POST carry one through here would be a hole straight around that schema —
+// and around its permission gate.
+//
+// The refusal is loud (403 naming the fields) rather than a silent strip: a
+// client that believes it stored an analysis and did not is worse off than one
+// that gets an error it can act on. Alert INGESTION strips instead (see
+// internal/core's pipeline), because a noisy sender must not be able to break
+// its own alerting by guessing a protected name.
+//
+// Updates use rejectProtectedChange instead, which is the weaker rule: on a
+// PUT/PATCH a protected field may appear in the body only if it is the value
+// already stored; anything else is refused.
+func rejectProtected(w http.ResponseWriter, doc db.Document) bool {
+	names := protected.Names(doc)
+	if len(names) == 0 {
+		return false
+	}
+	writeError(w, http.StatusForbidden, "protected_field",
+		"protected field(s) "+strings.Join(names, ", ")+
+			" cannot be written through the generic CRUD surface; use their dedicated endpoint")
+	return true
+}
+
+// rejectProtectedChange is the UPDATE counterpart of rejectProtected: on a
+// PUT or PATCH a protected field may appear in the body only if it is the
+// value already stored — compared after JSON normalisation, so the numeric
+// and map types a driver hands back do not matter (protected.Same). Anything
+// else — a different value, a key the stored document does not have, or a row
+// that does not exist yet — is refused with the same 403.
+//
+// The point is that echoing a value back is not a write. A read-modify-write
+// client GETs a document, changes one ordinary field and PUTs the whole thing
+// back; refusing the untouched protected subtree it necessarily carries would
+// protect nothing (the value is identical) while making the entire generic
+// CRUD surface unusable on every document that has an analysis.
+//
+// `existing` may be nil for a row that does not exist; every protected field
+// in the body is then a change and is refused.
+//
+// It returns the protected keys that were accepted as echoes, so a PATCH can
+// drop them from the patch — they must not reach the driver and must not show
+// up in the audit summary as fields the request changed. It reports refused
+// when it has already written the 403; the caller just returns.
+func rejectProtectedChange(w http.ResponseWriter, doc, existing db.Document) (echoed []string, refused bool) {
+	names := protected.Names(doc)
+	if len(names) == 0 {
+		return nil, false
+	}
+	var changed []string
+	for _, k := range names {
+		stored, ok := existing[k]
+		if !ok || !protected.Same(stored, doc[k]) {
+			changed = append(changed, k)
+		}
+	}
+	if len(changed) > 0 {
+		writeError(w, http.StatusForbidden, "protected_field",
+			"protected field(s) "+strings.Join(changed, ", ")+
+				" cannot be written through the generic CRUD surface; use their dedicated endpoint"+
+				" (a protected field may appear in a PUT/PATCH body only if it is the value already stored)")
+		return nil, true
+	}
+	return names, false
+}
 
 // decodeBody enforces a non-empty JSON body. The body is closed by the caller
 // chain (chi/net-http standard behaviour) — we use io.ReadAll explicitly only

@@ -938,6 +938,67 @@ describe("DataTable", () => {
       expect(screen.getByTestId("det-2")).toBeInTheDocument();
       expect(screen.queryByTestId("det-1")).toBeNull();
     });
+
+    it("closes a deep-linked key that never matched a row, once loading settles", () => {
+      const onDetailsKeyChange = vi.fn();
+      const { rerender } = render(
+        <DataTable
+          data={[]}
+          columns={columns}
+          rowKey={(r) => r.id}
+          renderDetails={renderDet}
+          detailsKey="ghost"
+          onDetailsKeyChange={onDetailsKeyChange}
+          loading
+        />,
+      );
+      // Still loading: a transient empty page is not evidence the row is gone.
+      expect(onDetailsKeyChange).not.toHaveBeenCalled();
+
+      rerender(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          renderDetails={renderDet}
+          detailsKey="ghost"
+          onDetailsKeyChange={onDetailsKeyChange}
+        />,
+      );
+      expect(onDetailsKeyChange).toHaveBeenLastCalledWith(null);
+    });
+
+    it("keeps the drawer open when the row it opened on is paged out", () => {
+      const onDetailsKeyChange = vi.fn();
+      const { rerender } = render(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          renderDetails={renderDet}
+          detailsKey="1"
+          onDetailsKeyChange={onDetailsKeyChange}
+        />,
+      );
+      expect(screen.getByTestId("det-1")).toBeInTheDocument();
+
+      // A refetch drops the open row (it was acked, or the filter no longer
+      // matches it). The operator may be mid-edit in the details subtree, so
+      // the drawer must not be yanked shut under them — the auto-close is for
+      // a deep link that never resolved, not for a row that was there.
+      rerender(
+        <DataTable
+          data={[sample[1]!, sample[2]!]}
+          columns={columns}
+          rowKey={(r) => r.id}
+          renderDetails={renderDet}
+          detailsKey="1"
+          onDetailsKeyChange={onDetailsKeyChange}
+        />,
+      );
+      expect(onDetailsKeyChange).not.toHaveBeenCalled();
+      expect(screen.getByTestId("det-1")).toBeInTheDocument();
+    });
   });
 
   describe("quick actions", () => {

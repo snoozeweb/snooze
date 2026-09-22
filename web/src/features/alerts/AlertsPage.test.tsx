@@ -16,6 +16,7 @@ import { TooltipProvider } from "@/shared/ui/Tooltip";
 import { mswServer } from "@/tests/msw/server";
 import { LiveAnnouncerProvider } from "@/shared/a11y/LiveAnnouncer";
 import { decodeConditionQ } from "@/lib/condition/decode";
+import { authStore } from "@/lib/auth/store";
 import { AlertsPage } from "./AlertsPage";
 import { SILENCE_DESCRIPTIONS } from "./silencingGuide";
 
@@ -159,6 +160,45 @@ describe("AlertsPage", () => {
     // (the alert uid only appears there, not in the table).
     await user.click(screen.getByRole("tab", { name: /^record$/i }));
     expect(screen.getByText(/r1/)).toBeInTheDocument();
+  });
+
+  // The dashboard's Analyses panel links here: ?record= opens the inspector,
+  // ?analysis= says which tab it opens on. Without the second param the deep
+  // link would land on Timeline and bury the thing the operator clicked for.
+  it("opens the inspector on the Analysis tab for ?record=…&analysis=1", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [
+            {
+              uid: "r1",
+              host: "srv-1",
+              severity: "info",
+              state: "open",
+              message: "boom",
+              date_epoch: 1,
+            },
+          ],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+      http.get("/api/v1/comment", () =>
+        HttpResponse.json({ data: [], meta: { count: 0, limit: 100, offset: 0, total: 0 } }),
+      ),
+    );
+    setup("/web/alerts?record=r1&analysis=1");
+
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
+    const analysisTab = await screen.findByRole("tab", { name: /^analysis/i });
+    expect(analysisTab).toHaveAttribute("aria-selected", "true");
+    // The default tab is NOT the one selected.
+    expect(screen.getByRole("tab", { name: /^timeline$/i })).toHaveAttribute(
+      "aria-selected",
+      "false",
+    );
+    // The panel is the analysis surface (this alert carries none — the msw
+    // default answers the agentic GET with a 404).
+    expect(await screen.findByText(/no analysis yet/i)).toBeInTheDocument();
   });
 
   it("bulk acknowledge: fires one POST to /record/bulk_state, shows count toast", async () => {
@@ -1950,5 +1990,92 @@ describe("AlertsPage — refresh announcements", () => {
     await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
     await user.click(screen.getByRole("switch", { name: /auto refresh/i }));
     await waitFor(() => expect(polite()).toHaveTextContent("Auto-refresh off"));
+  });
+});
+
+describe("AlertsPage inspector guards", () => {
+  function loginWithPerms(perms: string[]) {
+    const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+    const body = btoa(
+      JSON.stringify({
+        sub: "tester",
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        permissions: perms,
+      }),
+    );
+    authStore.getState().login(`${header}.${body}.sig`);
+  }
+
+  afterEach(() => {
+    toastStore.clear();
+    authStore.getState().logout({ revoke: false });
+  });
+
+  function twoRows() {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [
+            { uid: "r1", host: "srv-1", severity: "critical", state: "open", date_epoch: 1 },
+            { uid: "r2", host: "srv-2", severity: "critical", state: "open", date_epoch: 2 },
+          ],
+          meta: { count: 2, limit: 50, offset: 0, total: 2 },
+        }),
+      ),
+    );
+  }
+
+  it("drops a dangling ?analysis= that has no ?record= to ride with", async () => {
+    // Left behind by a closed inspector, it would send the next plain row
+    // click to the Analysis tab instead of the Timeline.
+    twoRows();
+    const router = setup("/web/alerts?analysis=1");
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await waitFor(() =>
+      expect((router.state.location.search as { analysis?: unknown }).analysis).toBeUndefined(),
+    );
+  });
+
+  it("asks before prev/next retargets the drawer away from an open analysis editor", async () => {
+    const user = userEvent.setup();
+    loginWithPerms(["ro_record", "rw_record", "rw_protected"]);
+    twoRows();
+    mswServer.use(
+      http.get("/api/v1/record/:uid/agentic", ({ params }) =>
+        HttpResponse.json({
+          uid: params["uid"] as string,
+          agentic: {
+            root_cause: { summary: "journald filled /var", confidence: "high" },
+            remediation_plan: { steps: [{ action: "Vacuum the journal", risk: "low" }] },
+          },
+        }),
+      ),
+    );
+    const router = setup("/web/alerts?record=r1&analysis=1");
+
+    const drawer = await screen.findByRole("dialog");
+    await user.click(await within(drawer).findByRole("button", { name: "Edit" }));
+    expect(await screen.findByLabelText("Summary")).toBeInTheDocument();
+
+    // J / the chevron retarget the drawer at r2 while the editor still holds a
+    // draft written against r1 — and the editor PUTs to whatever uid is
+    // current at submit time.
+    await user.click(within(drawer).getByRole("button", { name: /Next row/ }));
+    const confirm = await screen.findByRole("dialog", { name: "Discard this analysis draft?" });
+    await user.click(within(confirm).getByRole("button", { name: "Keep editing" }));
+
+    expect((router.state.location.search as { record?: string }).record).toBe("r1");
+    expect(screen.getByLabelText("Summary")).toBeInTheDocument();
+
+    await user.click(within(drawer).getByRole("button", { name: /Next row/ }));
+    await user.click(
+      within(await screen.findByRole("dialog", { name: "Discard this analysis draft?" })).getByRole(
+        "button",
+        { name: "Discard draft" },
+      ),
+    );
+    await waitFor(() =>
+      expect((router.state.location.search as { record?: string }).record).toBe("r2"),
+    );
   });
 });

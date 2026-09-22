@@ -1,0 +1,84 @@
+/* One stylesheet for the whole analysis-editor family.
+   RootCauseEditor, EvidenceListEditor, StepListEditor and AutomatableSwitch
+   are four views of a single form surface, so they share one set of field
+   classes rather than each re-deriving `.field` / `.label` / `.hint` — a
+   duplicate that drifts is how two rows of the same form end up with
+   different label sizes. */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* A titled block of the form. Deliberately NOT a card: the editor already
+   sits inside the inspector's panel, and nesting a second surface inside it
+   would read as a card in a card. */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--text-strong);
+}
+
+.subTitle {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--text);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+/* Label on the left, live character counter on the right. */
+.labelRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.label {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text);
+}
+
+.hint {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.error {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--severity-critical);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.addButton {
+  align-self: flex-start;
+}

@@ -7,6 +7,16 @@ export class ApiError extends Error {
     public code: string,
     public detail: string,
     public traceId?: string,
+    /**
+     * Per-field failures from a 422, keyed by the server's JSON path
+     * (`root_cause.confidence`, `remediation_plan.steps[0].risk`). The
+     * envelope's `error.details` is free-form (`additionalProperties: true`),
+     * so values stay `unknown` — a caller that wants field messages narrows
+     * them itself. Without this the only thing a form could show for a
+     * validation failure is the one-line summary in `detail`, which names no
+     * field at all.
+     */
+    public details?: Record<string, unknown>,
   ) {
     super(detail || `HTTP ${status}`);
     this.name = "ApiError";
@@ -56,6 +66,7 @@ async function parseError(res: Response): Promise<ApiError> {
   let code = `http_${res.status}`;
   let detail = res.statusText || `HTTP ${res.status}`;
   let traceId: string | undefined;
+  let details: Record<string, unknown> | undefined;
   try {
     const ct = res.headers.get("Content-Type") ?? "";
     if (ct.includes("application/json")) {
@@ -65,6 +76,7 @@ async function parseError(res: Response): Promise<ApiError> {
           message?: string;
           request_id?: string;
           trace_id?: string;
+          details?: unknown;
         };
         code?: string;
         detail?: string;
@@ -79,6 +91,15 @@ async function parseError(res: Response): Promise<ApiError> {
         if (typeof body.error.message === "string") detail = body.error.message;
         if (typeof body.error.trace_id === "string") traceId = body.error.trace_id;
         else if (typeof body.error.request_id === "string") traceId = body.error.request_id;
+        // Only a plain object is a details map. An array would survive
+        // `typeof === "object"` and then read back as `{"0": …}`.
+        if (
+          body.error.details !== null &&
+          typeof body.error.details === "object" &&
+          !Array.isArray(body.error.details)
+        ) {
+          details = body.error.details as Record<string, unknown>;
+        }
       } else {
         if (typeof body.code === "string") code = body.code;
         if (typeof body.detail === "string") detail = body.detail;
@@ -88,7 +109,7 @@ async function parseError(res: Response): Promise<ApiError> {
   } catch {
     // body wasn't JSON; keep the fallback fields
   }
-  return new ApiError(res.status, code, detail, traceId);
+  return new ApiError(res.status, code, detail, traceId, details);
 }
 
 let unauthorizedHandler: (() => void) | null = null;
@@ -148,7 +169,13 @@ export async function api<T = unknown>(
     // callers keep working.
     const err =
       parsed.code === "http_401"
-        ? new ApiError(401, "unauthorized", parsed.detail || "Not authenticated", parsed.traceId)
+        ? new ApiError(
+            401,
+            "unauthorized",
+            parsed.detail || "Not authenticated",
+            parsed.traceId,
+            parsed.details,
+          )
         : parsed;
     // Don't tear the session down when refresh failed for a transient reason
     // (offline, 5xx, proxy restart) and a refresh token is still stored — the

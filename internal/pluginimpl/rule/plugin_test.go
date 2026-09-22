@@ -100,7 +100,7 @@ func TestRule_Modify(t *testing.T) {
 		{Op: modification.OpSet, Args: []any{"a", "2"}},
 		{Op: modification.OpSet, Args: []any{"c", "3"}},
 	}
-	applyModifications(view, mods)
+	applyModifications(view, mods, nil, "test")
 
 	require.Equal(t, map[string]any{
 		"a": "2",

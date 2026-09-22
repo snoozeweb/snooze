@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/snoozeweb/snooze/internal/db"
@@ -24,6 +25,17 @@ const GroupCollection = "group"
 // AllPermission is the wildcard permission that grants every action. It
 // matches the Python codebase's "rw_all" semantics.
 const AllPermission = "rw_all"
+
+// ReadAllPermission is the read-side catch-all: it grants every `ro_*`
+// permission and nothing more. It is the counterpart of AllPermission and
+// matches what plugins.IsAuthorized already seeds its read set with, so a
+// bespoke `ro_*` route and a plugin CRUD read route answer the same way for
+// the same claim set.
+const ReadAllPermission = "ro_all"
+
+// readPermPrefix marks a permission as read-only, which is what
+// ReadAllPermission stands in for.
+const readPermPrefix = "ro_"
 
 const (
 	// PermReadTenant gates read access to the /api/v1/tenant registry. It is
@@ -223,14 +235,32 @@ func RogueReservedRoles(ctx context.Context, driver db.Driver) ([]string, error)
 	return rogue, nil
 }
 
-// HasPermission returns true when the claim set carries either the requested
-// permission or the AllPermission wildcard.
+// HasPermission returns true when the claim set carries the requested
+// permission or a wildcard that covers it:
+//
+//   - AllPermission ("rw_all") covers everything.
+//   - ReadAllPermission ("ro_all") covers a want with the "ro_" prefix, and
+//     only that — it never satisfies a "rw_*" gate (including "rw_all") nor an
+//     unprefixed permission name.
+//
+// The "ro_all" arm mirrors plugins.IsAuthorized, whose read set is seeded with
+// both catch-alls: without it a read-only auditor could list a plugin's rows
+// through the CRUD router yet get a 403 from a bespoke route gated on the same
+// ro_* permission.
+//
+// Wildcards apply here only. The literal gates — HasLiteralPermission,
+// middleware.RequireLiteralPerm and middleware.RequirePlatformPerm — take no
+// catch-all, by design.
 func HasPermission(claims snoozetypes.Claims, want string) bool {
 	if want == "" {
 		return true
 	}
+	readWanted := strings.HasPrefix(want, readPermPrefix)
 	for _, p := range claims.Permissions {
 		if p == AllPermission || p == want {
+			return true
+		}
+		if readWanted && p == ReadAllPermission {
 			return true
 		}
 	}

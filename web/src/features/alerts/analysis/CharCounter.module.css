@@ -1,0 +1,15 @@
+/* Mono tabular figures so the number does not jiggle the label row on every
+   keystroke. */
+.counter {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-feature-settings: var(--font-features-numeric);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Over the limit the save will be refused, so the count carries the same
+   colour the field's error message will. */
+.over {
+  color: var(--severity-critical);
+}

@@ -1,0 +1,56 @@
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  /* The list is the query container for its rows — a row cannot query itself,
+     and px is the only unit a container query accepts (the --bp-* tokens are
+     unusable here, same as in DataTable and StepListEditor). */
+  container-type: inline-size;
+}
+
+/* Input first and allowed to shrink, so the counter and the three buttons
+   sit beside it wherever the container is wide enough (see the container
+   query below for what happens when it is not). */
+.item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.inputCell {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.count {
+  flex: 0 0 auto;
+  padding-top: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-feature-settings: var(--font-features-numeric);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Narrow container (the inspector on a phone): one row of input + counter +
+   three buttons squeezes the field itself down to ~180px, which is where the
+   evidence actually lives. Break the row in two instead — the input takes the
+   full width, the counter and the move/remove controls settle on a second,
+   right-aligned line under it. */
+@container (max-width: 480px) {
+  .item {
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .inputCell {
+    flex: 1 1 100%;
+  }
+  .count {
+    margin-inline-start: auto;
+    padding-top: 0;
+  }
+}

@@ -20,6 +20,7 @@ import (
 //   - ack/close     → PostComment{Type:"ack"|"close", Method:"mcp"}
 //   - comment       → PostComment{Type:"",          Method:"mcp"}
 //   - snooze        → CreateSnooze{...}
+//   - get/set agentic → GET/PUT /api/v1/record/{uid}/agentic
 type snoozeAPI interface {
 	// Post sends a JSON body to path and decodes the response into dest
 	// (nil to skip). Used for the record/search lookups.
@@ -31,6 +32,14 @@ type snoozeAPI interface {
 
 	// CreateSnooze posts a snooze entry to /api/v1/snooze.
 	CreateSnooze(ctx context.Context, s snoozeclient.Snooze) error
+
+	// Get fetches path and decodes the response into dest. Used to read an
+	// alert's agentic analysis.
+	Get(ctx context.Context, path string, dest any) error
+
+	// Put replaces the resource at path. Used to store an agentic analysis,
+	// the one write path the protected field accepts.
+	Put(ctx context.Context, path string, body, dest any) error
 }
 
 // Compile-time proof the real client satisfies the interface.

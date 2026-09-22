@@ -30,6 +30,15 @@ type fakeAPI struct {
 	commErr   error
 	snoozes   []snoozeclient.Snooze
 	snoozeErr error
+
+	// gets/puts capture the agentic-analysis calls; getResp is decoded into
+	// dest on Get, and getErr / putErr force a failure.
+	gets    []string
+	getResp any
+	getErr  error
+	puts    []postCall
+	putResp any
+	putErr  error
 }
 
 type postCall struct {
@@ -47,6 +56,34 @@ func (f *fakeAPI) Post(_ context.Context, path string, body, dest any) error {
 	if dest != nil && f.postResp != nil {
 		// Round-trip the canned response through JSON to honour dest's type.
 		raw, _ := json.Marshal(f.postResp)
+		return json.Unmarshal(raw, dest)
+	}
+	return nil
+}
+
+func (f *fakeAPI) Get(_ context.Context, path string, dest any) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.gets = append(f.gets, path)
+	if f.getErr != nil {
+		return f.getErr
+	}
+	if dest != nil && f.getResp != nil {
+		raw, _ := json.Marshal(f.getResp)
+		return json.Unmarshal(raw, dest)
+	}
+	return nil
+}
+
+func (f *fakeAPI) Put(_ context.Context, path string, body, dest any) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.puts = append(f.puts, postCall{path: path, body: body})
+	if f.putErr != nil {
+		return f.putErr
+	}
+	if dest != nil && f.putResp != nil {
+		raw, _ := json.Marshal(f.putResp)
 		return json.Unmarshal(raw, dest)
 	}
 	return nil
@@ -123,7 +160,7 @@ func TestNotificationsInitialized_noResponse(t *testing.T) {
 	require.Nil(t, out, "notifications must produce no response")
 }
 
-func TestToolsList_containsAllSixTools(t *testing.T) {
+func TestToolsList_containsEveryTool(t *testing.T) {
 	s := newTestServer(&fakeAPI{})
 	out := s.Handle(context.Background(), []byte(`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`))
 	var resp struct {
@@ -135,14 +172,15 @@ func TestToolsList_containsAllSixTools(t *testing.T) {
 	for _, tl := range resp.Result.Tools {
 		names[tl.Name] = tl
 	}
-	for _, want := range []string{"list_alerts", "get_alert", "ack_alert", "close_alert", "comment_alert", "snooze_alert"} {
+	for _, want := range []string{"list_alerts", "get_alert", "ack_alert", "close_alert", "comment_alert",
+		"snooze_alert", "get_alert_analysis", "set_alert_analysis"} {
 		tl, ok := names[want]
 		require.True(t, ok, "missing tool %q", want)
 		require.NotEmpty(t, tl.Description, "%q has no description", want)
 		require.Equal(t, "object", tl.InputSchema["type"], "%q inputSchema must be a JSON object", want)
 		require.Contains(t, tl.InputSchema, "properties", "%q inputSchema must have properties", want)
 	}
-	require.Len(t, resp.Result.Tools, 6)
+	require.Len(t, resp.Result.Tools, 8)
 }
 
 func TestToolsCall_listAlerts_invokesAPIandReturnsContent(t *testing.T) {

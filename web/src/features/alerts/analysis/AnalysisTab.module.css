@@ -1,0 +1,35 @@
+.pane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* Trust strip: how much to believe the conclusion, and who wrote it. The
+   right-hand slot is reserved for the edit actions so they never push the
+   badge and the provenance around when they appear. */
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.trust {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-inline-start: auto;
+}
+
+.loading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}

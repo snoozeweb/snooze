@@ -1,0 +1,18 @@
+/* Three options on one line; they wrap before they squeeze. */
+.confidence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  padding-block: var(--space-1);
+}
+
+.option {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.optionLabel {
+  font-size: var(--text-sm);
+  color: var(--text);
+}

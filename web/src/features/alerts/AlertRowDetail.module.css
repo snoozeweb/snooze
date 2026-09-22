@@ -10,6 +10,11 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  /* Query container for the header's own lines — the inspector is a drawer,
+     so its width has nothing to do with the viewport's and a media query
+     would fire on the wrong axis. px because that is the only unit a
+     container query takes (the --bp-* tokens are unusable here). */
+  container-type: inline-size;
 }
 .badges {
   display: flex;
@@ -56,4 +61,38 @@
 .lastDeliveryError {
   font-size: var(--text-xs);
   color: var(--severity-critical);
+}
+/* "Cause: …" — the analysed root cause, in the same metadata family as the
+   lines above it. It answers "does anyone already know why?" without opening
+   the Analysis tab, so the summary itself takes the readable --text token
+   while the label and the chip stay quiet around it. */
+.cause {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.causeText {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+/* Narrow header (the inspector on a phone): as a flex row the three parts
+   each claimed a line of their own — a lonely "Cause:", the summary, then the
+   chip — three lines for one sentence. Below the breakpoint the line runs in
+   instead: label, summary and chip are one wrapping paragraph, with the
+   flex gaps replaced by margins that inline flow honours. */
+@container (max-width: 480px) {
+  .cause {
+    display: block;
+  }
+  .causeLabel,
+  .causeText {
+    margin-inline-end: var(--space-2);
+  }
 }

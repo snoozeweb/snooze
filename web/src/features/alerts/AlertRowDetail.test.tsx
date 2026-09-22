@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
@@ -18,6 +18,8 @@ import { decodeConditionQ } from "@/lib/condition/decode";
 import type { Condition } from "@/lib/condition/types";
 import type { DeliveryEntry } from "@/features/notifications/deliveries/types";
 import { AlertRowDetail } from "./AlertRowDetail";
+import type { AlertDetailTab } from "./AlertRowDetail";
+import type { AgenticEnvelope } from "./analysis/api";
 import type { Record_ } from "./types";
 
 function loginWithPerms(perms: string[]) {
@@ -53,6 +55,43 @@ function stubComments() {
   // newest-delivery probe; default to "no deliveries" so tests that don't
   // care about the Deliveries tab aren't left with an unhandled request.
   stubDeliveries([]);
+  // Same for the Analysis tab's one GET: 404 is the route's way of saying
+  // "this alert carries no analysis", which is the state almost every test
+  // here wants.
+  stubAnalysis(null);
+}
+
+/**
+ * Serves GET /api/v1/record/{uid}/agentic. `null` answers 404 — the route's
+ * "no analysis yet", not a failure (see analysis/api.ts).
+ */
+function stubAnalysis(envelope: AgenticEnvelope | null) {
+  mswServer.use(
+    http.get("/api/v1/record/:uid/agentic", () =>
+      envelope === null
+        ? HttpResponse.json(
+            { error: { code: "not_found", message: "record carries no analysis" } },
+            { status: 404 },
+          )
+        : HttpResponse.json(envelope),
+    ),
+  );
+}
+
+/** A stored analysis for the row the tests render. */
+function analysisFor(uid: string, confidence: "high" | "medium" | "low"): AgenticEnvelope {
+  return {
+    uid,
+    agentic: {
+      root_cause: {
+        summary: "systemd-journald filled /var",
+        confidence,
+        evidence: ["journalctl: 4.2G under /var/log/journal"],
+      },
+      remediation_plan: { steps: [{ action: "Vacuum the journal", risk: "low" }] },
+      analysis: { at: "2026-09-21T10:00:00Z", by: "agent-bot", source: "alert-rca" },
+    },
+  };
 }
 
 /**
@@ -89,13 +128,23 @@ function stubDeliveries(rows: DeliveryEntry[]) {
 // <Link>s — so the detail needs a RouterProvider ancestor (app-wide in
 // production via app/router.tsx). Stand up a minimal memory router whose home
 // route hosts the detail and stubs the deep-link targets so the links resolve.
-function renderDetail(row: Record_) {
+function renderDetail(
+  row: Record_,
+  defaultTab?: AlertDetailTab,
+  onEditingChange?: (editing: boolean) => void,
+) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const root = createRootRoute({ component: () => <Outlet /> });
   const home = createRoute({
     getParentRoute: () => root,
     path: "/",
-    component: () => <AlertRowDetail row={row} />,
+    component: () => (
+      <AlertRowDetail
+        row={row}
+        {...(defaultTab !== undefined ? { defaultTab } : {})}
+        {...(onEditingChange !== undefined ? { onEditingChange } : {})}
+      />
+    ),
   });
   const stub = (path: string) =>
     createRoute({ getParentRoute: () => root, path, component: () => <div>{path}</div> });
@@ -192,7 +241,7 @@ describe("AlertRowDetail", () => {
     expect(screen.getByText("Re-escalated by alice")).toBeInTheDocument();
   });
 
-  it("shows Timeline / Flow / Deliveries / Record tabs with Timeline active by default", async () => {
+  it("shows Timeline / Flow / Analysis / Deliveries / Record tabs with Timeline active by default", async () => {
     stubComments();
     const row = { uid: "u1", source: "syslog", aggregate: "Host and Message" } as Record_;
     renderDetail(row);
@@ -204,6 +253,7 @@ describe("AlertRowDetail", () => {
     expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual([
       "Timeline",
       "Flow",
+      "Analysis",
       "Deliveries",
       "Record",
     ]);
@@ -396,5 +446,175 @@ describe("AlertRowDetail", () => {
     await waitFor(() =>
       expect(screen.getByRole("tab", { name: "Deliveries · 1" })).toBeInTheDocument(),
     );
+  });
+  it("suffixes the Analysis tab with the confidence once an analysis exists", async () => {
+    stubComments();
+    stubAnalysis(analysisFor("r1", "medium"));
+    renderDetail({ uid: "r1", host: "srv-1", date_epoch: 1 });
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "Analysis · Medium" })).toBeInTheDocument(),
+    );
+  });
+
+  it("leaves the Analysis tab bare when the alert carries no analysis", async () => {
+    stubComments();
+    renderDetail({ uid: "r1", host: "srv-1", date_epoch: 1 });
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Analysis" })).toBeInTheDocument());
+    expect(screen.queryByText(/Analysis ·/)).toBeNull();
+    expect(screen.queryByText("Cause:")).toBeNull();
+  });
+
+  it("prints the analysed cause in the summary header, with its confidence", async () => {
+    stubComments();
+    stubAnalysis(analysisFor("r1", "low"));
+    renderDetail({ uid: "r1", host: "srv-1", date_epoch: 1 });
+    await waitFor(() => expect(screen.getByText("Cause:")).toBeInTheDocument());
+    expect(screen.getByText("systemd-journald filled /var")).toBeInTheDocument();
+    // Colour is never the only carrier: the level is spelled out.
+    expect(screen.getByText("Low confidence")).toBeInTheDocument();
+  });
+
+  it("hides the Analysis tab — and fires no probe — for a row with no uid", async () => {
+    // The analysis is addressed by its parent record's uid; there is nothing
+    // to ask for without one.
+    stubComments();
+    let hits = 0;
+    mswServer.use(
+      http.get("/api/v1/record/:uid/agentic", () => {
+        hits += 1;
+        return HttpResponse.json(analysisFor("r1", "high"));
+      }),
+    );
+    renderDetail({ host: "srv-1", date_epoch: 1 } as Record_);
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Timeline" })).toBeInTheDocument());
+    expect(screen.queryByRole("tab", { name: /Analysis/ })).toBeNull();
+    expect(hits).toBe(0);
+  });
+
+  it("opens on the tab the caller asked for", async () => {
+    stubComments();
+    stubAnalysis(analysisFor("r1", "high"));
+    renderDetail({ uid: "r1", host: "srv-1", date_epoch: 1 }, "analysis");
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "Analysis · High" })).toHaveAttribute(
+        "data-state",
+        "active",
+      ),
+    );
+    // The pane itself is showing, not just the trigger.
+    expect(screen.getByText("Remediation plan")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Timeline" })).toHaveAttribute("data-state", "inactive");
+  });
+
+  it("falls back to Timeline when the tab asked for has no trigger", async () => {
+    // ?record=<host+timestamp key>&analysis=1 lands here, as does J/K onto a
+    // uid-less row while Analysis is open. The Analysis trigger is hidden for
+    // such a row, and a Tabs value with no trigger selects nothing at all —
+    // an inspector with five tab stops and no content under any of them.
+    stubComments();
+    renderDetail({ host: "srv-1", date_epoch: 1 } as Record_, "analysis");
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "Timeline" })).toHaveAttribute("data-state", "active"),
+    );
+    // The panel under it is really rendering, not just the trigger.
+    expect(screen.getByText(/Open an alert to see its timeline/i)).toBeInTheDocument();
+  });
+
+  it("falls back to Timeline when Deliveries is asked for without the permission", async () => {
+    stubComments();
+    authStore.getState().logout();
+    loginWithPerms(["ro_record"]);
+    renderDetail({ uid: "r1", host: "srv-1", date_epoch: 1 }, "deliveries");
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "Timeline" })).toHaveAttribute("data-state", "active"),
+    );
+    expect(screen.queryByRole("tab", { name: /Deliveries/ })).toBeNull();
+  });
+
+  it("leaves the Analysis tab bare when the stored confidence is not one of the three", async () => {
+    stubComments();
+    const envelope = analysisFor("r1", "high");
+    // A level this bundle does not know — from a hand-written document, or a
+    // newer server.
+    stubAnalysis({
+      ...envelope,
+      agentic: {
+        ...envelope.agentic,
+        root_cause: { ...envelope.agentic.root_cause, confidence: "certain" },
+      },
+    } as unknown as AgenticEnvelope);
+    renderDetail({ uid: "r1", host: "srv-1", date_epoch: 1 });
+    // The cause line still prints — the sentence is readable whatever the
+    // confidence says — but neither the tab nor the header invents a level.
+    await waitFor(() => expect(screen.getByText("Cause:")).toBeInTheDocument());
+    expect(screen.getByRole("tab", { name: "Analysis" })).toBeInTheDocument();
+    expect(screen.queryByText(/undefined/)).toBeNull();
+  });
+
+  it("asks before a tab switch discards an open analysis editor", async () => {
+    const user = userEvent.setup();
+    authStore.getState().logout();
+    loginWithPerms(["ro_record", "rw_protected"]);
+    stubComments();
+    stubAnalysis(analysisFor("r1", "high"));
+    renderDetail({ uid: "r1", host: "srv-1", date_epoch: 1 }, "analysis");
+
+    await user.click(await screen.findByRole("button", { name: "Edit" }));
+    expect(await screen.findByLabelText("Summary")).toBeInTheDocument();
+
+    // Radix unmounts the inactive panel, so a stray click on Timeline would
+    // silently destroy the draft.
+    await user.click(screen.getByRole("tab", { name: "Timeline" }));
+    const confirm = await screen.findByRole("dialog", { name: "Discard this analysis draft?" });
+    await user.click(within(confirm).getByRole("button", { name: "Keep editing" }));
+
+    expect(screen.getByLabelText("Summary")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Analysis/ })).toHaveAttribute("data-state", "active");
+
+    // Asked again and answered, the switch goes through.
+    await user.click(screen.getByRole("tab", { name: "Timeline" }));
+    await user.click(
+      within(await screen.findByRole("dialog", { name: "Discard this analysis draft?" })).getByRole(
+        "button",
+        { name: "Discard draft" },
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "Timeline" })).toHaveAttribute("data-state", "active"),
+    );
+    expect(screen.queryByLabelText("Summary")).toBeNull();
+  });
+
+  it("reports the open editor to its host so a retarget can be guarded", async () => {
+    const user = userEvent.setup();
+    authStore.getState().logout();
+    loginWithPerms(["ro_record", "rw_protected"]);
+    stubComments();
+    stubAnalysis(analysisFor("r1", "high"));
+    const seen: boolean[] = [];
+    renderDetail({ uid: "r1", host: "srv-1", date_epoch: 1 }, "analysis", (v) => seen.push(v));
+
+    await user.click(await screen.findByRole("button", { name: "Edit" }));
+    await screen.findByLabelText("Summary");
+    await waitFor(() => expect(seen.at(-1)).toBe(true));
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(seen.at(-1)).toBe(false));
+  });
+
+  it("shares ONE analysis request between the tab label, the header line and the pane", async () => {
+    stubComments();
+    let hits = 0;
+    mswServer.use(
+      http.get("/api/v1/record/:uid/agentic", () => {
+        hits += 1;
+        return HttpResponse.json(analysisFor("r1", "high"));
+      }),
+    );
+    renderDetail({ uid: "r1", host: "srv-1", date_epoch: 1 }, "analysis");
+    await waitFor(() => expect(screen.getByText("Cause:")).toBeInTheDocument());
+    expect(screen.getByText("Remediation plan")).toBeInTheDocument();
+    // Same query key from both readers — TanStack Query dedupes them.
+    expect(hits).toBe(1);
   });
 });

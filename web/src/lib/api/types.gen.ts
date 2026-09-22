@@ -1857,6 +1857,160 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/record/{uid}/agentic": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The record's uid. */
+                uid: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read an alert's agentic analysis
+         * @description Returns the protected `agentic` subtree of one record: the AI-authored
+         *     root cause, remediation plan and the server-stamped provenance block.
+         *     Reading needs only the ordinary record read permission (`ro_record`,
+         *     `rw_record`, or the `ro_all`/`rw_all` wildcards).
+         *
+         *     A 404 distinguishes "no such record" from "record carries no analysis"
+         *     by message.
+         *
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The record's uid. */
+                    uid: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The stored analysis. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AgenticEnvelope"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        /**
+         * Store an alert's agentic analysis
+         * @description Stores (replacing any previous one) the analysis of why an alert fired
+         *     and what to do about it. This is the ONLY write path for the `agentic`
+         *     field: it is a *protected field*, so the generic record endpoints
+         *     (`POST /api/v1/record`, `PUT`/`PATCH /api/v1/record/{uid}`,
+         *     `POST /api/v1/{plugin}/bulk_update`) refuse it with 403
+         *     `protected_field`, rule modifications targeting it are refused, and an
+         *     inbound alert carrying it has the field stripped at ingestion.
+         *
+         *     Requires the **literal** `rw_protected` permission. The `rw_all` admin
+         *     wildcard deliberately does NOT satisfy it — inheriting it silently
+         *     would give every existing admin role write access to agent-authored
+         *     analysis.
+         *
+         *     Validation is strict: unknown fields anywhere in the body are rejected,
+         *     and every violation is reported at once in `error.details`, keyed by
+         *     JSON path (e.g. `remediation_plan.steps[0].risk`). The `analysis`
+         *     provenance block is stamped server-side and must not be supplied.
+         *
+         *     The write does not touch `date_epoch`: analysing a months-old alert
+         *     must not make it look freshly seen.
+         *
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The record's uid. */
+                    uid: string;
+                };
+                cookie?: never;
+            };
+            /** @description The body is capped at 512 KiB — comfortably above the largest payload
+             *     the schema below accepts, so the cap only ever stops a runaway
+             *     producer, never a valid analysis.
+             *      */
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AgenticRequest"];
+                };
+            };
+            responses: {
+                /** @description The stored analysis, including the stamped provenance. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AgenticEnvelope"];
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+                /** @description The body parsed but broke the schema. `error.details` maps each
+                 *     offending JSON path to its message.
+                 *      */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrEnvelope"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        /**
+         * Clear an alert's agentic analysis
+         * @description Removes the `agentic` field from the record. Requires the literal
+         *     `rw_protected` permission, like the write. A record that exists but
+         *     carries no analysis yields 404.
+         *
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The record's uid. */
+                    uid: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The analysis was removed. */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/{plugin}/bulk_update": {
         parameters: {
             query?: never;
@@ -4051,6 +4205,72 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description One action in a remediation or rollback plan. */
+        AgenticStep: {
+            /** @description What to do, in plain words. */
+            action: string;
+            /** @description The exact command implementing the action, when there is one. */
+            command?: string;
+            /**
+             * @description Blast radius of this step; an executor gates on it.
+             * @enum {string}
+             */
+            risk: "low" | "medium" | "high";
+        };
+        /** @description Why the alert fired. */
+        AgenticRootCause: {
+            /** @description One sentence naming the cause. */
+            summary: string;
+            /** @description What is broken, in whatever addressing scheme fits the alert ("srv-victoria1:/var", "ovh/velero/kopia-maintain").
+             *      */
+            scope?: string;
+            /** @description Short observations the conclusion rests on. */
+            evidence?: string[];
+            /**
+             * @description `low` is the honest answer for an inconclusive investigation — recording the trail beats leaving the alert to be re-investigated from scratch.
+             *
+             * @enum {string}
+             */
+            confidence: "high" | "medium" | "low";
+        };
+        /** @description What to do about the alert. */
+        AgenticRemediationPlan: {
+            steps: components["schemas"]["AgenticStep"][];
+            /** @description Ordered undo for the steps. */
+            rollback?: components["schemas"]["AgenticStep"][];
+            /** @description True only when the steps are safe for an unattended agent to run. */
+            automatable?: boolean;
+        };
+        /** @description Provenance, stamped by the server. Clients may not set it. */
+        AgenticAnalysisMeta: {
+            /**
+             * Format: date-time
+             * @description When the analysis was stored (UTC).
+             */
+            at?: string;
+            /** @description The authenticated subject that stored it. */
+            by?: string;
+            /** @description The caller-supplied tool tag. */
+            source?: string;
+        };
+        /** @description The protected `agentic` subtree stored on a record. */
+        Agentic: {
+            root_cause?: components["schemas"]["AgenticRootCause"];
+            remediation_plan?: components["schemas"]["AgenticRemediationPlan"];
+            analysis?: components["schemas"]["AgenticAnalysisMeta"];
+        };
+        /** @description The PUT body: the analysis minus the server-stamped provenance, plus an optional source tag. Unknown properties are rejected.
+         *      */
+        AgenticRequest: {
+            root_cause: components["schemas"]["AgenticRootCause"];
+            remediation_plan: components["schemas"]["AgenticRemediationPlan"];
+            /** @description Short tag naming the tool that produced the analysis; lands in `analysis.source`. */
+            source?: string;
+        };
+        AgenticEnvelope: {
+            uid: string;
+            agentic: components["schemas"]["Agentic"];
+        };
         /** @description Org-wide web-console defaults served read-only at GET /api/v1/config. Presentation-only: there is no per-label colour map — a custom severity is placed by rank (`severity_ranks`) and inherits a theme-aware `--severity-*` token client-side.
          *      */
         ConsoleConfig: {

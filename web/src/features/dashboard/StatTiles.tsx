@@ -9,22 +9,36 @@ import styles from "./StatTiles.module.css";
 const sum = (m: Record<string, number>) => Object.values(m).reduce((a, b) => a + b, 0);
 
 /** Stable id per tile — used for delta lookup and drill-down routing. */
-export type TileId = "attention" | "ack" | "ingested" | "throttled" | "snoozed";
+export type TileId = "attention" | "ack" | "analysed" | "ingested" | "throttled" | "snoozed";
 
 type Tile = {
   id: TileId;
   label: string;
   value: number;
+  /**
+   * What to print instead of the formatted `value` — an em-dash for a number
+   * whose query failed. The tile stays on the strip either way: a tile that
+   * vanishes on error reads as "zero", which is a different claim.
+   */
+  valueText?: string;
+  /**
+   * Second half of the value line, for a number that only means something
+   * against another one ("12 **of 37 open**"). Muted and smaller — the tile's
+   * headline is still the first number. Omitted until the other number is
+   * known — "12 of 0 open" is worse than "12".
+   */
+  hint?: string;
   icon: IconName;
   accent: string;
   /**
-   * Alerts tab to drill into. Only the live tiles have one: they count the
-   * very rows the alerts table lists, so the tile and the list can never
-   * disagree. The windowed tiles count events (duplicates included, and
-   * suppressed events that were never stored as alerts at all) — sending them
-   * to a list of alerts would show a different number than the tile.
+   * What activating the tile does; absent → the tile is not interactive. Only
+   * the live tiles get one: they count the very rows they would open, so the
+   * tile and its destination can never disagree. The windowed tiles count
+   * events (duplicates included, and suppressed events that were never stored
+   * as alerts at all) — sending them to a list of alerts would show a
+   * different number than the tile.
    */
-  tab?: TabId;
+  onActivate?: () => void;
 };
 
 export type StatTilesProps = {
@@ -37,10 +51,32 @@ export type StatTilesProps = {
    * and would print a bigger number than the list it links to.
    */
   needsAttention: number;
+  /**
+   * The "Analysed" tile's three numbers, or nothing at all.
+   *
+   * Absent → the tile is off the strip entirely, which is what a viewer
+   * without `ro_record` gets: the count behind it is a /record query their
+   * token would 403.
+   *
+   * `count` is how many open alerts carry an agentic analysis right now;
+   * `open` is the population it is a share of — deliberately NOT the
+   * "Needs attention" number beside it, which drops the acknowledged and
+   * snoozed rows the analysed count keeps (it would print "7 of 6"). Either
+   * may be undefined while its query is in flight; the tile then shows what it
+   * has. `error` keeps the tile with an em-dash rather than letting a failed
+   * query read as a zero.
+   */
+  analysed?: {
+    count?: number | undefined;
+    open?: number | undefined;
+    error?: boolean | undefined;
+  };
   /** Human name of the picked window, e.g. "Last 24 hours". */
   windowLabel: string;
   /** Called when a live tile is activated, with the alerts tab to open. */
   onTileClick?: (tab: TabId) => void;
+  /** Called when the "Analysed" tile is activated — the page's Analyses view. */
+  onAnalysedClick?: () => void;
   /**
    * Percentage change vs. the prior window, keyed by tile id. Only the
    * windowed tiles carry one; the live tiles are point-in-time and have no
@@ -66,8 +102,10 @@ export function StatTiles({
   snapshot,
   totals,
   needsAttention,
+  analysed,
   windowLabel,
   onTileClick,
+  onAnalysedClick,
   deltas,
 }: StatTilesProps) {
   const live: Tile[] = [
@@ -77,7 +115,7 @@ export function StatTiles({
       value: needsAttention,
       icon: "bell",
       accent: "var(--severity-warning)",
-      tab: "alerts",
+      ...(onTileClick ? { onActivate: () => onTileClick("alerts") } : {}),
     },
     {
       id: "ack",
@@ -87,9 +125,27 @@ export function StatTiles({
       // Violet, matching the state chip / timeline / feed — not the OK-green
       // severity token. Acknowledged isn't "fine", it's "someone has it".
       accent: "var(--state-ack)",
-      tab: "ack",
+      ...(onTileClick ? { onActivate: () => onTileClick("ack") } : {}),
     },
   ];
+
+  // Third live tile: how much of the open queue somebody has already explained.
+  // The share is the whole claim — an analysed count on its own says nothing —
+  // so the denominator is the same population the numerator was counted over.
+  if (analysed && (analysed.count !== undefined || analysed.error)) {
+    live.push({
+      id: "analysed",
+      label: "Analysed",
+      value: analysed.count ?? 0,
+      ...(analysed.error ? { valueText: "\u2014" } : {}),
+      ...(analysed.open !== undefined && !analysed.error
+        ? { hint: `of ${analysed.open.toLocaleString()} open` }
+        : {}),
+      icon: "file-text",
+      accent: "var(--severity-info)",
+      ...(onAnalysedClick ? { onActivate: onAnalysedClick } : {}),
+    });
+  }
 
   const windowed: Tile[] = [
     {
@@ -117,7 +173,7 @@ export function StatTiles({
 
   return (
     <div className={styles.strip}>
-      <TileGroup label="Right now" tiles={live} onTileClick={onTileClick} deltas={deltas} />
+      <TileGroup label="Right now" tiles={live} deltas={deltas} />
       <TileGroup label={windowLabel} tiles={windowed} deltas={deltas} />
     </div>
   );
@@ -126,12 +182,10 @@ export function StatTiles({
 function TileGroup({
   label,
   tiles,
-  onTileClick,
   deltas,
 }: {
   label: string;
   tiles: Tile[];
-  onTileClick?: ((tab: TabId) => void) | undefined;
   deltas?: Partial<Record<TileId, number | null>> | undefined;
 }) {
   return (
@@ -139,12 +193,16 @@ function TileGroup({
       <h2 className={styles.groupLabel}>{label}</h2>
       <div className={styles.tiles}>
         {tiles.map((t) => {
-          const tab = t.tab;
-          const clickable = onTileClick != null && tab != null;
+          const activate = t.onActivate;
           const delta = deltas?.[t.id];
           const body = (
             <>
-              <b className={styles.value}>{t.value.toLocaleString()}</b>
+              <b className={styles.value}>
+                {t.valueText ?? t.value.toLocaleString()}
+                {/* A real space, not the hint's CSS margin: without it the
+                    tile announces "7of 6 openAnalysed". */}
+                {t.hint ? <span className={styles.hint}> {t.hint}</span> : null}
+              </b>
               <span className={styles.label}>
                 <span className={styles.icon}>
                   <Icon name={t.icon} size={14} />
@@ -155,14 +213,14 @@ function TileGroup({
             </>
           );
           const style = { "--tile-accent": t.accent } as CSSProperties;
-          return clickable ? (
+          return activate ? (
             <button
               key={t.id}
               type="button"
               data-tile={t.id}
               className={`${styles.tile} ${styles.clickable}`}
               style={style}
-              onClick={() => onTileClick(tab)}
+              onClick={activate}
             >
               {body}
             </button>

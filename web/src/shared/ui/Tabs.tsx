@@ -27,6 +27,7 @@ export function Tabs({
 export function TabList({
   children,
   rightSlot,
+  overflow = "wrap",
 }: {
   children: ReactNode;
   /** Optional content rendered flush-right on the same row as the tab
@@ -34,13 +35,25 @@ export function TabList({
    *  button next to the tab strip instead of stacking them vertically
    *  above the table. */
   rightSlot?: ReactNode;
+  /**
+   * What a strip does when it runs out of room.
+   *
+   * - `wrap` (default): triggers fall onto a second row. Right for a strip
+   *   that spans the page, where a second row costs one line of header.
+   * - `scroll`: the strip stays one row and scrolls sideways. For a strip
+   *   boxed inside a narrow card, where the triggers want more width than the
+   *   card has at every desktop size and wrapping would double the card's
+   *   header instead of costing one line. Phones scroll either way.
+   */
+  overflow?: "wrap" | "scroll";
 }) {
+  const listClass = overflow === "scroll" ? `${styles.list} ${styles.scroll}` : styles.list;
   if (rightSlot === undefined) {
-    return <RT.List className={styles.list}>{children}</RT.List>;
+    return <RT.List className={listClass}>{children}</RT.List>;
   }
   return (
     <div className={styles.headerRow}>
-      <RT.List className={styles.list}>{children}</RT.List>
+      <RT.List className={listClass}>{children}</RT.List>
       <div className={styles.rightSlot}>{rightSlot}</div>
     </div>
   );

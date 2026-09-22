@@ -1184,6 +1184,110 @@ paths:
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
 
+  /api/v1/record/{uid}/agentic:
+    parameters:
+      - name: uid
+        in: path
+        required: true
+        description: The record's uid.
+        schema: {type: string}
+    get:
+      tags: [crud]
+      summary: Read an alert's agentic analysis
+      description: |
+        Returns the protected `agentic` subtree of one record: the AI-authored
+        root cause, remediation plan and the server-stamped provenance block.
+        Reading needs only the ordinary record read permission (`ro_record`,
+        `rw_record`, or the `ro_all`/`rw_all` wildcards).
+
+        A 404 distinguishes "no such record" from "record carries no analysis"
+        by message.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The stored analysis.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AgenticEnvelope'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    put:
+      tags: [crud]
+      summary: Store an alert's agentic analysis
+      description: |
+        Stores (replacing any previous one) the analysis of why an alert fired
+        and what to do about it. This is the ONLY write path for the `agentic`
+        field: it is a *protected field*, so the generic record endpoints
+        (`POST /api/v1/record`, `PUT`/`PATCH /api/v1/record/{uid}`,
+        `POST /api/v1/{plugin}/bulk_update`) refuse it with 403
+        `protected_field`, rule modifications targeting it are refused, and an
+        inbound alert carrying it has the field stripped at ingestion.
+
+        Requires the **literal** `rw_protected` permission. The `rw_all` admin
+        wildcard deliberately does NOT satisfy it — inheriting it silently
+        would give every existing admin role write access to agent-authored
+        analysis.
+
+        Validation is strict: unknown fields anywhere in the body are rejected,
+        and every violation is reported at once in `error.details`, keyed by
+        JSON path (e.g. `remediation_plan.steps[0].risk`). The `analysis`
+        provenance block is stamped server-side and must not be supplied.
+
+        The write does not touch `date_epoch`: analysing a months-old alert
+        must not make it look freshly seen.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        description: |
+          The body is capped at 512 KiB — comfortably above the largest payload
+          the schema below accepts, so the cap only ever stops a runaway
+          producer, never a valid analysis.
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AgenticRequest'}
+      responses:
+        '200':
+          description: The stored analysis, including the stamped provenance.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AgenticEnvelope'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422':
+          description: |
+            The body parsed but broke the schema. `error.details` maps each
+            offending JSON path to its message.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrEnvelope'}
+              example:
+                error:
+                  code: validation_error
+                  message: agentic payload failed schema validation
+                  details:
+                    root_cause.confidence: must be one of high|medium|low
+                    remediation_plan.steps: must hold at least one step
+    delete:
+      tags: [crud]
+      summary: Clear an alert's agentic analysis
+      description: |
+        Removes the `agentic` field from the record. Requires the literal
+        `rw_protected` permission, like the write. A record that exists but
+        carries no analysis yields 404.
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: The analysis was removed.
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
   /api/v1/{plugin}/bulk_update:
     post:
       tags: [crud]
@@ -2615,6 +2719,102 @@ components:
               message: alert ingestion is disabled
 
   schemas:
+    AgenticStep:
+      type: object
+      description: One action in a remediation or rollback plan.
+      required: [action, risk]
+      properties:
+        action:
+          type: string
+          maxLength: 500
+          description: What to do, in plain words.
+        command:
+          type: string
+          maxLength: 1000
+          description: The exact command implementing the action, when there is one.
+        risk:
+          type: string
+          enum: [low, medium, high]
+          description: Blast radius of this step; an executor gates on it.
+    AgenticRootCause:
+      type: object
+      description: Why the alert fired.
+      required: [summary, confidence]
+      properties:
+        summary:
+          type: string
+          maxLength: 500
+          description: One sentence naming the cause.
+        scope:
+          type: string
+          maxLength: 200
+          description: >
+            What is broken, in whatever addressing scheme fits the alert
+            ("srv-victoria1:/var", "ovh/velero/kopia-maintain").
+        evidence:
+          type: array
+          maxItems: 10
+          items: {type: string, maxLength: 500}
+          description: Short observations the conclusion rests on.
+        confidence:
+          type: string
+          enum: [high, medium, low]
+          description: >
+            `low` is the honest answer for an inconclusive investigation —
+            recording the trail beats leaving the alert to be re-investigated
+            from scratch.
+    AgenticRemediationPlan:
+      type: object
+      description: What to do about the alert.
+      required: [steps]
+      properties:
+        steps:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items: {$ref: '#/components/schemas/AgenticStep'}
+        rollback:
+          type: array
+          maxItems: 20
+          items: {$ref: '#/components/schemas/AgenticStep'}
+          description: Ordered undo for the steps.
+        automatable:
+          type: boolean
+          description: True only when the steps are safe for an unattended agent to run.
+    AgenticAnalysisMeta:
+      type: object
+      description: Provenance, stamped by the server. Clients may not set it.
+      properties:
+        at: {type: string, format: date-time, description: When the analysis was stored (UTC).}
+        by: {type: string, description: The authenticated subject that stored it.}
+        source: {type: string, description: The caller-supplied tool tag.}
+    Agentic:
+      type: object
+      description: The protected `agentic` subtree stored on a record.
+      properties:
+        root_cause: {$ref: '#/components/schemas/AgenticRootCause'}
+        remediation_plan: {$ref: '#/components/schemas/AgenticRemediationPlan'}
+        analysis: {$ref: '#/components/schemas/AgenticAnalysisMeta'}
+    AgenticRequest:
+      type: object
+      description: >
+        The PUT body: the analysis minus the server-stamped provenance, plus an
+        optional source tag. Unknown properties are rejected.
+      additionalProperties: false
+      required: [root_cause, remediation_plan]
+      properties:
+        root_cause: {$ref: '#/components/schemas/AgenticRootCause'}
+        remediation_plan: {$ref: '#/components/schemas/AgenticRemediationPlan'}
+        source:
+          type: string
+          maxLength: 64
+          description: Short tag naming the tool that produced the analysis; lands in `analysis.source`.
+    AgenticEnvelope:
+      type: object
+      required: [uid, agentic]
+      properties:
+        uid: {type: string}
+        agentic: {$ref: '#/components/schemas/Agentic'}
     ConsoleConfig:
       type: object
       description: >

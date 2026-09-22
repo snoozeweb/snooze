@@ -35,7 +35,7 @@ import {
   useBulkStateRecord,
   encodeUidsAsQ,
 } from "./api";
-import { AlertRowDetail } from "./AlertRowDetail";
+import { AlertRowDetail, DiscardAnalysisDraftDialog } from "./AlertRowDetail";
 import { AlertFlowChart } from "./AlertFlowChart";
 import { ActiveFilters } from "./ActiveFilters";
 import { AlertsFilters, type AlertFilters } from "./Filters";
@@ -180,6 +180,13 @@ type AlertsSearch = AlertFilters & {
    *  drawer through the URL so an open alert is shareable / deep-linkable. */
   record?: string;
   /**
+   * Open the inspector on the Analysis tab instead of Timeline. Set by deep
+   * links whose subject is the analysis rather than the alert — the dashboard's
+   * Analyses panel is the one producer. Meaningless without `record`, and
+   * dropped together with it when the drawer closes.
+   */
+  analysis?: boolean | "1";
+  /**
    * SearchBar DSL text. Seeds local state on mount and re-seeds on external
    * URL changes (browser nav, deep-links such as the host hyperlink in Teams
    * alert cards: `/web/alerts?search=hash%20%3D%20<hash>`). It is *not* written
@@ -188,6 +195,19 @@ type AlertsSearch = AlertFilters & {
    */
   search?: string;
 };
+
+/**
+ * Whether `?analysis=` asks for the Analysis tab.
+ *
+ * It takes `unknown` because search params arrive from a URL a human or
+ * another product can type: the router hands back `true` for the `analysis=true`
+ * the dashboard's Link writes, but `1` or `"1"` for a hand-written one, and all
+ * three mean the same thing. Anything else (including an explicit `false`) is
+ * the default Timeline open.
+ */
+function wantsAnalysisTab(value: unknown): boolean {
+  return value === true || value === "1" || value === 1 || value === "true";
+}
 
 // Note: the SearchBar's text is NOT written to the URL on every keystroke.
 // TanStack Router's navigate() is async — that one-render lag let React snap
@@ -466,6 +486,24 @@ export function AlertsPage() {
   // Open detail record (drives the modal detail drawer, synced to the URL as
   // ?record=). Undefined = no drawer open.
   const record = search.record;
+  // ?analysis= rides along with ?record= and only picks the tab the inspector
+  // opens on.
+  const openOnAnalysis = wantsAnalysisTab(search.analysis);
+  // `analysis` describes how an inspector OPENS, so it is meaningless on its
+  // own. Left in the URL without a `record` — a hand-edited link, or a close
+  // that raced the navigation — it silently retargets the next plain row click
+  // to the Analysis tab. Strip it as soon as it is on its own.
+  useEffect(() => {
+    if (search.record === undefined && search.analysis !== undefined) {
+      updateSearch({ analysis: undefined } as unknown as Partial<AlertsSearch>);
+    }
+  }, [search.record, search.analysis, updateSearch]);
+
+  // Whether the inspector currently has an analysis editor open, and the
+  // retarget waiting on the answer. AlertRowDetail reports the first; the
+  // second is the key prev/next asked for and did not get.
+  const [detailEditing, setDetailEditing] = useState(false);
+  const [pendingDetailsKey, setPendingDetailsKey] = useState<string | null>(null);
 
   // Pause auto-refresh while the detail drawer is open — refetching swaps the
   // row's backing object, which can yank the timeline / JSON the operator is
@@ -1463,7 +1501,17 @@ export function AlertsPage() {
   const columns = useMemo(() => columnsForConfig(config?.columns), [config?.columns]);
   const rowKey = useCallback((r: Record_) => recordKey(r), []);
   const rowAccent = useCallback((r: Record_) => severityToken(r.severity ?? ""), []);
-  const renderDetails = useCallback((row: Record_) => <AlertRowDetail row={row} />, []);
+  // The default (Timeline) is passed as the absent prop rather than spelled
+  // out, so the ordinary open keeps rendering exactly what it rendered before.
+  const renderDetails = useCallback(
+    (row: Record_) =>
+      openOnAnalysis ? (
+        <AlertRowDetail row={row} defaultTab="analysis" onEditingChange={setDetailEditing} />
+      ) : (
+        <AlertRowDetail row={row} onEditingChange={setDetailEditing} />
+      ),
+    [openOnAnalysis],
+  );
   // The Flow trace — the one view that answers "why did this fire, and what
   // did it wake up?" — was three interactions deep behind the drawer's Flow
   // tab. Here it is the same component, hung inline under its row, so reading
@@ -1478,10 +1526,33 @@ export function AlertsPage() {
   );
   // Controlled detail drawer: write the open record to the URL (?record=),
   // dropping the key when the drawer closes so deep-links stay clean.
-  const handleDetailsKeyChange = useCallback(
+  // `analysis` describes an *opening*, not the page, so it leaves with the
+  // drawer: a closed inspector that still carried it would send the next alert
+  // opened from the table to the Analysis tab. Retargeting the open drawer
+  // (prev/next, another row) keeps it — the inspector's tab state belongs to
+  // the reader at that point, not to the link that started them off.
+  const applyDetailsKey = useCallback(
     (k: string | null) =>
-      updateSearch({ record: k ?? undefined } as unknown as Partial<AlertsSearch>),
+      updateSearch({
+        record: k ?? undefined,
+        ...(k === null ? { analysis: undefined } : {}),
+      } as unknown as Partial<AlertsSearch>),
     [updateSearch],
+  );
+  // A retarget swaps the inspector's subject under whatever is open in it. The
+  // analysis editor is the one surface that holds unsaved work AND writes it
+  // back addressed by the *current* uid, so retargeting past an open one is
+  // how a draft written against this alert gets PUT onto the next. Ask first;
+  // everything else (a close, a first open) goes straight through.
+  const handleDetailsKeyChange = useCallback(
+    (k: string | null) => {
+      if (k !== null && detailEditing && record !== undefined && k !== record) {
+        setPendingDetailsKey(k);
+        return;
+      }
+      applyDetailsKey(k);
+    },
+    [applyDetailsKey, detailEditing, record],
   );
   const handleSearchChange = useCallback(
     (c: { text: string; condition: ParsedCondition | null }) => {
@@ -1766,6 +1837,21 @@ export function AlertsPage() {
           rowExpansionLabel="pipeline flow"
         />
       </div>
+      <DiscardAnalysisDraftDialog
+        open={pendingDetailsKey !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDetailsKey(null);
+        }}
+        onDiscard={() => {
+          const next = pendingDetailsKey;
+          setPendingDetailsKey(null);
+          // The drawer keys the details subtree by row, so applying the key
+          // remounts it and the editor goes with it.
+          setDetailEditing(false);
+          if (next !== null) applyDetailsKey(next);
+        }}
+        description="Moving to another alert closes the editor. Anything you have written here is not saved."
+      />
       {dialog ? (
         <ActionDialog
           open

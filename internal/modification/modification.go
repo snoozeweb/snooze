@@ -12,6 +12,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/snoozeweb/snooze/internal/protected"
 )
 
 // Op enumerates the supported modification operations.
@@ -44,6 +46,14 @@ type Modification struct {
 //
 // Mirrors OperationNotSupported at src/snooze/utils/modification.py:24-28.
 var ErrOperationNotSupported = errors.New("modification operation not supported")
+
+// ErrProtectedTarget is returned when a modification would write a protected
+// field (internal/protected). Those fields are owned by a dedicated,
+// schema-validating endpoint; a rule that could SET or DELETE one would be a
+// way to forge or wipe agent-authored analysis with no audit trail and no
+// schema check. The target is resolved AFTER templating, so a rule that
+// computes the field name at runtime is caught too.
+var ErrProtectedTarget = errors.New("modification targets a protected field")
 
 // ErrInvalid is returned when a modification is structurally malformed.
 //
@@ -114,6 +124,56 @@ func Validate(obj map[string]any) error {
 	return nil
 }
 
+// Targets returns the record fields this modification would WRITE, resolved
+// against rec so a templated field name ("{{ severity }}_count") is reported
+// as the name it actually lands on. Pass a nil record for static inspection
+// of a stored rule: literal names resolve to themselves.
+//
+// Read-only inputs (the source field of a REGEX_SUB, the pattern, the value)
+// are not targets — only keys the op assigns to or deletes:
+//
+//	SET / ARRAY_APPEND / ARRAY_DELETE / DELETE → Args[0]
+//	REGEX_SUB                                  → Args[1] (the out field)
+//	REGEX_PARSE                                → one per named capture group
+func (m Modification) Targets(rec map[string]any) []string {
+	if len(m.Args) < m.Op.nbargs() {
+		return nil
+	}
+	resolved := resolveArgs(rec, m.Args)
+	str := func(i int) []string {
+		if s, ok := resolved[i].(string); ok && s != "" {
+			return []string{s}
+		}
+		return nil
+	}
+	switch m.Op {
+	case OpSet, OpDelete, OpArrayAppend, OpArrayDelete:
+		return str(0)
+	case OpRegexSub:
+		return str(1)
+	case OpRegexParse:
+		pattern, ok := resolved[1].(string)
+		if !ok {
+			return nil
+		}
+		re, err := regexp.Compile(pattern)
+		if err != nil {
+			// An uncompilable pattern writes nothing (applyRegexParse bails
+			// the same way), so it targets nothing.
+			return nil
+		}
+		var out []string
+		for i, name := range re.SubexpNames() {
+			if i == 0 || name == "" {
+				continue
+			}
+			out = append(out, name)
+		}
+		return out
+	}
+	return nil
+}
+
 // Apply mutates rec in place and returns the per-op return_code from
 // Python alongside any structural error.
 //
@@ -129,6 +189,11 @@ func Apply(rec map[string]any, m Modification) (bool, error) {
 	}
 	if len(m.Args) < m.Op.nbargs() {
 		return false, fmt.Errorf("%w: %s needs %d args, got %d", ErrInvalid, m.Op, m.Op.nbargs(), len(m.Args))
+	}
+	for _, target := range m.Targets(rec) {
+		if protected.IsProtected(target) {
+			return false, fmt.Errorf("%w: %s", ErrProtectedTarget, target)
+		}
 	}
 	switch m.Op {
 	case OpSet:

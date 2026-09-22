@@ -1,6 +1,9 @@
 # Local development
 .env.local
 .ca-bundle
+.claude
+.github
+.impeccable
 data/
 backups/
 logs/

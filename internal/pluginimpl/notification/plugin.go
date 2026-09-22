@@ -31,6 +31,7 @@ import (
 	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/plugins"
+	"github.com/snoozeweb/snooze/internal/protected"
 	"github.com/snoozeweb/snooze/internal/timeconstraints"
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
@@ -983,6 +984,18 @@ func (p *Plugin) injectFunc(ctx context.Context, rec snoozetypes.Record) plugins
 	}
 	tenantID, _ := auth.TenantFrom(ctx)
 	return func(field string, value any) {
+		// Every notifier in-tree derives this name from a fixed prefix
+		// (`response_<action>`, `notify_ref_<action>`), so a protected field
+		// is not reachable today. The check is here because this closure is
+		// the single chokepoint for an extension point: a notifier is free to
+		// call plugins.InjectField with any name it likes, and that must not
+		// become the way around the protected-field endpoint.
+		if protected.IsProtected(field) {
+			if lg := p.logger(); lg != nil {
+				lg.Warn("notification: refused an inject onto a protected field", "field", field)
+			}
+			return
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), notifierSendTimeout)
 		defer cancel()
 		if tenantID != "" {

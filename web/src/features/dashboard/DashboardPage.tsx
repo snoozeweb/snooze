@@ -9,6 +9,8 @@ import { DistributionBar, type DistributionDatum } from "@/shared/chart/Distribu
 import { LineChart, type LineSeries } from "@/shared/chart/LineChart";
 import { seriesColor } from "@/shared/chart/theme";
 import { severityColor } from "@/lib/format/severity-color";
+import { useAuth } from "@/lib/auth/store";
+import { hasAnyPermission } from "@/lib/auth/permissions";
 import { Environments } from "@/features/admin/environments/api";
 import { useActiveAlertCount } from "@/features/alerts/api";
 import { useAnnounce } from "@/shared/a11y/LiveAnnouncer";
@@ -22,6 +24,9 @@ import { DashboardSkeleton } from "./DashboardSkeleton";
 import { ActivityFeed } from "./ActivityFeed";
 import { NoiseRemoved } from "./NoiseRemoved";
 import { NotificationsPanel } from "./NotificationsPanel";
+import { AnalysesView } from "./AnalysesView";
+import { useAnalysedCount, useOpenAlertCount } from "./analyses-query";
+import { ViewSwitch, type DashboardView } from "./ViewSwitch";
 import { PanelEmpty, PanelHint, PanelTitle } from "./Panel";
 import { countersEmpty } from "./empty-copy";
 import { alertsSearchForBucket, alertsSearchForRange } from "./bucket-utils";
@@ -42,10 +47,12 @@ const LINE_SERIES_KEYS = [
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 const WEEKDAY_KEYS = ["1", "2", "3", "4", "5", "6", "0"] as const;
 
-// Search params backing the time-range picker. Mirrors the dashboard route's
-// validateSearch (router.tsx): `range` preset key plus epoch-ms `from`/`to`
-// for the custom window.
+// Search params backing the view switch and the time-range picker. Mirrors the
+// dashboard route's validateSearch (router.tsx): `view` names the view on
+// screen, `range` is the preset key, plus epoch-ms `from`/`to` for the custom
+// window.
 type DashboardSearch = {
+  view?: DashboardView;
   range?: TimeRange["range"];
   from?: number;
   to?: number;
@@ -57,13 +64,54 @@ type DashboardSearch = {
 type NavigateFn = (opts: {
   to: string;
   search: (prev: DashboardSearch | undefined) => DashboardSearch;
+  replace?: boolean;
 }) => Promise<void>;
 
 export function DashboardPage() {
   const navigate = useNavigate();
   const { theme } = useTheme();
+  const { claims } = useAuth();
   // useSearch with strict:false returns the validated search params; cast for local type.
   const search = useSearch({ strict: false }) as unknown as DashboardSearch;
+
+  // Both agentic surfaces — the Analysed tile and the Analyses view — are
+  // /record readers, while the page itself only asks for `ro_stats`. Without
+  // this gate a stats-only role is offered a segment whose every call 403s,
+  // and a tile that silently never appears while its query retries forever.
+  const canReadRecords = hasAnyPermission(claims, ["ro_record", "rw_record"]);
+
+  // Which view is on screen. Anything but the one named alternative is the
+  // Overview, so a hand-typed `?view=nonsense` — or a shared `?view=analyses`
+  // opened by a role that cannot read records — degrades to the default rather
+  // than to a blank page or a permission error.
+  const view: DashboardView =
+    search.view === "analyses" && canReadRecords ? "analyses" : "overview";
+
+  // Whether the view arrived in the URL. A switch away from a view somebody
+  // deep-linked into is a step worth keeping: replacing it makes Back leave
+  // the dashboard altogether. A switch the operator started here is not.
+  const enteredWithView = useRef(search.view !== undefined).current;
+
+  // Switching views rewrites one param and keeps the rest: the window the
+  // operator picked is still in the URL when they come back to the Overview,
+  // even though the picker is off screen meanwhile.
+  const setView = useCallback(
+    (next: DashboardView) => {
+      void (navigate as unknown as NavigateFn)({
+        to: "/web/dashboard",
+        search: (prev) => {
+          // The param is dropped rather than set to "overview": no param and
+          // `?view=overview` are the same state, and only one of them should
+          // ever be in a shared URL.
+          const { view: _previous, ...rest } = prev ?? {};
+          void _previous;
+          return next === "analyses" ? { ...rest, view: "analyses" } : rest;
+        },
+        replace: !enteredWithView,
+      });
+    },
+    [navigate, enteredWithView],
+  );
 
   // Derive the picker value from the URL. No `range` param → today's default
   // (a 1d preset window). For a custom range we read the epoch-ms bounds back
@@ -103,12 +151,16 @@ export function DashboardPage() {
   );
 
   const bucket = bucketFromRange(range.range);
-  const stats = useStats({ from: range.from, to: range.to, bucket });
+  // Both windowed queries are the Overview's; the Analyses view is live and
+  // reads none of it, so they stay idle while it is on screen. Coming back
+  // finds them cached — the switch is instant either way.
+  const overview = view === "overview";
+  const stats = useStats({ from: range.from, to: range.to, bucket }, { enabled: overview });
 
   // Prior window of equal length immediately before [from, to], used purely
   // for the range-scoped trend deltas. Disabled until we have both bounds.
   const prior = useMemo(() => priorWindow(range.from, range.to), [range.from, range.to]);
-  const prevStats = useStats({ from: prior.from, to: prior.to, bucket });
+  const prevStats = useStats({ from: prior.from, to: prior.to, bucket }, { enabled: overview });
 
   // The headline live number is the queue the operator actually works: the
   // same ACTIVE_ALERTS preset behind the sidebar badge and the default alerts
@@ -116,6 +168,12 @@ export function DashboardPage() {
   // guarantees the tile, the badge and the table can never print three
   // different totals — `by_state.open` counts snoozed and shelved rows too.
   const activeCount = useActiveAlertCount(true);
+
+  // The "Analysed" tile's two numbers: how many open alerts carry an analysis,
+  // and the population that is a share of. Both are one-row counts — the view's
+  // 50-row list is the view's own, and only runs while it is mounted.
+  const analysedCount = useAnalysedCount(canReadRecords);
+  const openCount = useOpenAlertCount(canReadRecords);
 
   // This page repaints itself every 30s with no visible cue. "Needs attention"
   // is the one number an operator would want to hear change — it is the queue
@@ -298,14 +356,26 @@ export function DashboardPage() {
 
   return (
     <div className={styles.page}>
-      {/* Header */}
+      {/* Header. The view switch sits with the title because it changes the
+          whole page; the time picker stays on the right because it only
+          qualifies the Overview's numbers — and it is not on screen at all in
+          the Analyses view, which is live rather than windowed. */}
       <div className={styles.header}>
         <h1 className={styles.title}>Dashboard</h1>
-        <TimeRangePicker value={range} onChange={setRange} />
+        {/* One view means no switch: a segmented control with a single
+            segment is chrome that does nothing. */}
+        {canReadRecords ? <ViewSwitch value={view} onChange={setView} /> : null}
+        {overview ? (
+          <div className={styles.headerEnd}>
+            <TimeRangePicker value={range} onChange={setRange} />
+          </div>
+        ) : null}
       </div>
 
-      {/* First-load skeleton (isPending only — background refetch keeps prior data). */}
-      {stats.isPending ? (
+      {!overview ? (
+        <AnalysesView />
+      ) : /* First-load skeleton (isPending only — background refetch keeps prior data). */
+      stats.isPending ? (
         <DashboardSkeleton />
       ) : stats.isError ? (
         <Card padded>
@@ -325,9 +395,22 @@ export function DashboardPage() {
             snapshot={data.snapshot}
             totals={data.totals}
             needsAttention={activeCount.data?.meta.total ?? 0}
+            {...(canReadRecords
+              ? {
+                  analysed: {
+                    ...(analysedCount.data
+                      ? { count: analysedCount.data.meta.total }
+                      : { error: analysedCount.isError }),
+                    // Withheld until it lands: "12 of 0 open" is a claim, and
+                    // a wrong one.
+                    ...(openCount.data ? { open: openCount.data.meta.total } : {}),
+                  },
+                }
+              : {})}
             windowLabel={windowLabel}
             deltas={deltas}
             onTileClick={(tab) => void navigate({ to: "/web/alerts", search: { tab } })}
+            onAnalysedClick={() => setView("analyses")}
           />
 
           {/* Row 1 — the two questions the page exists to answer: how much

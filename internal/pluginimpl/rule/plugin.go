@@ -16,7 +16,10 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -25,6 +28,7 @@ import (
 	"github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/modification"
 	"github.com/snoozeweb/snooze/internal/plugins"
+	"github.com/snoozeweb/snooze/internal/protected"
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
@@ -233,20 +237,40 @@ func (p *Plugin) processRules(ctx context.Context, view map[string]any, rules []
 			continue
 		}
 		appendRuleTag(view, r.name)
-		_ = applyModifications(view, r.modifications)
+		_ = applyModifications(view, r.modifications, p.logger(), r.name)
 		p.applyKVSets(ctx, view, r.kvSets)
 		p.processRules(ctx, view, r.children)
 	}
 }
 
+// logger returns the host logger, or a discarding one before PostInit has
+// wired the host (unit tests construct a bare Plugin).
+func (p *Plugin) logger() *slog.Logger {
+	if p.host != nil {
+		if l := p.host.Logger(); l != nil {
+			return l
+		}
+	}
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
 // applyModifications runs the standard modifications against view, ignoring
 // per-op errors the way Python does (each modify() returns a bool, exceptions
 // are swallowed by the engine).
-func applyModifications(view map[string]any, mods []modification.Modification) bool {
+//
+// The one error worth surfacing is a protected-field target: silently doing
+// nothing would leave an operator staring at a rule that "does not work" with
+// no clue why. It is a refusal, not a malfunction, so it is logged and the
+// remaining modifications still run.
+func applyModifications(view map[string]any, mods []modification.Modification, log *slog.Logger, ruleName string) bool {
 	modified := false
 	for _, m := range mods {
 		ok, err := modification.Apply(view, m)
 		if err != nil {
+			if errors.Is(err, modification.ErrProtectedTarget) && log != nil {
+				log.Warn("rule: refused a modification targeting a protected field",
+					"rule", ruleName, "op", string(m.Op), "err", err)
+			}
 			continue
 		}
 		if ok {
@@ -288,6 +312,15 @@ func (p *Plugin) applyKVSets(ctx context.Context, view map[string]any, sets []kv
 	var dbCtx context.Context
 	var cancel context.CancelFunc
 	for _, s := range sets {
+		// A protected out_field is refused here as well as at rule-save time:
+		// KV_SET does not go through modification.Apply, so this is its only
+		// runtime guard, and a rule stored before the field became protected
+		// would otherwise still write it.
+		if protected.IsProtected(s.OutField) {
+			p.logger().Warn("rule: refused a KV_SET targeting a protected field",
+				"out_field", s.OutField, "dict", s.Dict)
+			continue
+		}
 		if s.OutField == "" || s.Key == "" {
 			continue
 		}

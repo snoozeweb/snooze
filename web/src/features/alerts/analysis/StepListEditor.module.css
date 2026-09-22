@@ -1,0 +1,76 @@
+.list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Rows are separated by a rule rather than boxed: the editor already sits on
+   a panel surface, and a bordered card per step would be a card in a card. */
+.step {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-block: var(--space-3);
+  border-top: 1px solid var(--border-muted);
+  min-width: 0;
+  /* The row is the query container for its own two-column grid — a container
+     cannot query itself, and px is the only unit a container query accepts
+     (the --bp-* tokens are unusable here, same as in DataTable). */
+  container-type: inline-size;
+}
+.step:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.handle {
+  cursor: grab;
+  touch-action: none;
+}
+.handle:active {
+  cursor: grabbing;
+}
+
+/* The step's position in the plan, in tabular figures so a 2 and a 10 line
+   up while rows are being reordered. */
+.position {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-feature-settings: var(--font-features-numeric);
+  color: var(--text-muted);
+}
+
+.rowActions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-inline-start: auto;
+}
+
+/* Risk is a short control and the command is a long one; below the container
+   breakpoint they stack. */
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: var(--space-3);
+}
+
+@container (max-width: 480px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.command {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  resize: vertical;
+}

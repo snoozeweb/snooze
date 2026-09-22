@@ -69,7 +69,10 @@ func (m *memDB) GetOne(_ context.Context, col string, match db.Document) (db.Doc
 			return d, nil
 		}
 	}
-	return nil, errors.New("not found")
+	// db.ErrNotFound, not a bare error: the Driver contract says a miss is
+	// reported with that sentinel (every real backend does), and callers
+	// branch on errors.Is to tell "absent" apart from "the read failed".
+	return nil, db.ErrNotFound
 }
 
 func (m *memDB) Convert(context.Context, condition.Cond, []string) (db.DriverQuery, error) {

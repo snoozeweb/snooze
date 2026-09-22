@@ -134,7 +134,7 @@ function alertsValidateSearch(raw: Record<string, unknown>): {
   return out;
 }
 
-function setup() {
+function setup(initialEntry = "/web/dashboard") {
   const root = createRootRoute({ component: () => <Outlet /> });
   // Add /web/alerts route so ActivityFeed's <Link to="/web/alerts"> resolves
   // and so drill-down navigations land somewhere with the search preserved.
@@ -155,12 +155,40 @@ function setup() {
     getParentRoute: () => root,
     path: "/web/dashboard",
     component: DashboardPage,
+    // Mirrors the real route's allowlist (router.tsx) — the view AND the time
+    // window. A mirror that dropped `range`/`from`/`to` could not catch a view
+    // switch clobbering the window the operator picked, which is the one way
+    // these two URL-backed controls can break each other.
+    validateSearch: (raw: Record<string, unknown>) => {
+      const out: Record<string, unknown> = {};
+      if (raw["view"] === "analyses") out["view"] = "analyses";
+      const range = raw["range"];
+      if (
+        range === "1d" ||
+        range === "1w" ||
+        range === "1m" ||
+        range === "1y" ||
+        range === "custom"
+      )
+        out["range"] = range;
+      const num = (k: string) => {
+        const v = raw[k];
+        if (typeof v === "number" && Number.isFinite(v)) return v;
+        if (typeof v === "string" && /^\d+$/.test(v)) return Number(v);
+        return undefined;
+      };
+      const from = num("from");
+      if (from !== undefined) out["from"] = from;
+      const to = num("to");
+      if (to !== undefined) out["to"] = to;
+      return out;
+    },
   });
   const tree = root.addChildren([alertsRoute, notificationsRoute, route]);
   /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
   const router = createRouter({
     routeTree: tree,
-    history: createMemoryHistory({ initialEntries: ["/web/dashboard"] }),
+    history: createMemoryHistory({ initialEntries: [initialEntry] }),
   } as any);
   /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -191,6 +219,14 @@ const ENV_RESPONSE = {
   meta: { count: 2, limit: 200, offset: 0, total: 2 },
 };
 
+/** The condition a /record request carried, as readable JSON. */
+function decodeQ(url: string): string {
+  const q = new URL(url).searchParams.get("q") ?? "";
+  if (q === "") return "";
+  const b64 = q.replace(/-/g, "+").replace(/_/g, "/");
+  return atob(b64 + "=".repeat((4 - (b64.length % 4)) % 4));
+}
+
 function mockFullDashboard() {
   mswServer.use(
     http.get("/api/v1/stats", () => HttpResponse.json(FULL_STATS_RESPONSE)),
@@ -214,7 +250,9 @@ function loginWithPerms(perms: string[]) {
 describe("DashboardPage", () => {
   // The Notifications panel only links into the inspector's Deliveries tab for
   // a role that can read the delivery log.
-  beforeEach(() => loginWithPerms(["ro_stats", "ro_notification", "ro_notificationlog"]));
+  beforeEach(() =>
+    loginWithPerms(["ro_stats", "ro_record", "ro_notification", "ro_notificationlog"]),
+  );
   afterEach(() => authStore.getState().logout());
 
   it("renders the title and the time-range picker", () => {
@@ -256,6 +294,9 @@ describe("DashboardPage", () => {
     for (const tab of ["Severity", "Environment", "Hosts", "Actions", "Notifications", "Weekday"]) {
       expect(screen.getByRole("tab", { name: tab })).toBeInTheDocument();
     }
+    // The analyses list is a page-level view now, not the seventh tab of a
+    // card in the bottom-right corner.
+    expect(screen.queryByRole("tab", { name: "Analyses" })).not.toBeInTheDocument();
   });
 
   it("lists notifications by send count on the Notifications tab, linking a resolved name", async () => {
@@ -278,6 +319,181 @@ describe("DashboardPage", () => {
     const href = link.getAttribute("href") ?? "";
     expect(href).toContain("/web/notifications");
     expect(href).toContain("details=nt-slack");
+  });
+
+  // The Analyses view is live, not windowed: it lists the open alerts an
+  // analysis has been written onto. It is reached from the title row's view
+  // switch or from the Right-now tile, and it states its own count against the
+  // page's existing ACTIVE_ALERTS probe rather than asking for a second total.
+  describe("the Analyses view", () => {
+    function mockAnalyses() {
+      mswServer.use(
+        http.get("/api/v1/stats", () => HttpResponse.json(FULL_STATS_RESPONSE)),
+        http.get("/api/v1/comment", () => HttpResponse.json(COMMENTS_RESPONSE)),
+        http.get("/api/v1/record", ({ request }) => {
+          const cond = decodeQ(request.url);
+          // Three probes ask for one row and read meta.total: the
+          // needs-attention queue (ACTIVE_ALERTS, the only one with an `ack`
+          // clause), the open population behind the Analysed tile's
+          // denominator, and the analysed count itself. Only the last two
+          // carry the `agentic` clause.
+          if (new URL(request.url).searchParams.get("limit") === "1") {
+            return HttpResponse.json({
+              data: [],
+              meta: {
+                count: 0,
+                limit: 1,
+                offset: 0,
+                total: cond.includes('"agentic"') ? 1 : 37,
+              },
+            });
+          }
+          return HttpResponse.json({
+            data: [
+              {
+                uid: "r-disk",
+                host: "srv-victoria1",
+                severity: "critical",
+                state: "open",
+                date_epoch: 1_700_000_000,
+                agentic: {
+                  root_cause: { summary: "Orphaned blobs filled /var", confidence: "high" },
+                  remediation_plan: { steps: [{ action: "prune", risk: "low" }] },
+                  analysis: { at: "2026-09-20T10:00:00Z", by: "agent-bot", source: "alert-rca" },
+                },
+              },
+            ],
+            meta: { count: 1, limit: 50, offset: 0, total: 1 },
+          });
+        }),
+      );
+    }
+
+    it("switches to the analysed alerts from the title row, and hides the time picker there", async () => {
+      mockAnalyses();
+      const user = userEvent.setup();
+      const { router } = setup();
+      await screen.findByText("Noise removed");
+
+      const viewSwitch = screen.getByRole("group", { name: "Dashboard view" });
+      await user.click(within(viewSwitch).getByRole("button", { name: "Analyses" }));
+
+      expect(await screen.findByText("Orphaned blobs filled /var")).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "37 open" })).toBeInTheDocument();
+      // The view is "right now", so the window picker has no say in it.
+      expect(screen.queryByRole("button", { name: "1d" })).not.toBeInTheDocument();
+      // Shareable: the view rides in the URL.
+      expect(router.state.location.search).toMatchObject({ view: "analyses" });
+    });
+
+    it("opens straight onto the view from a deep link", async () => {
+      mockAnalyses();
+      setup("/web/dashboard?view=analyses");
+
+      expect(await screen.findByText("Orphaned blobs filled /var")).toBeInTheDocument();
+      expect(screen.queryByText("Noise removed")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "1d" })).not.toBeInTheDocument();
+    });
+
+    it("keeps the picked window across a view switch", async () => {
+      mockAnalyses();
+      const user = userEvent.setup();
+      const { router } = setup("/web/dashboard?range=custom&from=1757000000000&to=1757600000000");
+      await screen.findByText("Noise removed");
+
+      const viewSwitch = screen.getByRole("group", { name: "Dashboard view" });
+      await user.click(within(viewSwitch).getByRole("button", { name: "Analyses" }));
+      expect(router.state.location.search).toMatchObject({
+        view: "analyses",
+        range: "custom",
+        from: 1757000000000,
+        to: 1757600000000,
+      });
+
+      await user.click(within(viewSwitch).getByRole("button", { name: "Overview" }));
+      // The window survives the round trip, and the default view drops its
+      // param rather than spelling itself out.
+      expect(router.state.location.search).toMatchObject({
+        range: "custom",
+        from: 1757000000000,
+        to: 1757600000000,
+      });
+      expect(router.state.location.search).not.toHaveProperty("view");
+    });
+
+    it("keeps Back on the dashboard when a deep-linked view is switched away", async () => {
+      mockAnalyses();
+      const user = userEvent.setup();
+      const { router } = setup("/web/dashboard?view=analyses");
+      await screen.findByText("Orphaned blobs filled /var");
+
+      const viewSwitch = screen.getByRole("group", { name: "Dashboard view" });
+      await user.click(within(viewSwitch).getByRole("button", { name: "Overview" }));
+      await screen.findByText("Noise removed");
+
+      // Arriving on ?view=analyses makes the switch a step worth keeping: with
+      // `replace`, Back walks out of the dashboard entirely.
+      act(() => router.history.back());
+      await waitFor(() => expect(router.state.location.search).toMatchObject({ view: "analyses" }));
+    });
+
+    it("counts the analysed alerts on a Right-now tile that opens the view", async () => {
+      mockAnalyses();
+      const user = userEvent.setup();
+      const { router } = setup();
+
+      const live = await screen.findByRole("region", { name: "Right now" });
+      const tile = within(live).getByText("Analysed");
+      expect(within(live).getByText("of 37 open")).toBeInTheDocument();
+
+      await user.click(tile);
+      expect(router.state.location.search).toMatchObject({ view: "analyses" });
+      expect(await screen.findByText("Orphaned blobs filled /var")).toBeInTheDocument();
+    });
+
+    // The view and its tile are /record readers. A role with only the
+    // dashboard's own permission (`ro_stats`) gets a 403 from every one of
+    // those calls, so the surfaces are not offered at all rather than offered
+    // and broken — a tile that silently never appears, a view that shows an
+    // error, and a 30-second refetch loop hammering a 403.
+    describe("without permission to read records", () => {
+      function mockStatsOnly() {
+        const seen: string[] = [];
+        mswServer.use(
+          http.get("/api/v1/stats", () => HttpResponse.json(FULL_STATS_RESPONSE)),
+          http.get("/api/v1/comment", () => HttpResponse.json(COMMENTS_RESPONSE)),
+          http.get("/api/v1/record", ({ request }) => {
+            seen.push(request.url);
+            return HttpResponse.json({ errors: ["forbidden"] }, { status: 403 });
+          }),
+        );
+        return seen;
+      }
+
+      beforeEach(() => {
+        authStore.getState().logout();
+        loginWithPerms(["ro_stats"]);
+      });
+
+      it("offers neither the Analysed tile nor the Analyses segment", async () => {
+        const seen = mockStatsOnly();
+        setup();
+        await screen.findByText("Noise removed");
+
+        expect(screen.queryByText("Analysed")).not.toBeInTheDocument();
+        expect(screen.queryByRole("group", { name: "Dashboard view" })).not.toBeInTheDocument();
+        // …and asks for nothing it would be refused.
+        expect(seen.filter((u) => decodeQ(u).includes('"agentic"'))).toHaveLength(0);
+      });
+
+      it("falls back to the Overview on a ?view=analyses deep link", async () => {
+        mockStatsOnly();
+        setup("/web/dashboard?view=analyses");
+
+        expect(await screen.findByText("Noise removed")).toBeInTheDocument();
+        expect(screen.queryByText("No analyses yet")).not.toBeInTheDocument();
+      });
+    });
   });
 
   // W10: a payload missing the `by_notification` dimension entirely (not
@@ -356,8 +572,12 @@ describe("DashboardPage", () => {
       // The record store holds 5 rows in state=open (snapshot.open), but only
       // 2 of them are in the working queue — the rest are snoozed or shelved.
       // The tile must show the queue, like the sidebar badge and the table.
-      http.get("/api/v1/record", () =>
-        HttpResponse.json({ data: [], meta: { count: 0, limit: 1, offset: 0, total: 2 } }),
+      // Only the limit=1 probe answers 2; the analysed page (the other /record
+      // caller on this page) answers with a count of its own.
+      http.get("/api/v1/record", ({ request }) =>
+        decodeQ(request.url).includes('"ack"')
+          ? HttpResponse.json({ data: [], meta: { count: 0, limit: 1, offset: 0, total: 2 } })
+          : HttpResponse.json({ data: [], meta: { count: 0, limit: 1, offset: 0, total: 0 } }),
       ),
     );
     setup();
@@ -628,8 +848,10 @@ describe("DashboardPage — refresh announcements", () => {
     mswServer.use(
       http.get("/api/v1/stats", () => HttpResponse.json(FULL_STATS_RESPONSE)),
       http.get("/api/v1/comment", () => HttpResponse.json(COMMENTS_RESPONSE)),
-      http.get("/api/v1/record", () =>
-        HttpResponse.json({ data: [], meta: { count: 0, limit: 1, offset: 0, total } }),
+      http.get("/api/v1/record", ({ request }) =>
+        new URL(request.url).searchParams.get("limit") === "1"
+          ? HttpResponse.json({ data: [], meta: { count: 0, limit: 1, offset: 0, total } })
+          : HttpResponse.json({ data: [], meta: { count: 0, limit: 50, offset: 0, total: 0 } }),
       ),
     );
     const { client } = setup();

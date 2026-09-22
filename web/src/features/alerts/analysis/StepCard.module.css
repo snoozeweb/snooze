@@ -1,0 +1,71 @@
+/* A step is a row on a list, not a box: the inspector panel is already a
+   surface, and a stack of bordered cards inside it would be a card in a card.
+   A hairline between rows is enough to separate them. */
+.step {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-block: var(--space-2);
+  border-block-start: 1px solid var(--border-muted);
+}
+.step:first-child {
+  border-block-start: 0;
+  padding-block-start: 0;
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+/* The position, in tabular mono so a column of numbers lines up. Muted: it
+   orders the plan, it is not one of its facts. */
+.index {
+  flex-shrink: 0;
+  min-width: var(--space-4);
+  font-family: var(--font-mono);
+  font-feature-settings: var(--font-features-numeric);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+/* The risk chip is the one part of the head that must never be the thing that
+   gets cut: Badge truncates with an ellipsis the moment it is squeezed, so
+   "Medium risk" became "Medium ri…" — or ran off the panel entirely — in a
+   phone-width inspector. Pin it at its intrinsic width and let the action
+   (min-width: 0, wrapping text) absorb the narrow container instead. Not
+   `flex-wrap` on the head: with wrapping enabled the action's max-content
+   basis would push the badge onto its own line on DESKTOP too. */
+.risk {
+  flex-shrink: 0;
+}
+.action {
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  color: var(--text);
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+/* The wrapper owns the copy button so it stays pinned while the <pre> beneath
+   it scrolls sideways. */
+.commandWrap {
+  position: relative;
+  margin-inline-start: var(--space-5);
+}
+.command {
+  /* No wrapping: a shell line broken across two rows is a line you cannot
+     trust after pasting. Scroll instead, and keep the right padding clear of
+     the copy button. */
+  white-space: pre;
+  overflow-x: auto;
+  overflow-wrap: normal;
+  padding-inline-end: var(--space-8);
+}
+.copy {
+  position: absolute;
+  inset-block-start: var(--space-1);
+  inset-inline-end: var(--space-1);
+}

@@ -3,6 +3,7 @@ import { Badge } from "@/shared/ui/Badge";
 import { Code } from "@/shared/ui/Code";
 import { TimeCell } from "@/shared/ui/TimeCell";
 import { severityColor } from "@/lib/format/severity-color";
+import { AnalysedDot } from "./analysis/AnalysedDot";
 import { MessageCell } from "./MessageCell";
 import {
   formatCountdown,
@@ -139,6 +140,11 @@ export const alertColumns: ColumnDef<Record_>[] = [
               ↓
             </span>
           ) : null}
+          {/* "Someone already knows why this fired." Rides here rather than
+              taking a column: the fact is absent on most rows, and a column of
+              blanks would cost Message its width. Renders nothing when the
+              alert carries no analysis. */}
+          <AnalysedDot record={r} />
         </span>
       );
     },

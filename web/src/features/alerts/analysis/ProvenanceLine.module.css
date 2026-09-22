@@ -1,0 +1,16 @@
+/* Same weight as the inspector's other metadata lines (.received,
+   .lastDelivery in AlertRowDetail.module.css) — provenance is context, not the
+   headline. */
+.line {
+  margin: 0;
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+/* Tool tag and subject are identifiers; the app renders identifiers in mono. */
+.who {
+  font-family: var(--font-mono);
+}

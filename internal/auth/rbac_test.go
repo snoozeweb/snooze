@@ -166,6 +166,15 @@ func TestHasPermission(t *testing.T) {
 		{"wildcard", snoozetypes.Claims{Permissions: []string{"rw_all"}}, "anything", true},
 		{"miss", snoozetypes.Claims{Permissions: []string{"read"}}, "write", false},
 		{"nil-perms", snoozetypes.Claims{}, "read", false},
+		// ro_all is the read catch-all: it satisfies any ro_* gate, exactly as
+		// plugins.IsAuthorized already treats it on the CRUD routes.
+		{"ro_all-grants-ro-perm", snoozetypes.Claims{Permissions: []string{"ro_all"}}, "ro_stats", true},
+		{"ro_all-grants-any-ro-perm", snoozetypes.Claims{Permissions: []string{"ro_all"}}, "ro_record", true},
+		// …and nothing else. Never a write, never the write catch-all, never a
+		// permission that merely is not a read.
+		{"ro_all-denies-rw-perm", snoozetypes.Claims{Permissions: []string{"ro_all"}}, "rw_stats", false},
+		{"ro_all-denies-rw-all", snoozetypes.Claims{Permissions: []string{"ro_all"}}, "rw_all", false},
+		{"ro_all-denies-unprefixed", snoozetypes.Claims{Permissions: []string{"ro_all"}}, "read", false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -230,4 +239,9 @@ func TestHasLiteralPermission(t *testing.T) {
 	// The rw_all wildcard must NOT satisfy a literal platform-perm check.
 	require.False(t, HasLiteralPermission(wildcard, "rw_tenant"))
 	require.False(t, HasLiteralPermission(snoozetypes.Claims{}, "rw_tenant"))
+	// The read catch-all is a HasPermission-only convenience: a literal gate
+	// (protected fields, the tenant registry) must stay literal.
+	readAll := snoozetypes.Claims{Permissions: []string{"ro_all"}}
+	require.False(t, HasLiteralPermission(readAll, "ro_tenant"))
+	require.False(t, HasLiteralPermission(readAll, "ro_stats"))
 }

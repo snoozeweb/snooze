@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { Fragment, useCallback, useRef } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 import { IconButton } from "./IconButton";
 import { isEditable } from "@/shared/hooks/useShortcut";
@@ -68,9 +68,30 @@ export function RowDetailsDrawer<T>({
   );
 
   const index = activeKey != null ? rows.findIndex((r) => rowKey(r) === activeKey) : -1;
-  const row = index >= 0 ? rows[index] : undefined;
+  const resolved = index >= 0 ? rows[index] : undefined;
+
+  // `rows` is re-derived on every poll, page and filter change, so the open row
+  // can vanish from under an operator who is mid-sentence in the comment
+  // composer or the analysis editor. Re-deriving `row` from `rows` alone would
+  // then render nothing and tear the whole subtree down, losing the draft with
+  // no prompt. Keep the last row this activeKey resolved to and go on showing
+  // it: the drawer stays on the row it was opened on until the key itself
+  // changes (a retarget) or is cleared (a close). Assigning during render is
+  // safe — the value is a pure function of the props of this same render.
+  const lastRowRef = useRef<{ key: string; row: T } | null>(null);
+  if (activeKey === null) lastRowRef.current = null;
+  else if (resolved !== undefined) lastRowRef.current = { key: activeKey, row: resolved };
+  const snapshot =
+    activeKey !== null && lastRowRef.current?.key === activeKey
+      ? lastRowRef.current.row
+      : undefined;
+  const row = resolved ?? snapshot;
 
   if (!row) return null;
+  // Off-page: the row is still on screen but its position in the list is not a
+  // fact any more, so the counter says so and prev/next go inert rather than
+  // paging from a bogus index.
+  const onPage = index >= 0;
 
   return (
     <Drawer
@@ -110,7 +131,7 @@ export function RowDetailsDrawer<T>({
               <>
                 {actions}
                 <span className={styles.detailsPosition}>
-                  {index + 1} / {rows.length}
+                  {onPage ? index + 1 : "—"} / {rows.length}
                 </span>
                 {/* The key is named in the label so the drawer teaches its own
                     shortcut — hovering the button is how most operators will
@@ -119,14 +140,14 @@ export function RowDetailsDrawer<T>({
                   icon="chevron-up"
                   label="Previous row (K)"
                   size="sm"
-                  disabled={index <= 0}
+                  disabled={!onPage || index <= 0}
                   onClick={() => onNavigate(index - 1)}
                 />
                 <IconButton
                   icon="chevron-down"
                   label="Next row (J)"
                   size="sm"
-                  disabled={index >= rows.length - 1}
+                  disabled={!onPage || index >= rows.length - 1}
                   onClick={() => onNavigate(index + 1)}
                 />
               </>
@@ -134,7 +155,16 @@ export function RowDetailsDrawer<T>({
           >
             {detailsTitle?.(row) ?? "Details"}
           </DrawerTitle>
-          <DrawerBody>{renderDetails(row)}</DrawerBody>
+          {/* Keyed by the row: a retarget (prev/next, J/K, another row) is a
+              different subject, not new props for the same one. Without the
+              key React reconciles the two renders into one instance, so a
+              details subtree holding state — the inspector's open tab, an
+              editor's form defaults captured at mount — carries the previous
+              row's draft onto the new row, and a save addressed by the fresh
+              uid writes it to the wrong record. */}
+          <DrawerBody>
+            <Fragment key={rowKey(row)}>{renderDetails(row)}</Fragment>
+          </DrawerBody>
         </div>
       </DrawerContent>
     </Drawer>
