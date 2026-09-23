@@ -1,4 +1,4 @@
-/* Same weight as the inspector's other metadata lines (.received,
+/* Same size as the inspector's other metadata lines (.received,
    .lastDelivery in AlertRowDetail.module.css) — provenance is context, not the
    headline. */
 .line {
@@ -6,11 +6,29 @@
   display: inline-flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: var(--space-1);
+  column-gap: var(--space-1);
+  row-gap: 2px;
+  min-width: 0;
   font-size: var(--text-xs);
   color: var(--text-muted);
+}
+.part {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  min-width: 0;
+}
+/* The one word of the line that must be read: who — or what — wrote this.
+   Semibold ink, not a colour: it is a fact about authorship, not an alarm. */
+.kind {
+  font-weight: var(--weight-semibold);
+  color: var(--text-strong);
 }
 /* Tool tag and subject are identifiers; the app renders identifiers in mono. */
 .who {
   font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+.sep {
+  color: var(--text-muted);
 }

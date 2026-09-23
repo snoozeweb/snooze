@@ -1,0 +1,35 @@
+.meter {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  color: var(--text);
+  white-space: nowrap;
+}
+.segments {
+  display: inline-flex;
+  gap: 2px;
+}
+.segment {
+  width: 5px;
+  height: 10px;
+  border-radius: 1px;
+  background: var(--border);
+}
+.segment[data-on] {
+  background: var(--text-strong);
+}
+/* Low confidence is the one level that asks for caution: the word, not a
+   hue, carries it — muted ink says "don't lean on this". */
+.meter[data-confidence="low"] {
+  color: var(--text-muted);
+}
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

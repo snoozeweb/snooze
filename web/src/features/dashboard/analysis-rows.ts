@@ -17,9 +17,21 @@
 // em-dash cause, an em-dash plan and an absent badge.
 import type { Condition } from "@/lib/condition/types";
 import { encodeText } from "@/lib/condition/text";
-import { CONFIDENCE_LEVELS, isConfidence, type Confidence } from "@/features/alerts/analysis/enums";
+import { severityRank } from "@/lib/format/severity-color";
+import { isConfidence, type Confidence } from "@/features/alerts/analysis/enums";
 import type { Record_ } from "@/features/alerts/types";
 import { analysisEpoch } from "@/features/alerts/analysis/time";
+import {
+  analysisIsStale,
+  authorOf,
+  isPlanStatus,
+  isStepWhen,
+  readCaveats,
+  splitSummary,
+  type Author,
+  type PlanStatus,
+  type StepWhen,
+} from "@/features/alerts/analysis/verdict";
 
 /**
  * The alerts this view is about, as one population expressed two ways.
@@ -82,7 +94,41 @@ export function uidSearch(uid: string): string {
   return encodeText({ type: "EQUALS", field: "uid", value: uid });
 }
 
-/** One remediation step, as the panel shows it beside the cause. */
+/**
+ * How many alerts the alerts page loads per page (its `PAGE_SIZE`).
+ *
+ * Duplicated rather than imported because the alerts page does not export it;
+ * `analysis-rows.test.ts` reads the page's source and fails the day the two
+ * disagree. It matters because of {@link openAlertSearch}.
+ */
+export const ALERTS_PAGE_SIZE = 50;
+
+/** The analysed population, in the alerts page's search DSL. */
+export function analysedSetSearch(): string {
+  return encodeText(ANALYSED_OPEN_ALERTS);
+}
+
+/**
+ * The `?search=` an opened row lands the alerts page on.
+ *
+ * Preferably the whole analysed set: the inspector's prev/next then walks the
+ * analysed alerts — the queue the reader came from — instead of reading "1 / 1"
+ * on a table pinned to one row. That is only safe while the set fits on the
+ * page the alerts table loads: it fetches ONE page (offset 0, `PAGE_SIZE` rows,
+ * in its own `date_epoch` order, not this view's), and a drawer whose uid is
+ * not on that page closes itself as a stale link. At or under a page, every
+ * analysed alert is on page 1 whatever the order, so the target is too. Past
+ * it, fall back to pinning the one uid — a working drawer with no neighbours
+ * beats a neighbourly one that never opens.
+ *
+ * `analysedTotal` is the server's `meta.total` for the population, not the
+ * length of the list on screen: a filtered view still lands on the full set.
+ */
+export function openAlertSearch(uid: string, analysedTotal: number): string {
+  return analysedTotal <= ALERTS_PAGE_SIZE ? analysedSetSearch() : uidSearch(uid);
+}
+
+/** One remediation step, as the view shows it. */
 export type PlanStep = {
   /** What to do. The one part a step is useless without. */
   action: string;
@@ -90,6 +136,8 @@ export type PlanStep = {
   command: string;
   /** `low` | `medium` | `high`, or "" when the subtree named something else. */
   risk: RiskLevel | "";
+  /** `now` | `follow_up`, or undefined when the step does not say (older analyses). */
+  when: StepWhen | undefined;
 };
 
 /** The risk levels a step's badge knows how to paint. */
@@ -100,11 +148,20 @@ function isRisk(value: unknown): value is RiskLevel {
   return typeof value === "string" && (RISK_LEVELS as readonly string[]).includes(value);
 }
 
-/** The row shape the panel renders — one analysed alert, already parsed. */
+/**
+ * How many steps carry a risk worth printing. Low is the default answer and is
+ * never marked (the shared risk rule with the inspector), so the count is of
+ * the steps that change who may run them.
+ */
+export function riskyStepCount(plan: readonly PlanStep[]): number {
+  return plan.filter((s) => s.risk === "medium" || s.risk === "high").length;
+}
+
+/** The row shape the view renders — one analysed alert, already parsed. */
 export type AnalysedRow = {
   /** Record uid; the deep link's whole point, so a row without one is dropped. */
   uid: string;
-  /** Raw severity label, for the leading dot. */
+  /** Raw severity label, for the badge, the rail and the urgency sort. */
   severity: string;
   host: string;
   /**
@@ -117,16 +174,32 @@ export type AnalysedRow = {
   /** `labels.alertname`, falling back to the record's process. The fallback
    *  when a record carries no message of its own. */
   alertname: string;
-  /** `root_cause.summary` — the one-line cause, or "—" when there isn't one. */
+  /**
+   * The alert's lifecycle state, raw (`""` reads as open). The population
+   * deliberately keeps acknowledged rows, so the row has to say which it is.
+   */
+  state: string;
+  /** Whether a snooze filter is holding the alert (`snoozed` names the filter). */
+  snoozed: boolean;
+  /** `date_epoch` — the last time the alert fired (bumped on every refire). */
+  firedAt: number | undefined;
+  /** `root_cause.summary` as written, or "—" when there isn't one. */
   summary: string;
-  /** Absent when the subtree carries no level this app knows: the badge is omitted. */
+  /** The line a triager reads first (see `splitSummary`). */
+  headline: string;
+  /** Everything behind the headline; "" when the summary is the whole story. */
+  body: string;
+  /** The limits of the investigation, legacy "caveat:" evidence folded in. */
+  caveats: string[];
+  /** Absent when the subtree carries no level this app knows: the meter is omitted. */
   confidence: Confidence | undefined;
+  /** The plan's verdict, when the analysis states one. */
+  status: PlanStatus | undefined;
   /** How many steps the remediation plan carries. */
   steps: number;
   /**
-   * Those steps, parsed. The panel shows the plan beside the cause, so the
-   * count alone is no longer enough — but it is kept, because the count is what
-   * a plan whose `steps` is malformed can still report honestly.
+   * Those steps, parsed. The count is kept beside them because it is what a
+   * plan whose `steps` is malformed can still report honestly.
    */
   plan: PlanStep[];
   automatable: boolean;
@@ -134,6 +207,10 @@ export type AnalysedRow = {
   analysedAt: number | undefined;
   /** `analysis.by` — the identity that wrote it (an agent login, or a human). */
   by: string;
+  /** Who wrote it, as the reader needs to know it: a tool, or a person. */
+  author: Author;
+  /** The alert fired again after the analysis was written. */
+  stale: boolean;
 };
 
 function asObject(value: unknown): Record<string, unknown> | undefined {
@@ -154,23 +231,27 @@ function asString(value: unknown): string {
 export function analysedAtEpoch(at: unknown): number | undefined {
   // One converter for every surface that reads `analysis.at`: the sanity
   // window (Go's zero time, bare years, far-future stamps) lives in
-  // features/alerts/analysis/time.ts so the inspector and this table can never
+  // features/alerts/analysis/time.ts so the inspector and this view can never
   // disagree about which stamps are worth showing.
   return analysisEpoch(at);
 }
 
-/** What a missing cause reads as, matching the table's other empty cells. */
-const EM_DASH = "\u2014";
+/** What a missing cause reads as, matching the app's other empty cells. */
+const EM_DASH = "—";
 
 /**
- * toAnalysedRow parses one record into a panel row.
+ * toAnalysedRow parses one record into a view row.
  *
- * It returns undefined only for a record this panel was never counting — no
+ * It returns undefined only for a record this view was never counting — no
  * uid to link, or no `agentic` subtree at all. Everything else becomes a row,
- * however malformed: the count above the list is the server's `meta.total` over
+ * however malformed: the Analysed tile counts the server's `meta.total` over
  * the same `EXISTS agentic` predicate, so dropping a parsed-but-odd record here
- * would print a number larger than the list under it. A degraded row says what
+ * would print a number larger than the list it opens. A degraded row says what
  * it knows and leaves the rest blank, which is at least a link to the alert.
+ *
+ * The fields the contract grew later (`detail`, `caveats`, `status`, `when`)
+ * are all optional and all read loosely: the analyses already stored predate
+ * them, and the view must read those exactly as well as it did before.
  */
 export function toAnalysedRow(record: Record_): AnalysedRow | undefined {
   const uid = asString(record.uid);
@@ -189,6 +270,8 @@ export function toAnalysedRow(record: Record_): AnalysedRow | undefined {
   // A hand-written subtree sometimes puts the sentence where the object goes.
   const summary =
     asString(rootCause?.["summary"]) || asString(rootCauseRaw) || asString(agentic["summary"]);
+  const { headline, body } = splitSummary(summary, asString(rootCause?.["detail"]));
+  const { caveats } = readCaveats(rootCause);
 
   const plan = asObject(agentic["remediation_plan"]);
   const planSteps = plan?.["steps"];
@@ -201,13 +284,16 @@ export function toAnalysedRow(record: Record_): AnalysedRow | undefined {
     ? planSteps.map((raw) => {
         const step = asObject(raw);
         const riskRaw = step?.["risk"];
+        const whenRaw = step?.["when"];
         return {
           action: asString(step?.["action"]) || asString(raw),
           command: asString(step?.["command"]),
           risk: isRisk(riskRaw) ? riskRaw : "",
+          when: isStepWhen(whenRaw) ? whenRaw : undefined,
         };
       })
     : [];
+  const statusRaw = plan?.["status"];
   const analysis = asObject(agentic["analysis"]);
 
   // `labels` is an ingest-side map (Prometheus/AlertManager and friends put the
@@ -216,6 +302,11 @@ export function toAnalysedRow(record: Record_): AnalysedRow | undefined {
   const labels = asObject(record["labels"]);
   const alertname = asString(labels?.["alertname"]) || asString(record.process);
   const message = asString(record.message);
+  const firedRaw: unknown = record.date_epoch;
+  const firedAt =
+    typeof firedRaw === "number" && Number.isFinite(firedRaw) && firedRaw > 0
+      ? firedRaw
+      : undefined;
 
   return {
     uid,
@@ -223,43 +314,126 @@ export function toAnalysedRow(record: Record_): AnalysedRow | undefined {
     host: asString(record.host),
     message,
     alertname,
+    state: asString(record.state),
+    // `snoozed` names the filter holding the alert; any non-empty value is a hold.
+    snoozed: Boolean(record["snoozed"]),
+    firedAt,
     summary: summary || EM_DASH,
+    headline: headline || EM_DASH,
+    body,
+    caveats,
     confidence,
+    status: isPlanStatus(statusRaw) ? statusRaw : undefined,
     steps,
     plan: planRows,
     automatable: plan?.["automatable"] === true,
     analysedAt: analysedAtEpoch(analysis?.["at"]),
     by: asString(analysis?.["by"]),
+    author: authorOf(analysis),
+    stale: analysisIsStale(firedAt, analysis?.["at"]),
   };
 }
 
-/** The automatable chip's three positions. */
+/** The automatable filter's three positions. */
 export type AutomatableFilter = "any" | "yes" | "no";
 
 /**
- * matchesFilters applies the panel's two local filters to one row.
- *
- * Deselecting every confidence is taken literally — it matches nothing, and the
- * panel says so — rather than silently meaning "all". A filter strip that
- * quietly ignores the operator is worse than an empty list they can undo with
- * one click.
- *
- * A degraded row (no level in its subtree) is not any of the three levels, so
- * it survives only while the chips are untouched: an operator who has asked for
- * "high and medium" is asking a question this row cannot answer, and one who
- * has not narrowed at all should see everything the count counted.
+ * The confidence filter: a threshold, not a set. "Show me what I can lean on"
+ * is the question — nobody filters for "low and high but not medium", and a
+ * three-way multi-select that starts all-on made its own state unreadable.
  */
-export function matchesFilters(
-  row: AnalysedRow,
-  confidences: readonly Confidence[],
-  automatable: AutomatableFilter,
-): boolean {
-  if (row.confidence === undefined) {
-    if (confidences.length !== CONFIDENCE_LEVELS.length) return false;
-  } else if (!confidences.includes(row.confidence)) {
-    return false;
+export type ConfidenceFilter = "any" | "medium" | "high";
+
+/** The verdict filter: one plan status, or all of them. */
+export type VerdictFilter = "any" | PlanStatus;
+
+export type AnalysisFilters = {
+  confidence: ConfidenceFilter;
+  automatable: AutomatableFilter;
+  verdict: VerdictFilter;
+};
+
+/** Nothing narrowed — every row the server counted. */
+export const ANY_FILTERS: AnalysisFilters = {
+  confidence: "any",
+  automatable: "any",
+  verdict: "any",
+};
+
+export function filtersActive(f: AnalysisFilters): boolean {
+  return f.confidence !== "any" || f.automatable !== "any" || f.verdict !== "any";
+}
+
+const CONFIDENCE_FLOOR: Record<Exclude<ConfidenceFilter, "any">, readonly Confidence[]> = {
+  medium: ["high", "medium"],
+  high: ["high"],
+};
+
+/**
+ * matchesFilters applies the view's local filters to one row.
+ *
+ * A degraded row (no level, no verdict) survives only the "Any" position of
+ * the question it cannot answer: an operator who asked for "Medium+" is asking
+ * something this row does not say, and one who has not narrowed at all should
+ * see everything the count counted.
+ */
+export function matchesFilters(row: AnalysedRow, f: AnalysisFilters): boolean {
+  if (f.confidence !== "any") {
+    if (row.confidence === undefined || !CONFIDENCE_FLOOR[f.confidence].includes(row.confidence)) {
+      return false;
+    }
   }
-  if (automatable === "yes" && !row.automatable) return false;
-  if (automatable === "no" && row.automatable) return false;
+  if (f.automatable === "yes" && !row.automatable) return false;
+  if (f.automatable === "no" && row.automatable) return false;
+  if (f.verdict !== "any" && row.status !== f.verdict) return false;
   return true;
+}
+
+/**
+ * The two orders the view offers. `urgent` is the default and is omitted from
+ * the URL; `recent` round-trips as `?sort=recent`.
+ */
+export type AnalysesSort = "urgent" | "recent";
+
+/**
+ * Whether somebody already has the alert in hand: acknowledged, or held by a
+ * snooze filter. Re-escalated is NOT held — escalation is the alert coming back
+ * to the queue after an acknowledgement ran out.
+ */
+function isHeld(row: AnalysedRow): boolean {
+  return row.state === "ack" || row.snoozed;
+}
+
+/** Descending on a number that may be missing; missing sorts last. */
+function desc(a: number | undefined, b: number | undefined): number {
+  return (b ?? -Infinity) - (a ?? -Infinity);
+}
+
+function compareUrgent(a: AnalysedRow, b: AnalysedRow): number {
+  // The severity ladder is the app's own (server-installed, with the built-in
+  // syslog fallback): LOWER is worse. An unrecognised label is not evidence of
+  // urgency, so it sorts after every known one.
+  const sev = (severityRank(a.severity) ?? Infinity) - (severityRank(b.severity) ?? Infinity);
+  if (sev !== 0 && !Number.isNaN(sev)) return sev;
+  const held = Number(isHeld(a)) - Number(isHeld(b));
+  if (held !== 0) return held;
+  return desc(a.firedAt, b.firedAt);
+}
+
+function compareRecent(a: AnalysedRow, b: AnalysedRow): number {
+  return desc(a.analysedAt, b.analysedAt);
+}
+
+/**
+ * sortRows orders the fetched rows client-side.
+ *
+ * "Most urgent" is the default because the view is a work queue: the severity
+ * the alert fired at, then whether anybody has it in hand, then how recently it
+ * fired. "Newest analysis" is the question "what did the agent just write".
+ * Ties fall back to the uid so a 30-second refetch never shuffles equal rows
+ * under the reader's eye.
+ */
+export function sortRows(rows: readonly AnalysedRow[], sort: AnalysesSort): AnalysedRow[] {
+  const compare = sort === "recent" ? compareRecent : compareUrgent;
+  return [...rows].sort((a, b) => compare(a, b) || (a.uid < b.uid ? -1 : a.uid > b.uid ? 1 : 0));
 }

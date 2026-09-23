@@ -1,25 +1,44 @@
 // The Analysis tab of the alert inspector: why the alert fired and what to do
 // about it, as the alert-rca agent loop (or an operator) recorded it.
 //
-// One query drives this pane AND the tab label AND the inspector's "Cause:"
-// header line — they all call useAnalysis with the same uid, so TanStack Query
-// serves the three readers from one request.
+// One query drives this pane AND the tab's marker AND the inspector's one-line
+// header pointer — they all call useAnalysis with the same uid, so TanStack
+// Query serves the three readers from one request.
+//
+// The pane reads top to bottom in the order an on-call engineer needs it:
+//
+//   1. who wrote it and how far to trust it (provenance + confidence), and
+//      whether it still describes this occurrence (the stale notice);
+//   2. the verdict — act / watch / recovered, and the cause in one line;
+//   3. what to do, with whether it can run unattended;
+//   4. the caveats that qualify all of the above;
+//   5. the evidence, folded: support, re-checked only when doubting.
+//
+// It used to run justification → evidence → plan → "Automatable: No", which
+// put the one line a triager acts on under a paragraph and a list.
 import { Suspense, lazy, useEffect, useState } from "react";
 import { Badge } from "@/shared/ui/Badge";
 import { Button } from "@/shared/ui/Button";
 import { ErrorBoundary } from "@/shared/ui/ErrorBoundary";
+import { IconButton } from "@/shared/ui/IconButton";
 import { InlineError } from "@/shared/ui/InlineError";
+import { Menu, MenuContent, MenuItem, MenuTrigger } from "@/shared/ui/Menu";
 import { Skeleton } from "@/shared/ui/Skeleton";
+import { Icon } from "@/shared/icons/Icon";
 import { describeError } from "@/lib/api/errorMessage";
 import { useAnalysis } from "./api";
 import { AnalysisEmpty } from "./AnalysisEmpty";
+import { CaveatsCallout } from "./CaveatsCallout";
 import { ClearAnalysisDialog } from "./ClearAnalysisDialog";
-import { ConfidenceBadge } from "./ConfidenceBadge";
+import { ConfidenceMeter } from "./ConfidenceMeter";
+import { Disclosure } from "./Disclosure";
+import { EvidenceList } from "./EvidenceList";
 import { PlanView } from "./PlanView";
 import { ProvenanceLine } from "./ProvenanceLine";
 import { RootCauseView } from "./RootCauseView";
 import { isConfidence } from "./enums";
 import { useCanWriteAnalysis } from "./perms";
+import { analysisIsStale, isPlanStatus, readCaveats } from "./verdict";
 import styles from "./AnalysisTab.module.css";
 
 /**
@@ -53,6 +72,13 @@ export type AnalysisTabProps = {
    */
   uid: string | undefined;
   /**
+   * The alert's `date_epoch` — when it last fired. Compared with the
+   * analysis's own timestamp to say when the alert has fired again since it
+   * was written (the conclusion may describe an earlier occurrence). Absent
+   * means "unknown", and no notice is shown.
+   */
+  lastEpoch?: number | undefined;
+  /**
    * Told whenever the pane enters or leaves the editor (and `false` on
    * unmount). The surfaces *around* this one — the inspector's tab strip, the
    * drawer's prev/next — can destroy it with a single click, so they need to
@@ -61,7 +87,24 @@ export type AnalysisTabProps = {
   onEditingChange?: ((editing: boolean) => void) | undefined;
 };
 
-export function AnalysisTab({ uid, onEditingChange }: AnalysisTabProps) {
+/**
+ * "This may be about an earlier occurrence." A notice, not an alarm — nothing
+ * failed, the reader just needs to weigh the conclusion accordingly — so it
+ * is neutral ink on the raised surface, with no role that interrupts.
+ */
+function StaleNotice() {
+  return (
+    <div className={styles.notice}>
+      <Icon name="info" size={16} className={styles.noticeIcon!} />
+      <p className={styles.noticeText}>
+        This alert fired again after the analysis was written — it may describe an earlier
+        occurrence.
+      </p>
+    </div>
+  );
+}
+
+export function AnalysisTab({ uid, lastEpoch, onEditingChange }: AnalysisTabProps) {
   const [mode, setMode] = useState<AnalysisMode>("view");
   const [clearOpen, setClearOpen] = useState(false);
   const canWrite = useCanWriteAnalysis();
@@ -170,44 +213,71 @@ export function AnalysisTab({ uid, onEditingChange }: AnalysisTabProps) {
     );
   }
 
+  // Guarded, not asserted: every one of these is whatever the stored
+  // document carries, and a value this bundle does not know renders as
+  // "undefined confidence" (or an unlabelled chip) if handed straight on.
+  const confidence = isConfidence(rootCause.confidence) ? rootCause.confidence : undefined;
+  const plan = agentic?.remediation_plan;
+  const status = isPlanStatus(plan?.status) ? plan.status : undefined;
+  const { evidence, caveats } = readCaveats(rootCause);
+  const stale = analysisIsStale(lastEpoch, agentic?.analysis?.at);
+
   return (
     <div className={styles.pane}>
       {refreshError}
-      <div className={styles.header}>
-        <div className={styles.trust}>
-          {/* Guarded, not asserted: `confidence` is whatever the document
-              carries, and a value this bundle does not know renders as
-              "undefined confidence" if handed straight to the badge. */}
-          {isConfidence(rootCause.confidence) ? (
-            <ConfidenceBadge confidence={rootCause.confidence} />
-          ) : null}
-          <ProvenanceLine analysis={agentic?.analysis} />
+      {/* The byline, the freshness notice and the verdict are one block: the
+          first two qualify the third, so they sit tight against it while the
+          sections below are spaced apart. */}
+      <div className={styles.lead}>
+        <div className={styles.header}>
+          <div className={styles.trust}>
+            <ProvenanceLine analysis={agentic?.analysis} />
+            {confidence !== undefined ? <ConfidenceMeter confidence={confidence} /> : null}
+          </div>
+          <div className={styles.actions} data-slot="analysis-actions">
+            {writableUid !== undefined ? (
+              <>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  leadingIcon="edit"
+                  onClick={() => setMode("edit")}
+                >
+                  Edit
+                </Button>
+                {/* Remove is one deliberate step away, behind ⋯, and still
+                    guarded by its dialog there. A red button beside the
+                    confidence read as part of the verdict — and sat one
+                    mis-click from Edit. */}
+                <Menu>
+                  <MenuTrigger>
+                    <IconButton
+                      icon="more-horizontal"
+                      label="More analysis actions"
+                      size="sm"
+                      withTooltip={false}
+                    />
+                  </MenuTrigger>
+                  <MenuContent>
+                    <MenuItem danger leadingIcon="trash" onSelect={() => setClearOpen(true)}>
+                      Remove
+                    </MenuItem>
+                  </MenuContent>
+                </Menu>
+              </>
+            ) : null}
+          </div>
         </div>
-        <div className={styles.actions} data-slot="analysis-actions">
-          {writableUid !== undefined ? (
-            <>
-              <Button
-                size="sm"
-                variant="secondary"
-                leadingIcon="edit"
-                onClick={() => setMode("edit")}
-              >
-                Edit
-              </Button>
-              <Button
-                size="sm"
-                variant="ghostDanger"
-                leadingIcon="trash"
-                onClick={() => setClearOpen(true)}
-              >
-                Remove
-              </Button>
-            </>
-          ) : null}
-        </div>
+        {stale ? <StaleNotice /> : null}
+        <RootCauseView rootCause={rootCause} status={status} showConfidence={false} />
       </div>
-      <RootCauseView rootCause={rootCause} showConfidence={false} />
-      <PlanView plan={agentic?.remediation_plan} />
+      <PlanView plan={plan} />
+      <CaveatsCallout caveats={caveats} />
+      {evidence.length > 0 ? (
+        <Disclosure label={`Evidence · ${evidence.length}`}>
+          <EvidenceList items={evidence} />
+        </Disclosure>
+      ) : null}
       {writableUid !== undefined ? (
         <ClearAnalysisDialog uid={writableUid} open={clearOpen} onOpenChange={setClearOpen} />
       ) : null}

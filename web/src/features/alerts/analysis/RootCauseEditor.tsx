@@ -1,8 +1,11 @@
 // Author the "why did this fire" half of an analysis.
 //
-// The summary comes first and is the only required prose: it is the line the
-// alert table, the inspector header and every other reader quote. Scope,
-// evidence and confidence qualify it.
+// The summary comes first and is the only required prose: it is the headline
+// the inspector header, the Analysis tab and the dashboard all quote, so it is
+// asked for as ONE sentence — the explanation behind it goes in Detail. (The
+// field used to invite "one or two sentences", and a 430-character summary
+// set in headline type was the result.) Scope, evidence, caveats and
+// confidence qualify it.
 import { useId } from "react";
 import {
   useWatch,
@@ -40,12 +43,14 @@ export function RootCauseEditor({
 }: RootCauseEditorProps) {
   const baseId = useId();
   const summaryId = `${baseId}-summary`;
+  const detailId = `${baseId}-detail`;
   const scopeId = `${baseId}-scope`;
   const confidenceLabelId = `${baseId}-confidence-label`;
   const confidenceHintId = `${baseId}-confidence-hint`;
 
   const confidence = useWatch({ control, name: "root_cause.confidence" });
   const summaryError = describeFieldError("Summary", errorAt(errors, "root_cause.summary"));
+  const detailError = describeFieldError("Detail", errorAt(errors, "root_cause.detail"));
   const scopeError = describeFieldError("Scope", errorAt(errors, "root_cause.scope"));
   const confidenceError = describeFieldError(
     "Confidence",
@@ -70,13 +75,42 @@ export function RootCauseEditor({
         </div>
         <Textarea
           id={summaryId}
-          rows={3}
-          placeholder="What actually went wrong, in one or two sentences."
-          aria-describedby={`${summaryId}-count`}
+          rows={2}
+          placeholder="What actually went wrong, in one sentence."
+          aria-describedby={`${summaryId}-count ${summaryId}-hint`}
           invalid={summaryError !== undefined}
           errorMessage={summaryError}
           {...register("root_cause.summary")}
         />
+        <p className={styles.hint} id={`${summaryId}-hint`}>
+          One sentence — the headline a triager reads first. Put the explanation in Detail.
+        </p>
+      </div>
+
+      <div className={styles.field}>
+        <div className={styles.labelRow}>
+          <label className={styles.label} htmlFor={detailId}>
+            Detail
+          </label>
+          <CharCounter
+            control={control}
+            name="root_cause.detail"
+            limit={ANALYSIS_LIMITS.detail}
+            id={`${detailId}-count`}
+          />
+        </div>
+        <Textarea
+          id={detailId}
+          rows={4}
+          placeholder="The chain of events, the timings, why other causes were ruled out."
+          aria-describedby={`${detailId}-count ${detailId}-hint`}
+          invalid={detailError !== undefined}
+          errorMessage={detailError}
+          {...register("root_cause.detail")}
+        />
+        <p className={styles.hint} id={`${detailId}-hint`}>
+          Optional. Shown under the headline.
+        </p>
       </div>
 
       <div className={styles.field}>
@@ -105,6 +139,14 @@ export function RootCauseEditor({
       </div>
 
       <EvidenceListEditor
+        control={control}
+        setValue={setValue}
+        errors={errors}
+        validateOnChange={validateOnChange}
+      />
+
+      <EvidenceListEditor
+        kind="caveats"
         control={control}
         setValue={setValue}
         errors={errors}

@@ -25,6 +25,19 @@ describe("ViewSwitch", () => {
     expect(onChange).toHaveBeenCalledWith("analyses");
     expect(group).toBeInTheDocument();
   });
+
+  // The segment says how much is behind it before it is opened: "Analyses 3"
+  // is a queue, "Analyses" is a place that may be empty.
+  it("counts the analysed alerts on the Analyses segment, and only when there are some", () => {
+    const { rerender } = render(
+      <ViewSwitch value="overview" onChange={vi.fn()} analysedCount={3} />,
+    );
+    expect(screen.getByRole("button", { name: "Analyses 3" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Overview" })).toHaveTextContent(/^Overview$/);
+
+    rerender(<ViewSwitch value="overview" onChange={vi.fn()} analysedCount={0} />);
+    expect(screen.getByRole("button", { name: "Analyses" })).toBeInTheDocument();
+  });
 });
 
 // The active segment's fill IS the focus colour in dark: --accent-solid and

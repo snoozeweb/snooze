@@ -301,3 +301,61 @@ func TestValidateAcceptsCleanStrings(t *testing.T) {
 	}
 	require.Empty(t, req.Validate())
 }
+
+func TestDecodeAgenticRequestAcceptsVerdictFields(t *testing.T) {
+	body := `{
+      "root_cause": {
+        "summary": "a fleet rollout lacked runAsUser; the corrective re-roll fixed it",
+        "detail": "Revision 24 never got an available replica; revision 25 added runAsUser.",
+        "caveats": ["rev-24 pod events had expired; causation is inferred from the diff"],
+        "confidence": "high"
+      },
+      "remediation_plan": {
+        "status": "self_resolved",
+        "steps": [
+          {"action": "nothing to do on this deployment", "risk": "low", "when": "now"},
+          {"action": "ship securityContext with image bumps", "risk": "medium", "when": "follow_up"}
+        ]
+      }
+    }`
+	req, err := DecodeAgenticRequest([]byte(body))
+	require.NoError(t, err)
+	require.Equal(t, PlanSelfResolved, req.RemediationPlan.Status)
+	require.Equal(t, StepNow, req.RemediationPlan.Steps[0].When)
+	require.Equal(t, StepFollowUp, req.RemediationPlan.Steps[1].When)
+	require.Len(t, req.RootCause.Caveats, 1)
+	require.NotEmpty(t, req.RootCause.Detail)
+}
+
+func TestValidateVerdictFields(t *testing.T) {
+	caveats := make([]string, MaxCaveats+1)
+	for i := range caveats {
+		caveats[i] = "c"
+	}
+	req := AgenticRequest{
+		RootCause: RootCause{
+			Summary: "s", Confidence: ConfidenceHigh,
+			Detail:  strings.Repeat("d", MaxDetailLen+1),
+			Caveats: caveats,
+		},
+		RemediationPlan: RemediationPlan{
+			Status:   "fixed-itself",
+			Steps:    []Step{{Action: "a", Risk: RiskLow, When: "later"}},
+			Rollback: []Step{{Action: "b", Risk: RiskLow, When: StepNow}},
+		},
+	}
+	details := req.Validate().Details()
+	require.Equal(t, "must be at most 2000 characters", details["root_cause.detail"])
+	require.Equal(t, "must hold at most 5 items", details["root_cause.caveats"])
+	require.Equal(t, "must be one of action_required|self_resolved|monitoring", details["remediation_plan.status"])
+	require.Equal(t, "must be one of now|follow_up", details["remediation_plan.steps[0].when"])
+	require.NotContains(t, details, "remediation_plan.rollback[0].when")
+
+	req = AgenticRequest{
+		RootCause:       RootCause{Summary: "s", Confidence: ConfidenceHigh, Caveats: []string{" ", strings.Repeat("c", MaxCaveatLen+1)}},
+		RemediationPlan: RemediationPlan{Steps: []Step{{Action: "a", Risk: RiskLow}}},
+	}
+	details = req.Validate().Details()
+	require.Equal(t, "must not be empty", details["root_cause.caveats[0]"])
+	require.Equal(t, "must be at most 300 characters", details["root_cause.caveats[1]"])
+}

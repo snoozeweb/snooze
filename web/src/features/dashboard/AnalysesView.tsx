@@ -2,156 +2,201 @@
 // the cause of.
 //
 // The alerts table answers "what is firing"; this answers "what has been
-// explained, and can any of it be handed to a machine". It is a list of real
-// links rather than a chart — every row's point is to be opened.
+// explained, what do I do about it, and can any of it be handed to a machine".
 //
 // Every analysed alert is listed, not a top-N: the view is a work queue, and a
 // ratio against the open backlog belongs to the Right-now tile that brought the
-// reader here, not above a list it does not describe.
+// reader here, not above a list it does not describe. As a work queue it is
+// ordered by urgency by default — the severity the alert fired at, whether
+// anybody has it in hand, how recently it fired — with "newest analysis" one
+// click away for the reader who wants to see what the agent just wrote.
 //
-// Each row carries the two halves of an analysis side by side — the cause and
-// the plan — because they are read together: a cause without its plan is a
-// diagnosis nobody can act on, and a plan without its cause is a set of
-// commands nobody can justify. Rows are as tall as those two need.
-//
-// Not a column grid. An analysis is two blocks of prose and half a dozen
-// scalars, and a seven-column table gave the scalars a column each: four
-// one-line cells pinned to the top of a 250px row, printing the same
-// "just now / agent-bot" down the page while the cause wrapped in a third of
-// the width. So a row is a header bar — the alert on the left, every scalar set
-// right on the same line — over the two things worth reading, and the whole
-// width below belongs to them. Three regions, three quiet boundaries: the rule
-// under the header, the rule between the cause and the plan, and the 3px
-// severity rail the alerts table already paints on a row (DataTable's
-// `--row-accent`). No fills, no panels, no nested cards.
+// Each row (AnalysisRow) reads collapsed as a triage line — verdict, headline,
+// trust, the shape of the plan — and expands in place into the whole analysis.
+// The rows are articles the keyboard can walk: J/K or the arrows move between
+// them, Enter opens the alert, Space or E expands.
 //
 // Live, not windowed: the rows are the record store as it stands right now, so
 // the page's time-range picker is not on screen in this view.
-import { useMemo, useState, type CSSProperties } from "react";
-import { Link } from "@tanstack/react-router";
-import { Badge } from "@/shared/ui/Badge";
+import { useCallback, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useNavigate, useSearch } from "@tanstack/react-router";
+import { Button } from "@/shared/ui/Button";
 import { Card } from "@/shared/ui/Card";
 import { InlineError } from "@/shared/ui/InlineError";
 import { Skeleton } from "@/shared/ui/Skeleton";
-import { TimeCell } from "@/shared/ui/TimeCell";
+import { isEditable } from "@/shared/hooks/useShortcut";
 import { describeError } from "@/lib/api/errorMessage";
-import { severityColor, severityToken } from "@/lib/format/severity-color";
-import { severityDisplayLabel } from "@/features/alerts/format";
-import { AutomatableBadge } from "@/features/alerts/analysis/AutomatableBadge";
-import { ConfidenceBadge } from "@/features/alerts/analysis/ConfidenceBadge";
-import {
-  CONFIDENCE_LEVELS,
-  confidenceLabel,
-  type Confidence,
-} from "@/features/alerts/analysis/enums";
+import { PLAN_STATUSES, planStatusLabel } from "@/features/alerts/analysis/verdict";
+import { ChoiceGroup, type Choice } from "./ChoiceGroup";
 import { PanelEmpty, PanelHint } from "./Panel";
+import { AnalysisRow } from "./AnalysisRow";
 import { useAnalysedOpenAlerts } from "./analyses-query";
 import {
+  ANY_FILTERS,
+  filtersActive,
   matchesFilters,
+  openAlertSearch,
+  sortRows,
   toAnalysedRow,
-  uidSearch,
-  type AnalysedRow,
+  type AnalysesSort,
+  type AnalysisFilters,
   type AutomatableFilter,
+  type ConfidenceFilter,
+  type VerdictFilter,
 } from "./analysis-rows";
 import styles from "./AnalysesView.module.css";
 
-const AUTOMATABLE_CHIPS: { id: AutomatableFilter; label: string }[] = [
+const CONFIDENCE_CHOICES: readonly Choice<ConfidenceFilter>[] = [
   { id: "any", label: "Any" },
-  { id: "yes", label: "Yes" },
-  { id: "no", label: "No" },
+  { id: "medium", label: "Medium+", hint: "Medium or high confidence" },
+  { id: "high", label: "High", hint: "High confidence only" },
 ];
 
-/** What a missing value reads as. */
-const EM_DASH = "—";
+const AUTOMATABLE_CHOICES: readonly Choice<AutomatableFilter>[] = [
+  { id: "any", label: "Any" },
+  { id: "yes", label: "Yes", hint: "Plans safe to run unattended" },
+  { id: "no", label: "No", hint: "Plans that need a human" },
+];
 
-/**
- * How many steps a card shows before it defers to the inspector.
- *
- * A plan may carry twenty steps. Printing all of them lets one analysis push
- * every other off the screen, which costs more than the steps are worth here:
- * this surface is for deciding which alert to open, and the one it opens has
- * the whole plan.
- */
-const STEPS_SHOWN = 4;
+const VERDICT_CHOICES: readonly Choice<VerdictFilter>[] = [
+  { id: "any", label: "Any" },
+  ...PLAN_STATUSES.map((s) => ({ id: s, label: planStatusLabel(s) })),
+];
 
-/**
- * One analysis's plan.
- *
- * Every step is printed rather than counted — a count was only ever a promise
- * that the plan existed. The action leads, the command sits under it in mono
- * so the two kinds of thing never blur, and the risk tag appears **only above
- * low**: a plan of five `LOW` tags is five words of chrome saying nothing, and
- * it is exactly the thing an operator needs to spot when it is not low.
- */
-function Plan({ row }: { row: AnalysedRow }) {
-  if (row.plan.length === 0) {
-    return <span className={styles.planEmpty}>{EM_DASH}</span>;
-  }
-  const shown = row.plan.slice(0, STEPS_SHOWN);
-  const hidden = row.plan.length - shown.length;
-  return (
-    <ol className={styles.steps}>
-      {shown.map((step, i) => (
-        // Steps have no id of their own and their order IS their meaning, so
-        // the index is the honest key here.
-        // `display: contents` — the <li> keeps the semantics, the cells below
-        // join the list's own grid, so the ordinals, the actions and the risk
-        // tags align down the whole plan instead of each step measuring
-        // itself. That is the part of a table worth having here.
-        <li key={i} className={styles.step}>
-          <span className={styles.stepNum}>{i + 1}</span>
-          <span className={styles.stepAction}>{step.action || EM_DASH}</span>
-          {/* The risk column sizes to content, so a plan whose every step is
-              routine spends no width on it at all. */}
-          {step.risk === "low" || step.risk === "" ? (
-            <span className={styles.riskEmpty} />
-          ) : (
-            <span className={styles.risk} data-risk={step.risk}>
-              {step.risk}
-              <span className={styles.srOnly}> risk</span>
-            </span>
-          )}
-          {step.command ? (
-            <code className={styles.stepCommand} title={step.command}>
-              {step.command}
-            </code>
-          ) : null}
-        </li>
-      ))}
-      {hidden > 0 ? (
-        <li className={styles.more}>{`+${hidden} more step${hidden === 1 ? "" : "s"}`}</li>
-      ) : null}
-    </ol>
-  );
-}
+const SORT_CHOICES: readonly Choice<AnalysesSort>[] = [
+  {
+    id: "urgent",
+    label: "Most urgent",
+    hint: "Severity, then unacknowledged first, then most recently fired",
+  },
+  { id: "recent", label: "Newest analysis" },
+];
+
+// The view's slice of the dashboard route's search (router.tsx): `sort` is
+// omitted for the default order and `recent` for the other.
+type DashboardSearch = { view?: "overview" | "analyses"; sort?: "recent" };
+
+// TanStack Router's navigate types are locked to the registered route tree at
+// build time; the same cast DashboardPage uses, so a locally built route tree
+// in tests type-checks too.
+type NavigateFn = (opts: {
+  to: string;
+  search: ((prev: DashboardSearch | undefined) => DashboardSearch) | Record<string, unknown>;
+  replace?: boolean;
+}) => Promise<void>;
 
 export function AnalysesView() {
-  // Local, deliberately not URL-synced: these narrow a list, not a page, and a
-  // dashboard link that carried somebody else's chip state would be a worse
+  const navigate = useNavigate() as unknown as NavigateFn;
+  const search = useSearch({ strict: false }) as unknown as DashboardSearch;
+  const sort: AnalysesSort = search.sort === "recent" ? "recent" : "urgent";
+
+  // The order rides in the URL — it decides what a shared link opens on. The
+  // filters deliberately do not: they narrow a list, not a page, and a
+  // dashboard link that carried somebody else's narrowing would be a worse
   // share than one that opens on everything.
-  const [confidences, setConfidences] = useState<readonly Confidence[]>(CONFIDENCE_LEVELS);
-  const [automatable, setAutomatable] = useState<AutomatableFilter>("any");
+  const setSort = useCallback(
+    (next: AnalysesSort) => {
+      void navigate({
+        to: "/web/dashboard",
+        search: (prev) => {
+          const { sort: _previous, ...rest } = prev ?? {};
+          void _previous;
+          return next === "recent" ? { ...rest, sort: "recent" } : rest;
+        },
+        // A re-sort is not a place to go Back to.
+        replace: true,
+      });
+    },
+    [navigate],
+  );
+
+  const [filters, setFilters] = useState<AnalysisFilters>(ANY_FILTERS);
+  // Keyed by uid, not position, so an expanded row stays expanded across the
+  // 30-second refetch and across a re-sort that moves it.
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
+  // The row that holds the list's one tab stop (roving tabindex). Undefined —
+  // or a uid that has since left the list — means the first row.
+  const [activeUid, setActiveUid] = useState<string | undefined>(undefined);
+  const articles = useRef(new Map<string, HTMLElement>());
 
   const query = useAnalysedOpenAlerts();
+  const analysed = query.data?.meta.total ?? 0;
 
   const rows = useMemo(
     () => (query.data?.data ?? []).map(toAnalysedRow).filter((r) => r !== undefined),
     [query.data],
   );
   const visible = useMemo(
-    () => rows.filter((r) => matchesFilters(r, confidences, automatable)),
-    [rows, confidences, automatable],
+    () =>
+      sortRows(
+        rows.filter((r) => matchesFilters(r, filters)),
+        sort,
+      ),
+    [rows, filters, sort],
   );
+  const tabStop = visible.some((r) => r.uid === activeUid) ? activeUid : visible[0]?.uid;
 
-  const analysed = query.data?.meta.total ?? 0;
+  // The verdict is a field the contract only just grew; every analysis stored
+  // before it has none. A filter whose every option but "Any" empties the list
+  // is noise, so the group appears once some row states a verdict — and stays
+  // while it is set, so a refetch can never hide a filter that is in force.
+  const showVerdict = filters.verdict !== "any" || rows.some((r) => r.status !== undefined);
 
-  function toggleConfidence(level: Confidence) {
-    setConfidences((prev) =>
-      prev.includes(level)
-        ? prev.filter((c) => c !== level)
-        : // Keep the canonical high→medium→low order however they were picked.
-          CONFIDENCE_LEVELS.filter((c) => c === level || prev.includes(c)),
-    );
+  const onToggle = useCallback((uid: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(uid)) next.delete(uid);
+      else next.add(uid);
+      return next;
+    });
+  }, []);
+  const registerArticle = useCallback((uid: string, el: HTMLElement | null) => {
+    if (el) articles.current.set(uid, el);
+    else articles.current.delete(uid);
+  }, []);
+
+  function onListKeyDown(e: KeyboardEvent<HTMLUListElement>) {
+    // The same guards as the alerts table's row keys: never steal a keystroke
+    // typed into a field, and leave every modified key (Ctrl+K palette,
+    // Ctrl+1…5 page nav, the browser's own) to whoever owns it.
+    if (isEditable(e.target)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const article = (e.target as HTMLElement).closest<HTMLElement>("article[data-uid]");
+    const uid = article?.dataset["uid"];
+    if (uid === undefined) return;
+    const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+
+    const step = key === "j" || key === "ArrowDown" ? 1 : key === "k" || key === "ArrowUp" ? -1 : 0;
+    if (step !== 0) {
+      const at = visible.findIndex((r) => r.uid === uid);
+      const next = visible[Math.min(visible.length - 1, Math.max(0, at + step))];
+      if (!next) return;
+      e.preventDefault();
+      setActiveUid(next.uid);
+      articles.current.get(next.uid)?.focus();
+      return;
+    }
+
+    // Enter / Space / E act on the ROW, so only while the row itself has
+    // focus: on the heading link, the Expand button or a copy button inside
+    // it, those keys already mean that control, and doubling them up would
+    // toggle twice or open twice.
+    if (e.target !== article) return;
+    if (key === "Enter") {
+      e.preventDefault();
+      void navigate({
+        to: "/web/alerts",
+        search: {
+          tab: "all",
+          record: uid,
+          analysis: true,
+          search: openAlertSearch(uid, analysed),
+        },
+      });
+    } else if (key === " " || key === "e") {
+      e.preventDefault();
+      onToggle(uid);
+    }
   }
 
   if (query.isError) {
@@ -175,11 +220,16 @@ export function AnalysesView() {
     );
   }
 
+  const narrowed = filtersActive(filters);
+
   return (
     <Card padded>
-      {/* The only line above the list, and only on the one occasion the fetch
-          ceiling bites: a truncated list that says nothing is a list claiming
-          to be the whole backlog. */}
+      {/* The page's h1 is "Dashboard"; the rows are h3s. The list's own level
+          is heard, not seen — the view switch above already says it visibly. */}
+      <h2 className={styles.srOnly}>Analysed alerts</h2>
+
+      {/* Only on the one occasion the fetch ceiling bites: a truncated list
+          that says nothing is a list claiming to be the whole backlog. */}
       {analysed > rows.length ? (
         <PanelHint>{`Showing ${rows.length} of ${analysed} analysed alerts`}</PanelHint>
       ) : null}
@@ -187,158 +237,73 @@ export function AnalysesView() {
       {rows.length === 0 ? (
         <PanelEmpty
           title="No analyses yet"
-          description="The alert-rca agent loop writes a root cause and remediation plan onto open alerts."
+          description="The alert-rca agent writes an analysis onto open alerts it investigates; you can also write one from an alert's Analysis tab."
         />
       ) : (
         <>
-          <div className={styles.filters}>
-            {/* The groups name themselves for the eye too: at full width, six
-                chips reading "High Medium Low Any Yes No" are two questions
-                with no question printed. The group's own aria-label already
-                says it, so the visible copy is decoration to a screen
-                reader. */}
-            <div className={styles.filterGroup}>
-              <span className={styles.filterLabel} aria-hidden="true">
-                Confidence
-              </span>
-              <div className={styles.chips} role="group" aria-label="Filter by confidence">
-                {CONFIDENCE_LEVELS.map((level) => (
-                  <button
-                    key={level}
-                    type="button"
-                    className={styles.chip}
-                    aria-pressed={confidences.includes(level)}
-                    data-active={confidences.includes(level) || undefined}
-                    onClick={() => toggleConfidence(level)}
-                  >
-                    {confidenceLabel(level)}
-                  </button>
-                ))}
-              </div>
+          <div className={styles.toolbar}>
+            <div className={styles.filters}>
+              <ChoiceGroup
+                label="Confidence"
+                options={CONFIDENCE_CHOICES}
+                value={filters.confidence}
+                onChange={(confidence) => setFilters((f) => ({ ...f, confidence }))}
+              />
+              <ChoiceGroup
+                label="Automatable"
+                options={AUTOMATABLE_CHOICES}
+                value={filters.automatable}
+                onChange={(automatable) => setFilters((f) => ({ ...f, automatable }))}
+              />
+              {showVerdict ? (
+                <ChoiceGroup
+                  label="Verdict"
+                  options={VERDICT_CHOICES}
+                  value={filters.verdict}
+                  onChange={(verdict) => setFilters((f) => ({ ...f, verdict }))}
+                />
+              ) : null}
             </div>
-            <div className={styles.filterGroup}>
-              <span className={styles.filterLabel} aria-hidden="true">
-                Automatable
-              </span>
-              <div className={styles.chips} role="group" aria-label="Filter by automatable">
-                {AUTOMATABLE_CHIPS.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    className={styles.chip}
-                    aria-pressed={automatable === c.id}
-                    data-active={automatable === c.id || undefined}
-                    onClick={() => setAutomatable(c.id)}
-                  >
-                    {c.label}
-                  </button>
-                ))}
-              </div>
+            <div className={styles.toolbarEnd}>
+              {/* The result of the filters, where the filters are — and
+                  announced, since a click that removes rows below the fold
+                  is otherwise silent. */}
+              <p className={styles.count} role="status">
+                {narrowed
+                  ? `${visible.length} of ${rows.length} analyses`
+                  : `${rows.length} ${rows.length === 1 ? "analysis" : "analyses"}`}
+              </p>
+              <ChoiceGroup label="Sort" options={SORT_CHOICES} value={sort} onChange={setSort} />
             </div>
           </div>
 
           {visible.length === 0 ? (
-            <PanelEmpty compact title="Nothing matches these filters" />
+            <PanelEmpty
+              compact
+              title="Nothing matches these filters"
+              action={
+                <Button size="sm" onClick={() => setFilters(ANY_FILTERS)}>
+                  Clear filters
+                </Button>
+              }
+            />
           ) : (
-            <ul className={styles.list}>
+            // The keys are the list's, not each row's: J/K move focus BETWEEN
+            // rows, so the one handler that sees every row is the honest place
+            // for them.
+            // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- delegated row navigation; each row article is the focus target.
+            <ul className={styles.list} onKeyDown={onListKeyDown}>
               {visible.map((row) => (
-                <li key={row.uid} className={styles.row}>
-                  {/* tab=all, not the default lifecycle tab: an analysed alert
-                      is often already acknowledged, and the drawer closes
-                      itself when the uid isn't on the page it lands on. */}
-                  {/* `search` pins the table to this one row: the alerts page
-                      fetches the newest page by date_epoch and closes a drawer
-                      whose uid is not on it — exactly the rows this view ranks
-                      first (old alert, fresh analysis). */}
-                  <Link
-                    className={styles.rowLink}
-                    to="/web/alerts"
-                    search={{
-                      tab: "all",
-                      record: row.uid,
-                      analysis: true,
-                      search: uidSearch(row.uid),
-                    }}
-                    // The severity rail, painted the same way the alerts
-                    // table paints a row's accent — so the two surfaces read
-                    // as one product and a 200px-tall row still carries its
-                    // urgency down its whole side.
-                    style={
-                      severityToken(row.severity)
-                        ? ({ "--row-accent": severityToken(row.severity) } as CSSProperties)
-                        : undefined
-                    }
-                    data-accent={severityToken(row.severity) ? "true" : undefined}
-                  >
-                    {/* The header: which alert on the left, everything scalar
-                        set right on the same line. Two lines put a pill under a
-                        pill and pushed the analysis down in every row; one line
-                        reads as a header bar and gives the eye a column to run
-                        confidence down. */}
-                    <span className={styles.header}>
-                      <span className={styles.identity}>
-                        <Badge
-                          className={styles.sevBadge!}
-                          color={severityColor(row.severity)}
-                          title={row.severity || EM_DASH}
-                        >
-                          {row.severity ? severityDisplayLabel(row.severity) : EM_DASH}
-                        </Badge>
-                        <span className={styles.host}>{row.host || row.uid}</span>
-                        {/* The message, not the rule name: "/var at 94%" is
-                            what fired, "NodeFilesystemAlmostOutOfSpace" is only
-                            what the rule is called. The rule name stands in
-                            when a record carries no message. */}
-                        <span className={styles.alertname}>
-                          {row.message || row.alertname || EM_DASH}
-                        </span>
-                      </span>
-
-                      {/* Everything scalar, on one line. Each of these used to
-                        own a column and spend it on one word. */}
-                      <span className={styles.meta}>
-                        {row.confidence === undefined ? null : (
-                          <ConfidenceBadge
-                            className={styles.confidenceBadge!}
-                            confidence={row.confidence}
-                          />
-                        )}
-                        {/* Shown only when the plan says so, so its presence is
-                          the signal rather than a column of blanks. */}
-                        {row.automatable ? (
-                          <AutomatableBadge className={styles.metaBadge!} />
-                        ) : null}
-                        {/* Badges lead, then the plain facts — which keeps the
-                            dot separators between text items only, never
-                            hanging off the edge of a chip. */}
-                        <span className={styles.metaItem}>
-                          {`${row.steps} step${row.steps === 1 ? "" : "s"}`}
-                        </span>
-                        {row.analysedAt === undefined ? null : (
-                          <span className={styles.metaItem}>
-                            <TimeCell epoch={row.analysedAt} compact />
-                          </span>
-                        )}
-                        {row.by ? <span className={styles.metaItem}>{`by ${row.by}`}</span> : null}
-                      </span>
-                    </span>
-
-                    {/* The two halves, and the only two things that get width.
-                        The labels replace the table header the columns used to
-                        need: they travel with the row instead of scrolling
-                        away from it. */}
-                    <span className={styles.analysis}>
-                      <span className={styles.block}>
-                        <span className={styles.blockLabel}>Why</span>
-                        <span className={styles.cause}>{row.summary}</span>
-                      </span>
-                      <span className={styles.block}>
-                        <span className={styles.blockLabel}>What to do</span>
-                        <Plan row={row} />
-                      </span>
-                    </span>
-                  </Link>
-                </li>
+                <AnalysisRow
+                  key={row.uid}
+                  row={row}
+                  expanded={expanded.has(row.uid)}
+                  tabStop={row.uid === tabStop}
+                  analysedTotal={analysed}
+                  onToggle={onToggle}
+                  onActivate={setActiveUid}
+                  registerArticle={registerArticle}
+                />
               ))}
             </ul>
           )}

@@ -72,9 +72,17 @@ export function toRhfPath(serverPath: string): string {
 // this predicate is what lets the editor place what it can and say the rest out
 // loud.
 
-const ROOT_CAUSE_FIELDS = new Set(["summary", "scope", "confidence"]);
+const ROOT_CAUSE_FIELDS = new Set(["summary", "detail", "scope", "confidence"]);
+/** The two free-text lists, each rendered one input per row. */
+const ROOT_CAUSE_LISTS = new Set(["evidence", "caveats"]);
 const STEP_LISTS = new Set(["steps", "rollback"]);
 const STEP_FIELDS = new Set(["action", "command", "risk"]);
+/**
+ * `when` has a control on the plan's steps only: a rollback step has no
+ * "now" of its own, so the editor offers no timing there, and a server
+ * message on `rollback[i].when` must be bannered rather than swallowed.
+ */
+const PLAN_STEP_FIELDS = new Set([...STEP_FIELDS, "when"]);
 
 function lengthOf(value: unknown): number {
   return Array.isArray(value) ? value.length : 0;
@@ -91,21 +99,23 @@ function isRootCausePath(keys: string[], form: AnalysisForm): boolean {
   const [field, index, ...tail] = keys;
   if (field === undefined || tail.length > 0) return false;
   if (ROOT_CAUSE_FIELDS.has(field)) return index === undefined;
-  if (field !== "evidence") return false;
-  // The list itself carries the "at most 10 items" message; a row carries its
+  if (!ROOT_CAUSE_LISTS.has(field)) return false;
+  // The list itself carries the "at most N items" message; a row carries its
   // own, but only while that row exists.
-  return index === undefined || indexIn(index, lengthOf(form.root_cause.evidence));
+  const rows = field === "evidence" ? form.root_cause.evidence : form.root_cause.caveats;
+  return index === undefined || indexIn(index, lengthOf(rows));
 }
 
 function isPlanPath(keys: string[], form: AnalysisForm): boolean {
   const [list, index, field, ...tail] = keys;
+  if (list === "status") return index === undefined;
   if (list === undefined || !STEP_LISTS.has(list) || tail.length > 0) return false;
   if (index === undefined) return true;
   const rows = list === "steps" ? form.remediation_plan.steps : form.remediation_plan.rollback;
   if (!indexIn(index, lengthOf(rows))) return false;
   // A bare `remediation_plan.steps[0]` addresses a row, not a control: the row
   // renders three fields and no message of its own.
-  return field !== undefined && STEP_FIELDS.has(field);
+  return field !== undefined && (list === "steps" ? PLAN_STEP_FIELDS : STEP_FIELDS).has(field);
 }
 
 /**

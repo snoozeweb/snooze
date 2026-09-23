@@ -66,13 +66,15 @@ export function useOpenAlertCount(enabled: boolean): CountQuery {
 /**
  * The rows themselves: open alerts carrying an analysis, newest analysis first.
  *
- * Ordered by when the analysis was written rather than by `date_epoch`: the
- * subject here is the analysis, not the alert, so a week-old alert explained an
- * hour ago outranks a fresh unexplained one. The dotted path works on all three
- * backends (SQLite json_extract, Postgres jsonb path, Mongo native dotted
- * sort); `orderby` is passed through to the driver untouched. They disagree on
- * where a MISSING `analysis.at` sorts (Postgres puts NULLs first on DESC), so a
- * subtree written without a timestamp can lead the list on Postgres — see
+ * The server order is NOT the order on screen — the view sorts client-side
+ * (`sortRows`: most urgent by default, newest analysis on request). It still
+ * matters, because it decides which rows survive the {@link ANALYSES_ROW_CAP}
+ * ceiling on the one occasion it bites: the freshest analyses are the ones
+ * worth keeping. The dotted path works on all three backends (SQLite
+ * json_extract, Postgres jsonb path, Mongo native dotted sort); `orderby` is
+ * passed through to the driver untouched. They disagree on where a MISSING
+ * `analysis.at` sorts (Postgres puts NULLs first on DESC), which no longer
+ * reaches the screen but can decide what a capped fetch keeps — see
  * `ANALYSED_OPEN_ALERTS` for why that is preferred to filtering those rows out.
  *
  * Only called from the view, which is only mounted on `?view=analyses`.

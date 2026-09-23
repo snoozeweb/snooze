@@ -1,0 +1,108 @@
+/* Label and options stay one unit, so a narrow container wraps the group
+   whole rather than orphaning "Automatable" at the end of the previous line. */
+.group {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  /* The group may never be wider than its row: past that its options wrap
+     inside it (Verdict's four options overflowed a phone before). */
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* Which question the group answers. Muted and small: the options are the
+   control, this is only the noun in front of them. */
+.label {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.options {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+/* Unchosen: a quiet chip — hairline, muted ink, no fill. It has to read as
+   "available", not as "on". */
+.option {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  font: inherit;
+  font-size: var(--text-xs);
+  line-height: var(--leading-tight);
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
+}
+.option:hover {
+  color: var(--text-strong);
+  border-color: var(--border-control);
+}
+
+/* Chosen: the accent as an OUTLINE and a check, the ink one step stronger, the
+   faintest accent tint behind it. Three carriers, none of them a solid fill,
+   so the state reads in either theme and without colour. The global focus
+   ring (styles/base.css) sits outside this outline at a 2px offset, so the
+   two never merge. */
+.option[aria-checked="true"] {
+  color: var(--text-strong);
+  font-weight: var(--weight-medium);
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+.option[aria-checked="true"] svg {
+  color: var(--accent);
+}
+
+/* Phone-width toolbar (AnalysesView's .toolbar is the container): one line
+   per group, label then options, the options scrolling sideways instead of
+   wrapping. Wrapped, four groups of 44px chips stacked ~300px of controls
+   above the first row. The block padding keeps the focus ring (outside the
+   chip) clear of the scroll box's clip. */
+@container (max-width: 560px) {
+  .group {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+  }
+  .label {
+    flex: none;
+    min-width: 6.5em;
+  }
+  /* The box spans the rest of the line, so the trailing fade lands on empty
+     space when the options fit and on the clipped chip when they do not —
+     the hidden scrollbar's only stand-in, and the cue that Verdict's last
+     option is one swipe away. */
+  .options {
+    flex: 1;
+    flex-wrap: nowrap;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding: var(--space-1);
+    margin: calc(-1 * var(--space-1));
+    mask-image: linear-gradient(to right, #000 calc(100% - var(--space-6)), transparent);
+  }
+  .option {
+    flex: none;
+    white-space: nowrap;
+  }
+}
+
+@media (pointer: coarse) {
+  .option {
+    justify-content: center;
+    min-width: var(--touch-target);
+    min-height: var(--touch-target);
+    padding-inline: var(--space-3);
+  }
+}

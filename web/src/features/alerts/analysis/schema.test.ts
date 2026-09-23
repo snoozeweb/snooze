@@ -24,12 +24,20 @@ function validForm(): AnalysisForm {
     root_cause: {
       summary: "The /var filesystem filled up with rotated journals.",
       scope: "srv-victoria1:/var",
+      detail: "",
       evidence: ["df -h /var: 100% used"],
+      caveats: [],
       confidence: "high",
     },
     remediation_plan: {
+      status: "",
       steps: [
-        { action: "Vacuum the journal", command: "journalctl --vacuum-size=200M", risk: "low" },
+        {
+          action: "Vacuum the journal",
+          command: "journalctl --vacuum-size=200M",
+          risk: "low",
+          when: "",
+        },
       ],
       rollback: [],
       automatable: true,
@@ -135,6 +143,7 @@ describe("validateAnalysisForm", () => {
       action: "",
       command: "",
       risk: "" as const,
+      when: "" as const,
     }));
     expect(validateAnalysisForm(form)).toEqual({
       "remediation_plan.steps": "must hold at most 20 steps",
@@ -146,8 +155,8 @@ describe("validateAnalysisForm", () => {
     expect(validateAnalysisForm(form)).toEqual({});
 
     form.remediation_plan.rollback = [
-      { action: "Restore the snapshot", command: "", risk: "high" },
-      { action: "", command: "", risk: "" },
+      { action: "Restore the snapshot", command: "", risk: "high", when: "" },
+      { action: "", command: "", risk: "", when: "" },
     ];
     expect(validateAnalysisForm(form)).toEqual({
       "remediation_plan.rollback[1].action": "is required",
@@ -158,10 +167,10 @@ describe("validateAnalysisForm", () => {
   it("requires a step action, caps it at 500, and caps the command at 1000", () => {
     const form = validForm();
     form.remediation_plan.steps = [
-      { action: " ", command: "", risk: "low" },
-      { action: emoji(ANALYSIS_LIMITS.action + 1), command: "", risk: "low" },
-      { action: "ok", command: emoji(ANALYSIS_LIMITS.command), risk: "low" },
-      { action: "ok", command: "c".repeat(ANALYSIS_LIMITS.command + 1), risk: "low" },
+      { action: " ", command: "", risk: "low", when: "" },
+      { action: emoji(ANALYSIS_LIMITS.action + 1), command: "", risk: "low", when: "" },
+      { action: "ok", command: emoji(ANALYSIS_LIMITS.command), risk: "low", when: "" },
+      { action: "ok", command: "c".repeat(ANALYSIS_LIMITS.command + 1), risk: "low", when: "" },
     ];
     expect(validateAnalysisForm(form)).toEqual({
       "remediation_plan.steps[0].action": "is required",
@@ -173,8 +182,8 @@ describe("validateAnalysisForm", () => {
   it("closes the risk enum per step", () => {
     const form = validForm();
     form.remediation_plan.steps = [
-      { action: "ok", command: "", risk: "" },
-      { action: "ok", command: "", risk: "extreme" as never },
+      { action: "ok", command: "", risk: "", when: "" },
+      { action: "ok", command: "", risk: "extreme" as never, when: "" },
     ];
     expect(validateAnalysisForm(form)).toEqual({
       "remediation_plan.steps[0].risk": "is required (low|medium|high)",
@@ -187,7 +196,9 @@ describe("validateAnalysisForm", () => {
     form.root_cause.summary = `cause\u0000`;
     form.root_cause.scope = `scope\u0000`;
     form.root_cause.evidence = [`ev\u0000`];
-    form.remediation_plan.steps = [{ action: `do\u0000`, command: `run\u0000`, risk: "low" }];
+    form.remediation_plan.steps = [
+      { action: `do\u0000`, command: `run\u0000`, risk: "low", when: "" },
+    ];
     expect(validateAnalysisForm(form)).toEqual({
       "root_cause.summary": "must not contain the NUL character",
       "root_cause.scope": "must not contain the NUL character",
@@ -206,6 +217,67 @@ describe("validateAnalysisForm", () => {
     });
     expect(validateAnalysisForm(form, "tool\u0000")).toEqual({
       source: "must not contain the NUL character",
+    });
+  });
+
+  it("caps the detail at 2000 characters but does not require one", () => {
+    const form = validForm();
+    form.root_cause.detail = emoji(ANALYSIS_LIMITS.detail);
+    expect(validateAnalysisForm(form)).toEqual({});
+
+    form.root_cause.detail = emoji(ANALYSIS_LIMITS.detail + 1);
+    form.root_cause.scope = "";
+    expect(validateAnalysisForm(form)).toEqual({
+      "root_cause.detail": "must be at most 2000 characters",
+    });
+
+    form.root_cause.detail = `why\u0000`;
+    expect(validateAnalysisForm(form)).toEqual({
+      "root_cause.detail": "must not contain the NUL character",
+    });
+  });
+
+  it("caps caveats at 5 items of 300 characters, at the server's exact paths", () => {
+    const form = validForm();
+    form.root_cause.caveats = ["could not reach the standby", " ", "c".repeat(301), `x\u0000`];
+    expect(validateAnalysisForm(form)).toEqual({
+      "root_cause.caveats[1]": "must not be empty",
+      "root_cause.caveats[2]": "must be at most 300 characters",
+      "root_cause.caveats[3]": "must not contain the NUL character",
+    });
+
+    form.root_cause.caveats = Array.from({ length: 6 }, (_, i) => `limit ${i}`);
+    expect(validateAnalysisForm(form)).toEqual({
+      "root_cause.caveats": "must hold at most 5 items",
+    });
+  });
+
+  it("closes the plan status enum, and lets it be absent", () => {
+    const form = validForm();
+    for (const status of ["", "action_required", "self_resolved", "monitoring"] as const) {
+      form.remediation_plan.status = status;
+      expect(validateAnalysisForm(form)).toEqual({});
+    }
+    form.remediation_plan.status = "resolved" as never;
+    expect(validateAnalysisForm(form)).toEqual({
+      "remediation_plan.status": "must be one of action_required|self_resolved|monitoring",
+    });
+  });
+
+  it("closes the per-step `when` enum, and lets it be absent", () => {
+    const form = validForm();
+    form.remediation_plan.steps = [
+      { action: "ok", command: "", risk: "low", when: "now" },
+      { action: "ok", command: "", risk: "low", when: "follow_up" },
+      { action: "ok", command: "", risk: "low", when: "" },
+      { action: "ok", command: "", risk: "low", when: "later" as never },
+    ];
+    form.remediation_plan.rollback = [
+      { action: "undo", command: "", risk: "low", when: "soon" as never },
+    ];
+    expect(validateAnalysisForm(form)).toEqual({
+      "remediation_plan.steps[3].when": "must be one of now|follow_up",
+      "remediation_plan.rollback[0].when": "must be one of now|follow_up",
     });
   });
 
@@ -293,9 +365,17 @@ describe("emptyAnalysisForm", () => {
 describe("analysisToForm", () => {
   it("widens every optional server field to its empty form value", () => {
     expect(analysisToForm({ root_cause: { summary: "boom", confidence: "low" } })).toEqual({
-      root_cause: { summary: "boom", scope: "", evidence: [], confidence: "low" },
+      root_cause: {
+        summary: "boom",
+        detail: "",
+        scope: "",
+        evidence: [],
+        caveats: [],
+        confidence: "low",
+      },
       remediation_plan: {
-        steps: [{ action: "", command: "", risk: "" }],
+        status: "",
+        steps: [{ action: "", command: "", risk: "", when: "" }],
         rollback: [],
         automatable: false,
       },
@@ -310,10 +390,15 @@ describe("analysisToForm", () => {
   it("drops an out-of-range enum rather than keeping a value no select can show", () => {
     const form = analysisToForm({
       root_cause: { summary: "boom", confidence: "certain" as never },
-      remediation_plan: { steps: [{ action: "do", risk: "extreme" as never }] },
+      remediation_plan: {
+        status: "resolved" as never,
+        steps: [{ action: "do", risk: "extreme" as never, when: "later" as never }],
+      },
     });
     expect(form.root_cause.confidence).toBe("");
+    expect(form.remediation_plan.status).toBe("");
     expect(form.remediation_plan.steps[0]!.risk).toBe("");
+    expect(form.remediation_plan.steps[0]!.when).toBe("");
   });
 
   it("returns the empty form for a missing analysis", () => {
@@ -327,7 +412,7 @@ describe("formToRequest", () => {
     const form = emptyAnalysisForm();
     form.root_cause.summary = "boom";
     form.root_cause.confidence = "low";
-    form.remediation_plan.steps = [{ action: "restart", command: "  ", risk: "low" }];
+    form.remediation_plan.steps = [{ action: "restart", command: "  ", risk: "low", when: "" }];
     expect(formToRequest(form)).toEqual({
       root_cause: { summary: "boom", confidence: "low" },
       remediation_plan: { steps: [{ action: "restart", risk: "low" }] },
@@ -336,7 +421,7 @@ describe("formToRequest", () => {
 
   it("carries scope, evidence, rollback, automatable and the source tag when set", () => {
     const form = validForm();
-    form.remediation_plan.rollback = [{ action: "undo", command: "", risk: "medium" }];
+    form.remediation_plan.rollback = [{ action: "undo", command: "", risk: "medium", when: "" }];
     expect(formToRequest(form, ANALYSIS_SOURCE)).toEqual({
       root_cause: {
         summary: form.root_cause.summary,
@@ -353,6 +438,40 @@ describe("formToRequest", () => {
       },
       source: "snooze-web",
     });
+  });
+
+  it("carries detail, caveats, status and per-step timing when set, and drops them when not", () => {
+    const form = validForm();
+    form.root_cause.detail = "The journal grew 4.2G in six hours after the upgrade.";
+    form.root_cause.caveats = ["Could not read the standby"];
+    form.remediation_plan.status = "action_required";
+    form.remediation_plan.steps = [
+      { action: "Vacuum", command: "", risk: "low", when: "now" },
+      { action: "Add an alert", command: "", risk: "low", when: "follow_up" },
+      { action: "Check", command: "", risk: "low", when: "" },
+    ];
+    const req = formToRequest(form);
+    expect(req.root_cause.detail).toBe("The journal grew 4.2G in six hours after the upgrade.");
+    expect(req.root_cause.caveats).toEqual(["Could not read the standby"]);
+    expect(req.remediation_plan.status).toBe("action_required");
+    expect(req.remediation_plan.steps).toEqual([
+      { action: "Vacuum", risk: "low", when: "now" },
+      { action: "Add an alert", risk: "low", when: "follow_up" },
+      { action: "Check", risk: "low" },
+    ]);
+    // And back: the editor reopens on exactly what it saved.
+    expect(analysisToForm(formToRequest(form))).toEqual(form);
+
+    const bare = formToRequest(validForm());
+    expect(bare.root_cause).not.toHaveProperty("detail");
+    expect(bare.root_cause).not.toHaveProperty("caveats");
+    expect(bare.remediation_plan).not.toHaveProperty("status");
+  });
+
+  it("does not store a blank detail", () => {
+    const form = validForm();
+    form.root_cause.detail = "  \n ";
+    expect(formToRequest(form).root_cause).not.toHaveProperty("detail");
   });
 
   it("does not alias the form's evidence array into the request body", () => {
@@ -382,14 +501,14 @@ describe("blank detection, against Go's strings.TrimSpace", () => {
   it("applies the same rule to an evidence item and a step action", () => {
     const form = validForm();
     form.root_cause.evidence = ["\u0085"];
-    form.remediation_plan.steps = [{ action: "\u0085", command: "", risk: "low" }];
+    form.remediation_plan.steps = [{ action: "\u0085", command: "", risk: "low", when: "" }];
     expect(validateAnalysisForm(form)).toEqual({
       "root_cause.evidence[0]": "must not be empty",
       "remediation_plan.steps[0].action": "is required",
     });
 
     form.root_cause.evidence = ["﻿"];
-    form.remediation_plan.steps = [{ action: "﻿", command: "", risk: "low" }];
+    form.remediation_plan.steps = [{ action: "﻿", command: "", risk: "low", when: "" }];
     expect(validateAnalysisForm(form)).toEqual({});
   });
 });
@@ -444,7 +563,7 @@ describe("analysisToForm, on non-conforming stored data", () => {
     const form = analysisToForm({
       remediation_plan: { steps: "x", rollback: 7 },
     } as unknown as StoredAgentic);
-    expect(form.remediation_plan.steps).toEqual([{ action: "", command: "", risk: "" }]);
+    expect(form.remediation_plan.steps).toEqual([{ action: "", command: "", risk: "", when: "" }]);
     expect(form.remediation_plan.rollback).toEqual([]);
   });
 
@@ -452,7 +571,12 @@ describe("analysisToForm, on non-conforming stored data", () => {
     const form = analysisToForm({
       remediation_plan: { steps: [{ action: 1, command: 7, risk: "low" }], automatable: 1 },
     } as unknown as StoredAgentic);
-    expect(form.remediation_plan.steps[0]).toEqual({ action: "", command: "", risk: "low" });
+    expect(form.remediation_plan.steps[0]).toEqual({
+      action: "",
+      command: "",
+      risk: "low",
+      when: "",
+    });
     expect(form.remediation_plan.automatable).toBe(false);
   });
 
@@ -461,8 +585,8 @@ describe("analysisToForm, on non-conforming stored data", () => {
       remediation_plan: { steps: [null, "x"] },
     } as unknown as StoredAgentic);
     expect(form.remediation_plan.steps).toEqual([
-      { action: "", command: "", risk: "" },
-      { action: "", command: "", risk: "" },
+      { action: "", command: "", risk: "", when: "" },
+      { action: "", command: "", risk: "", when: "" },
     ]);
   });
 });

@@ -1578,7 +1578,11 @@ export function AlertsPage() {
   // Drawer title: the alert's host in mono (falls back to uid). Host is not
   // repeated in the drawer body, so this is where the operator reads it.
   const detailsTitle = useCallback(
-    (r: Record_) => <span className={styles.detailsHost}>{r.host ?? r.uid ?? "alert"}</span>,
+    (r: Record_) => (
+      <span className={styles.detailsHost} title={r.host ?? r.uid ?? "alert"}>
+        {r.host ?? r.uid ?? "alert"}
+      </span>
+    ),
     [],
   );
   // Controlled detail drawer: write the open record to the URL (?record=),

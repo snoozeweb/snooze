@@ -1,7 +1,7 @@
 // web/tests/e2e/alerts/analysis.spec.ts
 //
 // The agentic analysis, end to end through a real server: the Analysis tab of
-// the alert inspector (read, author, correct, remove), the confidence dot the
+// the alert inspector (read, author, correct, remove), the analysed dot the
 // alerts table paints beside the severity badge, and the dashboard's Analyses
 // view with the Right-now tile that counts it.
 //
@@ -146,9 +146,9 @@ test.describe("alert agentic analysis", () => {
     await expect(drawer).toBeVisible();
 
     // ── Empty ───────────────────────────────────────────────────────────────
-    // The tab carries no confidence suffix while nothing is stored, so its
-    // exact name is the assertion that the alert is unanalysed.
+    // Nothing stored: no header line points at an analysis.
     await drawer.getByRole("tab", { name: "Analysis" }).click({ force: true });
+    await expect(drawer.getByRole("button", { name: /Analysis ·/ })).toHaveCount(0);
     await expect(drawer.getByText("No analysis yet")).toBeVisible();
 
     // ── Author ──────────────────────────────────────────────────────────────
@@ -164,12 +164,15 @@ test.describe("alert agentic analysis", () => {
     await page.getByRole("option", { name: "Low" }).click({ force: true });
     await drawer.getByRole("button", { name: "Save analysis" }).click({ force: true });
 
-    // The tab label now carries the confidence — the one thing a reader wants
-    // before opening the pane.
-    await expect(drawer.getByRole("tab", { name: "Analysis · Low" })).toBeVisible();
-    // The header answers "why did this fire?" without a tab being touched.
-    const cause = drawer.getByText("Cause:", { exact: true }).locator("..");
-    await expect(cause).toContainText(summary);
+    // Confidence is said once, in the pane's byline — not on the tab.
+    await expect(drawer.getByText("Low confidence")).toHaveCount(1);
+    // Off the Analysis tab, the header points at it in one line — written
+    // from the web UI, so credited to a person ("Analysis", not "AI
+    // analysis"). On the tab itself the line steps aside: the pane says it.
+    const pointer = drawer.getByRole("button", { name: `Analysis · ${summary}` });
+    await expect(pointer).toBeHidden();
+    await drawer.getByRole("tab", { name: "Timeline" }).click({ force: true });
+    await expect(pointer).toBeVisible();
 
     // ── The dot in the table ────────────────────────────────────────────────
     // The mutation invalidates the alerts list, so the severity cell repaints
@@ -186,7 +189,7 @@ test.describe("alert agentic analysis", () => {
         .getByRole("button", { name: "View details" })
         .click({ force: true });
       await expect(drawer).toBeVisible();
-      await drawer.getByRole("tab", { name: "Analysis · Low" }).click({ force: true });
+      await drawer.getByRole("tab", { name: "Analysis" }).click({ force: true });
     };
     await openDrawer();
 
@@ -210,7 +213,9 @@ test.describe("alert agentic analysis", () => {
     await expect(movedStep).toHaveText(/^1Drain the node first/);
 
     // ── Remove ──────────────────────────────────────────────────────────────
-    await drawer.getByRole("button", { name: "Remove" }).click({ force: true });
+    // Behind the ⋯ menu beside Edit, and still confirmed by a dialog.
+    await drawer.getByRole("button", { name: "More analysis actions" }).click({ force: true });
+    await page.getByRole("menuitem", { name: "Remove" }).click({ force: true });
     const confirm = page.getByRole("dialog", { name: "Remove this analysis?" });
     await expect(confirm).toBeVisible();
     await confirm.getByRole("button", { name: "Remove analysis" }).click({ force: true });
@@ -301,15 +306,17 @@ test.describe("alert agentic analysis", () => {
     const drawer = page.getByRole("dialog", { name: host });
     await expect(drawer).toBeVisible();
     // ?analysis=1 opens the inspector straight onto the tab.
-    const tab = drawer.getByRole("tab", { name: "Analysis · High" });
+    const tab = drawer.getByRole("tab", { name: "Analysis" });
     await expect(tab).toHaveAttribute("aria-selected", "true");
+    // Seeded through the API by a tool, so the byline says a model wrote it.
+    await expect(drawer.getByText("AI analysis", { exact: true })).toBeVisible();
 
     // The content is all there…
     await expect(drawer.getByText(summary).first()).toBeVisible();
     await expect(drawer.getByText("Restart the collector")).toBeVisible();
     // …and none of the three write affordances is.
     await expect(drawer.getByRole("button", { name: "Edit" })).toHaveCount(0);
-    await expect(drawer.getByRole("button", { name: "Remove" })).toHaveCount(0);
+    await expect(drawer.getByRole("button", { name: "More analysis actions" })).toHaveCount(0);
     await expect(drawer.getByRole("button", { name: "Write analysis" })).toHaveCount(0);
   });
 
@@ -335,7 +342,8 @@ test.describe("alert agentic analysis", () => {
     await live.getByRole("button", { name: /Analysed/ }).click({ force: true });
     await expect(page).toHaveURL(/view=analyses/);
 
-    const row = page.getByRole("link", { name: new RegExp(host) });
+    // A row is an article named by its alert; the heading inside it is the link.
+    const row = page.getByRole("article", { name: new RegExp(host) });
     await expect(row).toBeVisible();
 
     // ── The view switch ─────────────────────────────────────────────────────
@@ -349,23 +357,24 @@ test.describe("alert agentic analysis", () => {
     // The view is live, not windowed: the time picker is not on screen.
     await expect(page.getByRole("button", { name: "1d" })).toHaveCount(0);
 
-    // Deselecting the one confidence the list carries empties it — the chips
-    // narrow the fetched rows client-side.
-    const confidence = page.getByRole("group", { name: "Filter by confidence" });
-    await confidence.getByRole("button", { name: "Low" }).click({ force: true });
+    // A confidence floor above the one level the list carries empties it — the
+    // filters narrow the fetched rows client-side — and the empty offers the
+    // way back.
+    const confidence = page.getByRole("radiogroup", { name: "Confidence" });
+    await confidence.getByRole("radio", { name: "Medium+" }).click({ force: true });
     await expect(row).toHaveCount(0);
     await expect(page.getByText("Nothing matches these filters")).toBeVisible();
 
-    await confidence.getByRole("button", { name: "Low" }).click({ force: true });
+    await page.getByRole("button", { name: "Clear filters" }).click({ force: true });
     await expect(row).toBeVisible();
 
     // The row's whole point is to be opened, on the tab it is about.
-    await row.click({ force: true });
+    await row.getByRole("link", { name: "Open alert" }).click({ force: true });
     await expect(page).toHaveURL(new RegExp(`record=${uid}`));
     await expect(page).toHaveURL(/analysis=/);
     const drawer = page.getByRole("dialog", { name: host });
     await expect(drawer).toBeVisible();
-    await expect(drawer.getByRole("tab", { name: "Analysis · Low" })).toHaveAttribute(
+    await expect(drawer.getByRole("tab", { name: "Analysis" })).toHaveAttribute(
       "aria-selected",
       "true",
     );

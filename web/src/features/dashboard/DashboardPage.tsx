@@ -53,6 +53,8 @@ const WEEKDAY_KEYS = ["1", "2", "3", "4", "5", "6", "0"] as const;
 // window.
 type DashboardSearch = {
   view?: DashboardView;
+  /** The Analyses view's order; AnalysesView reads and writes it. */
+  sort?: "recent";
   range?: TimeRange["range"];
   from?: number;
   to?: number;
@@ -364,7 +366,15 @@ export function DashboardPage() {
         <h1 className={styles.title}>Dashboard</h1>
         {/* One view means no switch: a segmented control with a single
             segment is chrome that does nothing. */}
-        {canReadRecords ? <ViewSwitch value={view} onChange={setView} /> : null}
+        {canReadRecords ? (
+          <ViewSwitch
+            value={view}
+            onChange={setView}
+            // The Analysed tile's own one-row count (React Query dedupes the
+            // key), so the switch and the tile can never print two numbers.
+            {...(analysedCount.data ? { analysedCount: analysedCount.data.meta.total } : {})}
+          />
+        ) : null}
         {overview ? (
           <div className={styles.headerEnd}>
             <TimeRangePicker value={range} onChange={setRange} />

@@ -1,18 +1,38 @@
-.rootCause {
+.verdict {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: var(--space-2);
 }
 
-/* The lead sentence — the largest type in the pane. Everything below it is
-   support, so nothing else here goes above --text-md. */
-.summary {
+/* The headline — the largest, heaviest type in the pane, and the only line at
+   this size. Held to a readable measure so a long one breaks into two even
+   lines instead of one line the width of the drawer and a stub. */
+.headline {
   margin: 0;
+  max-width: 60ch;
   font-size: var(--text-lg);
   line-height: var(--leading-tight);
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-semibold);
   color: var(--text-strong);
+  text-wrap: pretty;
   overflow-wrap: anywhere;
+  user-select: text;
+}
+
+/* The explanation under it: body type, regular weight, the ordinary ink — a
+   clear two steps down from the headline so the two never read as one
+   paragraph. 70ch keeps the measure comfortable in the widest drawer. */
+.body {
+  margin: 0;
+  max-width: 70ch;
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  font-weight: var(--weight-regular);
+  color: var(--text);
+  text-wrap: pretty;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
   user-select: text;
 }
 
@@ -23,15 +43,21 @@
   gap: var(--space-2);
 }
 /* What is broken, in whatever addressing scheme the analysis used
-   ("srv-victoria1:/var", "ovh/velero/kopia-maintain") — an identifier, so mono
-   like every other identifier in the app. */
+   ("srv-victoria1:/var", "ovh/velero/kopia-maintain") — an identifier, so a
+   mono chip like the source chip in the inspector header. */
 .scope {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0 var(--space-2);
   font-family: var(--font-mono);
-}
-
-.heading {
-  margin: var(--space-2) 0 0;
-  font-size: var(--text-md);
-  font-weight: var(--weight-semibold);
-  color: var(--text-strong);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+  color: var(--text);
+  background: var(--bg-hover);
+  border: 1px solid var(--border-muted);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: text;
 }

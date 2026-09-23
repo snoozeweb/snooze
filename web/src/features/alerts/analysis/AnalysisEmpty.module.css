@@ -1,0 +1,7 @@
+/* The "why is there no button" line: the empty state's own muted voice, one
+   size down from its description. */
+.permission {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}

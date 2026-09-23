@@ -62,37 +62,74 @@
   font-size: var(--text-xs);
   color: var(--severity-critical);
 }
-/* "Cause: …" — the analysed root cause, in the same metadata family as the
-   lines above it. It answers "does anyone already know why?" without opening
-   the Analysis tab, so the summary itself takes the readable --text token
-   while the label and the chip stay quiet around it. */
-.cause {
+/* The one-line pointer at the analysis: "[verdict] AI analysis · <headline> ›".
+   A button, because its job is to open the tab — the headline is clipped to
+   one line on purpose (the full reading is one click away, and the tooltip
+   carries the whole sentence). Quiet metadata ink like the lines above it,
+   with the headline in the readable --text token; the hover wash and the
+   chevron are what say it goes somewhere. */
+.analysisLine {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
-  font-size: var(--text-xs);
+  align-self: stretch;
+  min-width: 0;
+  /* The hover wash bleeds past the text column so the text itself lines up
+     with the metadata lines above. */
+  margin-inline: calc(-1 * var(--space-2));
+  padding: var(--space-1) var(--space-2);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
   color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-xs);
+  text-align: start;
+  cursor: pointer;
 }
-.causeText {
+@media (hover: hover) {
+  .analysisLine:hover {
+    background: var(--bg-hover);
+  }
+}
+.analysisLine:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+.analysisText {
   flex: 1 1 auto;
   min-width: 0;
   color: var(--text);
-  overflow-wrap: anywhere;
-  user-select: text;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.analysisNoun {
+  font-weight: var(--weight-semibold);
+  color: var(--text-strong);
+}
+.analysisChevron {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+.analysisLine:hover .analysisChevron {
+  color: var(--text-strong);
+}
+@media (pointer: coarse) {
+  .analysisLine {
+    min-height: var(--touch-target);
+  }
 }
 
-/* Narrow header (the inspector on a phone): as a flex row the three parts
-   each claimed a line of their own — a lonely "Cause:", the summary, then the
-   chip — three lines for one sentence. Below the breakpoint the line runs in
-   instead: label, summary and chip are one wrapping paragraph, with the
-   flex gaps replaced by margins that inline flow honours. */
-@container (max-width: 480px) {
-  .cause {
-    display: block;
-  }
-  .causeLabel,
-  .causeText {
-    margin-inline-end: var(--space-2);
-  }
+/* The Analysis tab's "there is one" marker: a small neutral disc after the
+   label. Neutral on purpose — it says "present", and the tab strip is no
+   place for the verdict's or the confidence's colour. */
+.tabMarker {
+  display: inline-block;
+  width: 0.45em;
+  height: 0.45em;
+  margin-inline-start: var(--space-1);
+  vertical-align: middle;
+  border-radius: var(--radius-pill);
+  background: var(--text-muted);
 }

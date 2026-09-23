@@ -3,7 +3,6 @@ import {
   CONFIDENCE_LEVELS,
   RISK_LEVELS,
   confidenceLabel,
-  confidenceTone,
   isConfidence,
   isRisk,
   riskLabel,
@@ -18,13 +17,7 @@ describe("analysis enums", () => {
     expect(RISK_LEVELS).toEqual(["low", "medium", "high"]);
   });
 
-  it("paints confidence and risk in opposite directions", () => {
-    // The one mapping worth a test on its own: high confidence is good news,
-    // high risk is bad news, and both reach for the same three tokens.
-    expect(confidenceTone("high")).toBe("ok");
-    expect(confidenceTone("medium")).toBe("warning");
-    expect(confidenceTone("low")).toBe("critical");
-
+  it("paints high risk as bad news", () => {
     expect(riskTone("low")).toBe("ok");
     expect(riskTone("medium")).toBe("warning");
     expect(riskTone("high")).toBe("critical");

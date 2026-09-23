@@ -43,6 +43,21 @@ const (
 	RiskHigh   = "high"
 )
 
+// Plan verdicts accepted on RemediationPlan.Status: what the alert needs from
+// on-call right now, stated once instead of being inferred from step 1's prose.
+const (
+	PlanActionRequired = "action_required"
+	PlanSelfResolved   = "self_resolved"
+	PlanMonitoring     = "monitoring"
+)
+
+// Step timings accepted on Step.When: `now` is on-call work on this alert,
+// `follow_up` is post-incident work that stops it recurring.
+const (
+	StepNow      = "now"
+	StepFollowUp = "follow_up"
+)
+
 // Size limits, counted in CHARACTERS (runes), not bytes: these fields hold
 // prose from a fleet whose hosts, paths and log lines are not all ASCII, and a
 // limit that rejects a 380-character French summary for being "over 500" is a
@@ -52,6 +67,9 @@ const (
 // journal into `evidence` would bloat every list query that returns the record.
 const (
 	MaxSummaryLen    = 500
+	MaxDetailLen     = 2000
+	MaxCaveats       = 5
+	MaxCaveatLen     = 300
 	MaxScopeLen      = 200
 	MaxEvidenceItems = 10
 	MaxEvidenceLen   = 500
@@ -66,6 +84,8 @@ const (
 const (
 	confidenceEnum = "high|medium|low"
 	riskEnum       = "low|medium|high"
+	planStatusEnum = "action_required|self_resolved|monitoring"
+	stepWhenEnum   = "now|follow_up"
 )
 
 // bodyPath addresses the body as a whole, for failures that belong to no
@@ -86,8 +106,11 @@ type Agentic struct {
 
 // RootCause is the "why did this fire" half of the analysis.
 type RootCause struct {
-	// Summary is the one-sentence cause. Required.
+	// Summary is the one-sentence cause — the headline a triager reads. Required.
 	Summary string `json:"summary"`
+	// Detail is the longer explanation behind Summary: the chain of events,
+	// timings, why other causes were ruled out. Optional.
+	Detail string `json:"detail,omitempty"`
 	// Scope names the thing that is broken, in whatever addressing scheme
 	// fits the alert: "srv-victoria1:/var", "ovh/velero/kopia-maintain".
 	// Optional but strongly encouraged — it is what a consumer greps on.
@@ -95,6 +118,10 @@ type RootCause struct {
 	// Evidence holds the short observations the conclusion rests on: a
 	// command and its telling line, a PromQL result. Optional.
 	Evidence []string `json:"evidence,omitempty"`
+	// Caveats are the limits of the investigation — what could not be
+	// checked, what is inferred rather than observed. Kept apart from
+	// Evidence so they are read before the conclusion is trusted. Optional.
+	Caveats []string `json:"caveats,omitempty"`
 	// Confidence is high|medium|low. Required. `low` is the honest answer
 	// for an inconclusive investigation — record the trail rather than
 	// leaving the alert to be re-investigated from scratch.
@@ -103,6 +130,9 @@ type RootCause struct {
 
 // RemediationPlan is the "what to do about it" half of the analysis.
 type RemediationPlan struct {
+	// Status is the verdict: action_required | self_resolved | monitoring.
+	// Optional; absent means the plan does not say.
+	Status string `json:"status,omitempty"`
 	// Steps are the ordered fix actions. At least one is required.
 	Steps []Step `json:"steps"`
 	// Rollback is the ordered undo for Steps, in the same shape. Optional.
@@ -122,6 +152,9 @@ type Step struct {
 	// Risk is low|medium|high — the blast radius of running this step.
 	// Required, because an executor gates on it.
 	Risk string `json:"risk"`
+	// When is now | follow_up: whether on-call runs this step while the
+	// alert is live, or it is post-incident work. Optional.
+	When string `json:"when,omitempty"`
 }
 
 // AnalysisMeta is provenance, stamped by the server. Clients cannot set it:
@@ -211,6 +244,10 @@ func validateRootCause(rc *RootCause) ValidationErrors {
 		errs = append(errs, FieldError{"root_cause.summary", fmt.Sprintf("must be at most %d characters", MaxSummaryLen)})
 	}
 	errs = append(errs, checkNUL("root_cause.summary", rc.Summary)...)
+	if utf8.RuneCountInString(rc.Detail) > MaxDetailLen {
+		errs = append(errs, FieldError{"root_cause.detail", fmt.Sprintf("must be at most %d characters", MaxDetailLen)})
+	}
+	errs = append(errs, checkNUL("root_cause.detail", rc.Detail)...)
 	if utf8.RuneCountInString(rc.Scope) > MaxScopeLen {
 		errs = append(errs, FieldError{"root_cause.scope", fmt.Sprintf("must be at most %d characters", MaxScopeLen)})
 	}
@@ -236,11 +273,30 @@ func validateRootCause(rc *RootCause) ValidationErrors {
 		}
 		errs = append(errs, checkNUL(path, ev)...)
 	}
+	if len(rc.Caveats) > MaxCaveats {
+		errs = append(errs, FieldError{"root_cause.caveats", fmt.Sprintf("must hold at most %d items", MaxCaveats)})
+	}
+	for i, c := range rc.Caveats {
+		path := fmt.Sprintf("root_cause.caveats[%d]", i)
+		if strings.TrimSpace(c) == "" {
+			errs = append(errs, FieldError{path, "must not be empty"})
+			continue
+		}
+		if utf8.RuneCountInString(c) > MaxCaveatLen {
+			errs = append(errs, FieldError{path, fmt.Sprintf("must be at most %d characters", MaxCaveatLen)})
+		}
+		errs = append(errs, checkNUL(path, c)...)
+	}
 	return errs
 }
 
 func validateRemediationPlan(rp *RemediationPlan) ValidationErrors {
 	var errs ValidationErrors
+	switch rp.Status {
+	case "", PlanActionRequired, PlanSelfResolved, PlanMonitoring:
+	default:
+		errs = append(errs, FieldError{"remediation_plan.status", "must be one of " + planStatusEnum})
+	}
 	if len(rp.Steps) == 0 {
 		errs = append(errs, FieldError{"remediation_plan.steps", "must hold at least one step"})
 	}
@@ -274,6 +330,11 @@ func validateSteps(prefix string, steps []Step) ValidationErrors {
 			errs = append(errs, FieldError{path + ".risk", "is required (" + riskEnum + ")"})
 		default:
 			errs = append(errs, FieldError{path + ".risk", "must be one of " + riskEnum})
+		}
+		switch s.When {
+		case "", StepNow, StepFollowUp:
+		default:
+			errs = append(errs, FieldError{path + ".when", "must be one of " + stepWhenEnum})
 		}
 	}
 	return errs

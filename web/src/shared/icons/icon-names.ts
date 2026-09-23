@@ -44,6 +44,7 @@ export const ICON_NAMES = [
   "moon",
   "thumbs-up",
   "rotate-cw",
+  "zap",
   "message-square",
   "download",
   "upload",

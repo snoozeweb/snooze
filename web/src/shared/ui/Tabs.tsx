@@ -1,6 +1,48 @@
 import * as RT from "@radix-ui/react-tabs";
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import styles from "./Tabs.module.css";
+
+/** Slack before an edge counts as reached: sub-pixel scroll positions. */
+const EDGE_SLACK_PX = 2;
+
+/**
+ * Marks which ends of a scrolling strip have more tabs beyond them, as
+ * `data-fade-start` / `data-fade-end` on the list; the stylesheet turns each
+ * into an edge fade.
+ *
+ * A strip that scrolls sideways on a phone clipped its last trigger mid-word
+ * ("Re…") with nothing saying the row went on — no scrollbar on touch, no
+ * hint. The fade is that hint. Written straight onto the node rather than
+ * held in state: it changes on every scroll frame, and re-rendering the tab
+ * strip (and through it whatever panel is open) per frame would be absurd for
+ * a cosmetic mark. A strip that fits never gets either attribute, so the
+ * desktop output is unchanged.
+ */
+function useScrollEdges() {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const update = () => {
+      const overflow = el.scrollWidth - el.clientWidth;
+      const start = overflow > EDGE_SLACK_PX && el.scrollLeft > EDGE_SLACK_PX;
+      const end = overflow > EDGE_SLACK_PX && el.scrollLeft < overflow - EDGE_SLACK_PX;
+      el.toggleAttribute("data-fade-start", start);
+      el.toggleAttribute("data-fade-end", end);
+    };
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    // Width changes (rotation, the drawer resizing, a tab label growing a
+    // count) move the edges without a scroll event.
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
+    observer?.observe(el);
+    return () => {
+      el.removeEventListener("scroll", update);
+      observer?.disconnect();
+    };
+  }, []);
+  return ref;
+}
 
 export function Tabs({
   defaultValue,
@@ -48,12 +90,19 @@ export function TabList({
   overflow?: "wrap" | "scroll";
 }) {
   const listClass = overflow === "scroll" ? `${styles.list} ${styles.scroll}` : styles.list;
+  const listRef = useScrollEdges();
   if (rightSlot === undefined) {
-    return <RT.List className={listClass}>{children}</RT.List>;
+    return (
+      <RT.List ref={listRef} className={listClass}>
+        {children}
+      </RT.List>
+    );
   }
   return (
     <div className={styles.headerRow}>
-      <RT.List className={listClass}>{children}</RT.List>
+      <RT.List ref={listRef} className={listClass}>
+        {children}
+      </RT.List>
       <div className={styles.rightSlot}>{rightSlot}</div>
     </div>
   );

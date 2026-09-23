@@ -1393,6 +1393,13 @@ export interface paths {
          *     predicate the pipeline suppresses on — datetime, daily-time and weekday
          *     families AND'd, in `time_constraints.tz` when set); neither is stored.
          *
+         *     Create / replace / patch answer `422 validation_error` when the body's
+         *     `condition` or `time_constraints` cannot be parsed by the pipeline —
+         *     e.g. a datetime such as `2026-09-21T19:01:42` with seconds but no
+         *     timezone. Such a filter would otherwise be stored and then skipped at
+         *     every reload, silencing nothing. Send datetimes as RFC3339 with a
+         *     timezone (`2026-09-21T19:01:42Z`).
+         *
          */
         get: {
             parameters: {
@@ -4216,11 +4223,23 @@ export interface components {
              * @enum {string}
              */
             risk: "low" | "medium" | "high";
+            /**
+             * @description `now` is on-call work on this alert while it is live; `follow_up` is post-incident work that stops it recurring. Optional.
+             *
+             * @enum {string}
+             */
+            when?: "now" | "follow_up";
         };
         /** @description Why the alert fired. */
         AgenticRootCause: {
-            /** @description One sentence naming the cause. */
+            /** @description One sentence naming the cause — the headline a triager reads. Keep it short (about 160 characters) and put the explanation in `detail`.
+             *      */
             summary: string;
+            /** @description The longer explanation behind the summary. Optional. */
+            detail?: string;
+            /** @description Limits of the investigation — what could not be checked, what is inferred rather than observed. Optional.
+             *      */
+            caveats?: string[];
             /** @description What is broken, in whatever addressing scheme fits the alert ("srv-victoria1:/var", "ovh/velero/kopia-maintain").
              *      */
             scope?: string;
@@ -4235,6 +4254,12 @@ export interface components {
         };
         /** @description What to do about the alert. */
         AgenticRemediationPlan: {
+            /**
+             * @description The verdict for on-call: act now, it already recovered (safe to close), or keep watching. Optional.
+             *
+             * @enum {string}
+             */
+            status?: "action_required" | "self_resolved" | "monitoring";
             steps: components["schemas"]["AgenticStep"][];
             /** @description Ordered undo for the steps. */
             rollback?: components["schemas"]["AgenticStep"][];

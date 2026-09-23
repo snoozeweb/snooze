@@ -376,7 +376,11 @@ describe("DashboardPage", () => {
       await screen.findByText("Noise removed");
 
       const viewSwitch = screen.getByRole("group", { name: "Dashboard view" });
-      await user.click(within(viewSwitch).getByRole("button", { name: "Analyses" }));
+      // The segment carries the Analysed tile's own count (one query, one number).
+      expect(
+        await within(viewSwitch).findByRole("button", { name: "Analyses 1" }),
+      ).toBeInTheDocument();
+      await user.click(within(viewSwitch).getByRole("button", { name: /^Analyses/ }));
 
       expect(await screen.findByText("Orphaned blobs filled /var")).toBeInTheDocument();
       // The ratio against the open backlog lives on the Right-now tile, not
@@ -405,7 +409,7 @@ describe("DashboardPage", () => {
       await screen.findByText("Noise removed");
 
       const viewSwitch = screen.getByRole("group", { name: "Dashboard view" });
-      await user.click(within(viewSwitch).getByRole("button", { name: "Analyses" }));
+      await user.click(within(viewSwitch).getByRole("button", { name: /^Analyses/ }));
       expect(router.state.location.search).toMatchObject({
         view: "analyses",
         range: "custom",

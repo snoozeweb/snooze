@@ -49,15 +49,32 @@ describe("analysisEpoch", () => {
 });
 
 describe("ProvenanceLine", () => {
-  it("renders the tool, the subject and the time", () => {
+  it("labels a tool-written analysis as AI, then names the tool, the subject and the time", () => {
     const container = renderLine({
       at: new Date(Date.now() - 120_000).toISOString(),
       by: "agent-bot",
       source: "alert-rca",
     });
+    expect(screen.getByText("AI analysis")).toBeInTheDocument();
     expect(screen.getByText("alert-rca")).toBeInTheDocument();
     expect(screen.getByText("agent-bot")).toBeInTheDocument();
     expect(container.querySelector("time")).not.toBeNull();
+  });
+
+  it("labels the prod shape — a CLI an agent drove — as AI too", () => {
+    // The one real analysis in production reads "by snooze-cli · snooze":
+    // nothing on it said a model wrote it.
+    renderLine({ at: "2026-09-21T10:00:00Z", by: "snooze", source: "snooze-cli" });
+    expect(screen.getByText("AI analysis")).toBeInTheDocument();
+    expect(screen.getByText("snooze-cli")).toBeInTheDocument();
+  });
+
+  it("credits a person, not a model, for an analysis saved from the web UI", () => {
+    renderLine({ at: "2026-09-21T10:00:00Z", by: "alice", source: "snooze-web" });
+    expect(screen.queryByText("AI analysis")).toBeNull();
+    expect(screen.getByText(/Written by/)).toHaveTextContent("Written by alice");
+    // The web UI's own tag is an implementation detail, not a byline.
+    expect(screen.queryByText("snooze-web")).toBeNull();
   });
 
   it("renders nothing when the whole block is absent", () => {
@@ -71,11 +88,11 @@ describe("ProvenanceLine", () => {
     expect(container.querySelector("time")).toBeNull();
   });
 
-  it("does not collide React keys when the tool and the subject are the same name", () => {
+  it("prints a tool and a subject that share a name once, without colliding keys", () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
     try {
-      renderLine({ at: "", by: "snooze-web", source: "snooze-web" });
-      expect(screen.getAllByText("snooze-web")).toHaveLength(2);
+      renderLine({ at: "", by: "snooze-cli", source: "snooze-cli" });
+      expect(screen.getAllByText("snooze-cli")).toHaveLength(1);
       const keyWarnings = spy.mock.calls.filter((args) =>
         args.some((a) => typeof a === "string" && a.includes("same key")),
       );

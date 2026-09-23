@@ -1,4 +1,9 @@
-// The observations a root cause rests on, as an editable ordered list.
+// The observations a root cause rests on — or the caveats that limit it — as
+// an editable ordered list.
+//
+// Both lists are short free-text lines with the same rules on the server (a
+// count cap, a per-line cap, no blank lines), so one component serves both,
+// configured by `kind`; only the words and the limits differ.
 //
 // Order carries meaning here — EvidenceList renders the items "in the order
 // the analysis recorded them" — so the list gets explicit Move up / Move down
@@ -21,7 +26,45 @@ import { ANALYSIS_LIMITS, runeLength, type AnalysisForm } from "./schema";
 import styles from "./editor.module.css";
 import rowStyles from "./EvidenceListEditor.module.css";
 
-const FIELD = "root_cause.evidence";
+/** Everything that differs between the two lists. */
+type ListCopy = {
+  field: "root_cause.evidence" | "root_cause.caveats";
+  label: string;
+  /** Per-row noun, capitalised for the row's label ("Evidence 1"). */
+  item: string;
+  maxItems: number;
+  maxLength: number;
+  hint: string;
+  empty: string;
+  add: string;
+  /** How the cap counts them ("10 items", "5 caveats"). */
+  units: string;
+};
+
+const LISTS: Record<"evidence" | "caveats", ListCopy> = {
+  evidence: {
+    field: "root_cause.evidence",
+    label: "Evidence",
+    item: "Evidence",
+    maxItems: ANALYSIS_LIMITS.evidenceItems,
+    maxLength: ANALYSIS_LIMITS.evidence,
+    hint: "One observation per line — a probe and what it showed, in the order they were gathered.",
+    empty: "No evidence recorded. A conclusion with no trail is a guess.",
+    add: "Add evidence",
+    units: "items",
+  },
+  caveats: {
+    field: "root_cause.caveats",
+    label: "Caveats",
+    item: "Caveat",
+    maxItems: ANALYSIS_LIMITS.caveats,
+    maxLength: ANALYSIS_LIMITS.caveat,
+    hint: "Optional. What could not be checked, or is inferred rather than observed — read before the conclusion is trusted.",
+    empty: "No caveats recorded.",
+    add: "Add caveat",
+    units: "caveats",
+  },
+};
 
 export type EvidenceListEditorProps = {
   control: Control<AnalysisForm>;
@@ -29,6 +72,8 @@ export type EvidenceListEditorProps = {
   errors: FieldErrors<AnalysisForm>;
   /** Re-run the resolver on every edit once the author has tried to save. */
   validateOnChange: boolean;
+  /** Which of the two lists this instance edits. Defaults to the evidence. */
+  kind?: "evidence" | "caveats";
 };
 
 export function EvidenceListEditor({
@@ -36,10 +81,14 @@ export function EvidenceListEditor({
   setValue,
   errors,
   validateOnChange,
+  kind = "evidence",
 }: EvidenceListEditorProps) {
+  const copy = LISTS[kind];
+  const field = copy.field;
+  const noun = copy.item.toLowerCase();
   const baseId = useId();
-  const items = useWatch({ control, name: FIELD }) ?? [];
-  const atCap = items.length >= ANALYSIS_LIMITS.evidenceItems;
+  const items = useWatch({ control, name: field }) ?? [];
+  const atCap = items.length >= copy.maxItems;
   const addId = `${baseId}-add`;
   // The id of the control focus should land on once the list has re-rendered.
   // Both edits move it: an Add whose new box is not focused makes a keyboard
@@ -56,7 +105,7 @@ export function EvidenceListEditor({
   }, [baseId, items.length]);
 
   function commit(next: string[]) {
-    setValue(FIELD, next, { shouldDirty: true, shouldValidate: validateOnChange });
+    setValue(field, next, { shouldDirty: true, shouldValidate: validateOnChange });
   }
 
   function add() {
@@ -84,28 +133,28 @@ export function EvidenceListEditor({
     commit(next);
   }
 
-  const listError = describeFieldError("The evidence list", errorAt(errors, FIELD));
+  const listError = describeFieldError(`The ${noun} list`, errorAt(errors, field));
 
   return (
     <div className={styles.field}>
       <div className={styles.labelRow}>
         <span className={styles.label} id={`${baseId}-label`}>
-          Evidence
+          {copy.label}
         </span>
-        <span className={styles.hint}>{`${items.length} / ${ANALYSIS_LIMITS.evidenceItems}`}</span>
+        <span className={styles.hint}>{`${items.length} / ${copy.maxItems}`}</span>
       </div>
       <p className={styles.hint} id={`${baseId}-hint`}>
-        One observation per line — a probe and what it showed, in the order they were gathered.
+        {copy.hint}
       </p>
       {items.length === 0 ? (
-        <p className={styles.hint}>No evidence recorded. A conclusion with no trail is a guess.</p>
+        <p className={styles.hint}>{copy.empty}</p>
       ) : (
         <ol className={rowStyles.list} aria-labelledby={`${baseId}-label`}>
           {items.map((item, i) => {
             const itemId = `${baseId}-item-${i}`;
             const message = describeFieldError(
-              `Evidence ${i + 1}`,
-              errorAt(errors, `${FIELD}[${i}]`),
+              `${copy.item} ${i + 1}`,
+              errorAt(errors, `${field}[${i}]`),
             );
             return (
               // Index keys: the rows ARE their positions here (moving item 2
@@ -115,7 +164,7 @@ export function EvidenceListEditor({
                 <div className={rowStyles.inputCell}>
                   <Input
                     id={itemId}
-                    aria-label={`Evidence ${i + 1}`}
+                    aria-label={`${copy.item} ${i + 1}`}
                     aria-describedby={`${baseId}-hint`}
                     value={item}
                     invalid={message !== undefined}
@@ -123,27 +172,25 @@ export function EvidenceListEditor({
                     onChange={(e) => commit(items.map((v, k) => (k === i ? e.target.value : v)))}
                   />
                 </div>
-                <span className={rowStyles.count}>
-                  {`${runeLength(item)} / ${ANALYSIS_LIMITS.evidence}`}
-                </span>
+                <span className={rowStyles.count}>{`${runeLength(item)} / ${copy.maxLength}`}</span>
                 <div className={styles.row}>
                   <IconButton
                     icon="chevron-up"
-                    label={`Move evidence ${i + 1} up`}
+                    label={`Move ${noun} ${i + 1} up`}
                     size="sm"
                     disabled={i === 0}
                     onClick={() => swap(i, i - 1)}
                   />
                   <IconButton
                     icon="chevron-down"
-                    label={`Move evidence ${i + 1} down`}
+                    label={`Move ${noun} ${i + 1} down`}
                     size="sm"
                     disabled={i === items.length - 1}
                     onClick={() => swap(i, i + 1)}
                   />
                   <IconButton
                     icon="trash"
-                    label={`Remove evidence ${i + 1}`}
+                    label={`Remove ${noun} ${i + 1}`}
                     variant="ghostDanger"
                     size="sm"
                     onClick={() => removeAt(i)}
@@ -166,16 +213,14 @@ export function EvidenceListEditor({
         leadingIcon="plus"
         className={styles.addButton}
         disabled={atCap}
-        {...(atCap
-          ? { title: `An analysis holds at most ${ANALYSIS_LIMITS.evidenceItems} items` }
-          : {})}
+        {...(atCap ? { title: `An analysis holds at most ${copy.maxItems} ${copy.units}` } : {})}
         onClick={add}
       >
-        Add evidence
+        {copy.add}
       </Button>
       {atCap ? (
         <p className={styles.hint}>
-          {`That is the limit of ${ANALYSIS_LIMITS.evidenceItems} items. Remove one to add another.`}
+          {`That is the limit of ${copy.maxItems} ${copy.units}. Remove one to add another.`}
         </p>
       ) : null}
     </div>

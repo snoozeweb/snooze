@@ -43,6 +43,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger } from "@/shared/ui/Se
 import { Textarea } from "@/shared/ui/Textarea";
 import { CharCounter } from "./CharCounter";
 import { RISK_LEVELS, riskLabel } from "./enums";
+import { STEP_WHENS, stepWhenLabel } from "./verdict";
 import { describeFieldError, errorAt } from "./fieldErrors";
 import { ANALYSIS_LIMITS, emptyAnalysisStep, type AnalysisForm } from "./schema";
 import styles from "./editor.module.css";
@@ -51,7 +52,14 @@ import own from "./StepListEditor.module.css";
 /** The two paths this editor is mounted on. */
 export type StepListName = "remediation_plan.steps" | "remediation_plan.rollback";
 
-type StepField = "action" | "command" | "risk";
+type StepField = "action" | "command" | "risk" | "when";
+
+/**
+ * Radix Select cannot hold "" as an item value, and "not stated" is a real
+ * choice an author makes (it is the default) — so it rides a sentinel that
+ * never reaches the form.
+ */
+const WHEN_UNSET = "unset";
 
 /**
  * A concrete react-hook-form path into one step. Spelled as a template type
@@ -98,6 +106,12 @@ export type StepListEditorProps = {
   removeDisabledHint: string;
   /** Re-run the resolver on every edit once the author has tried to save. */
   validateOnChange: boolean;
+  /**
+   * Offer the per-step "When" (now / follow-up). On for the plan's steps; off
+   * for the rollback, whose steps have no "now" of their own — they run when
+   * a step went wrong.
+   */
+  withWhen?: boolean;
 };
 
 export function StepListEditor(props: StepListEditorProps) {
@@ -114,6 +128,7 @@ export function StepListEditor(props: StepListEditorProps) {
     noun,
     removeDisabledHint,
     validateOnChange,
+    withWhen = false,
   } = props;
 
   const baseId = useId();
@@ -192,6 +207,7 @@ export function StepListEditor(props: StepListEditorProps) {
                   canRemove={fields.length > min}
                   removeDisabledHint={removeDisabledHint}
                   validateOnChange={validateOnChange}
+                  withWhen={withWhen}
                   onMove={move}
                   onRemove={handleRemove}
                 />
@@ -245,6 +261,7 @@ type StepRowProps = {
   canRemove: boolean;
   removeDisabledHint: string;
   validateOnChange: boolean;
+  withWhen: boolean;
   onMove: (from: number, to: number) => void;
   onRemove: (index: number) => void;
 };
@@ -264,6 +281,7 @@ function StepRow(props: StepRowProps) {
     canRemove,
     removeDisabledHint,
     validateOnChange,
+    withWhen,
     onMove,
     onRemove,
   } = props;
@@ -274,11 +292,14 @@ function StepRow(props: StepRowProps) {
   const actionId = `${baseId}-action-${index}`;
   const commandId = `${baseId}-command-${index}`;
   const riskId = `${baseId}-risk-${index}`;
+  const whenId = `${baseId}-when-${index}`;
 
   const risk = useWatch({ control, name: stepPath(name, index, "risk") });
+  const when = useWatch({ control, name: stepPath(name, index, "when") });
   const actionError = describeFieldError("Action", errorAt(errors, `${name}[${index}].action`));
   const commandError = describeFieldError("Command", errorAt(errors, `${name}[${index}].command`));
   const riskError = describeFieldError("Risk", errorAt(errors, `${name}[${index}].risk`));
+  const whenError = describeFieldError("When", errorAt(errors, `${name}[${index}].when`));
 
   const commandField = register(stepPath(name, index, "command"));
 
@@ -350,36 +371,71 @@ function StepRow(props: StepRowProps) {
       </div>
 
       <div className={own.grid}>
-        <div className={styles.field}>
-          <span className={styles.label} id={`${riskId}-label`}>
-            Risk
-          </span>
-          <Select
-            value={risk}
-            onValueChange={(v) =>
-              setValue(stepPath(name, index, "risk"), v as typeof risk, {
-                shouldDirty: true,
-                shouldValidate: validateOnChange,
-              })
-            }
-          >
-            <SelectTrigger
-              id={riskId}
-              placeholder="Pick a risk"
-              aria-labelledby={`${riskId}-label ${riskId}`}
-            />
-            <SelectContent>
-              {RISK_LEVELS.map((level) => (
-                <SelectItem key={level} value={level}>
-                  {riskLabel(level)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {riskError !== undefined ? (
-            <p className={styles.error} role="alert">
-              {riskError}
-            </p>
+        <div className={own.controls}>
+          <div className={styles.field}>
+            <span className={styles.label} id={`${riskId}-label`}>
+              Risk
+            </span>
+            <Select
+              value={risk}
+              onValueChange={(v) =>
+                setValue(stepPath(name, index, "risk"), v as typeof risk, {
+                  shouldDirty: true,
+                  shouldValidate: validateOnChange,
+                })
+              }
+            >
+              <SelectTrigger
+                id={riskId}
+                placeholder="Pick a risk"
+                aria-labelledby={`${riskId}-label ${riskId}`}
+              />
+              <SelectContent>
+                {RISK_LEVELS.map((level) => (
+                  <SelectItem key={level} value={level}>
+                    {riskLabel(level)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {riskError !== undefined ? (
+              <p className={styles.error} role="alert">
+                {riskError}
+              </p>
+            ) : null}
+          </div>
+
+          {withWhen ? (
+            <div className={styles.field}>
+              <span className={styles.label} id={`${whenId}-label`}>
+                When
+              </span>
+              <Select
+                value={when === "" || when === undefined ? WHEN_UNSET : when}
+                onValueChange={(v) =>
+                  setValue(
+                    stepPath(name, index, "when"),
+                    v === WHEN_UNSET ? "" : (v as typeof when),
+                    { shouldDirty: true, shouldValidate: validateOnChange },
+                  )
+                }
+              >
+                <SelectTrigger id={whenId} aria-labelledby={`${whenId}-label ${whenId}`} />
+                <SelectContent>
+                  <SelectItem value={WHEN_UNSET}>—</SelectItem>
+                  {STEP_WHENS.map((w) => (
+                    <SelectItem key={w} value={w}>
+                      {stepWhenLabel(w)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {whenError !== undefined ? (
+                <p className={styles.error} role="alert">
+                  {whenError}
+                </p>
+              ) : null}
+            </div>
           ) : null}
         </div>
 

@@ -447,31 +447,77 @@ describe("AlertRowDetail", () => {
       expect(screen.getByRole("tab", { name: "Deliveries · 1" })).toBeInTheDocument(),
     );
   });
-  it("suffixes the Analysis tab with the confidence once an analysis exists", async () => {
+  it("marks the Analysis tab — with a dot, not a confidence word — once an analysis exists", async () => {
     stubComments();
     stubAnalysis(analysisFor("r1", "medium"));
-    renderDetail({ uid: "r1", host: "srv-1", date_epoch: 1 });
+    const { container } = renderDetail({ uid: "r1", host: "srv-1", date_epoch: 1 });
     await waitFor(() =>
-      expect(screen.getByRole("tab", { name: "Analysis · Medium" })).toBeInTheDocument(),
+      expect(container.querySelector('[data-slot="analysis-marker"]')).not.toBeNull(),
     );
+    // The accessible name stays the plain noun; confidence is said once, in
+    // the pane, not on every surface around it.
+    expect(screen.getByRole("tab", { name: "Analysis" })).toBeInTheDocument();
+    expect(screen.queryByText(/Analysis ·/)).toBeNull();
+    expect(screen.queryByText("Medium confidence")).toBeNull();
   });
 
   it("leaves the Analysis tab bare when the alert carries no analysis", async () => {
     stubComments();
-    renderDetail({ uid: "r1", host: "srv-1", date_epoch: 1 });
+    const { container } = renderDetail({ uid: "r1", host: "srv-1", date_epoch: 1 });
     await waitFor(() => expect(screen.getByRole("tab", { name: "Analysis" })).toBeInTheDocument());
-    expect(screen.queryByText(/Analysis ·/)).toBeNull();
-    expect(screen.queryByText("Cause:")).toBeNull();
+    expect(container.querySelector('[data-slot="analysis-marker"]')).toBeNull();
+    expect(screen.queryByRole("button", { name: /AI analysis/ })).toBeNull();
   });
 
-  it("prints the analysed cause in the summary header, with its confidence", async () => {
+  it("points at the analysis from the header in one line, and opens it on click", async () => {
+    const user = userEvent.setup();
     stubComments();
     stubAnalysis(analysisFor("r1", "low"));
     renderDetail({ uid: "r1", host: "srv-1", date_epoch: 1 });
-    await waitFor(() => expect(screen.getByText("Cause:")).toBeInTheDocument());
-    expect(screen.getByText("systemd-journald filled /var")).toBeInTheDocument();
-    // Colour is never the only carrier: the level is spelled out.
-    expect(screen.getByText("Low confidence")).toBeInTheDocument();
+    const line = await screen.findByRole("button", { name: /AI analysis/ });
+    expect(line).toHaveTextContent("AI analysis · systemd-journald filled /var");
+    // The cause is not printed a second time as a "Cause:" paragraph, and the
+    // header carries no confidence chip of its own.
+    expect(screen.queryByText("Cause:")).toBeNull();
+    expect(screen.queryByText("Low confidence")).toBeNull();
+
+    await user.click(line);
+    expect(screen.getByRole("tab", { name: "Analysis" })).toHaveAttribute("data-state", "active");
+    expect(screen.getByRole("heading", { name: /What to do/ })).toBeInTheDocument();
+    // With the tab open the pane says it all; the pointer would repeat the
+    // verdict and the headline a few pixels above themselves.
+    expect(screen.queryByRole("button", { name: /AI analysis/ })).toBeNull();
+  });
+
+  it("leads the header line with the plan's verdict when one is stated", async () => {
+    stubComments();
+    const envelope = analysisFor("r1", "high");
+    stubAnalysis({
+      ...envelope,
+      agentic: {
+        ...envelope.agentic,
+        remediation_plan: { ...envelope.agentic.remediation_plan!, status: "action_required" },
+      },
+    });
+    renderDetail({ uid: "r1", host: "srv-1", date_epoch: 1 });
+    const line = await screen.findByRole("button", { name: /AI analysis/ });
+    expect(within(line).getByText("Action required")).toBeInTheDocument();
+  });
+
+  it("says 'Analysis', not 'AI analysis', for one a person wrote", async () => {
+    stubComments();
+    const envelope = analysisFor("r1", "high");
+    stubAnalysis({
+      ...envelope,
+      agentic: {
+        ...envelope.agentic,
+        analysis: { at: "2026-09-21T10:00:00Z", by: "alice", source: "snooze-web" },
+      },
+    });
+    renderDetail({ uid: "r1", host: "srv-1", date_epoch: 1 });
+    const line = await screen.findByRole("button", { name: /^Analysis ·/ });
+    expect(line).toHaveTextContent("Analysis · systemd-journald filled /var");
+    expect(screen.queryByText(/AI analysis/)).toBeNull();
   });
 
   it("hides the Analysis tab — and fires no probe — for a row with no uid", async () => {
@@ -496,13 +542,10 @@ describe("AlertRowDetail", () => {
     stubAnalysis(analysisFor("r1", "high"));
     renderDetail({ uid: "r1", host: "srv-1", date_epoch: 1 }, "analysis");
     await waitFor(() =>
-      expect(screen.getByRole("tab", { name: "Analysis · High" })).toHaveAttribute(
-        "data-state",
-        "active",
-      ),
+      expect(screen.getByRole("tab", { name: "Analysis" })).toHaveAttribute("data-state", "active"),
     );
     // The pane itself is showing, not just the trigger.
-    expect(screen.getByText("Remediation plan")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /What to do/ })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Timeline" })).toHaveAttribute("data-state", "inactive");
   });
 
@@ -544,9 +587,9 @@ describe("AlertRowDetail", () => {
       },
     } as unknown as AgenticEnvelope);
     renderDetail({ uid: "r1", host: "srv-1", date_epoch: 1 });
-    // The cause line still prints — the sentence is readable whatever the
-    // confidence says — but neither the tab nor the header invents a level.
-    await waitFor(() => expect(screen.getByText("Cause:")).toBeInTheDocument());
+    // The header line still prints — the sentence is readable whatever the
+    // confidence says — but nothing around it invents a level.
+    expect(await screen.findByRole("button", { name: /AI analysis/ })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Analysis" })).toBeInTheDocument();
     expect(screen.queryByText(/undefined/)).toBeNull();
   });
@@ -602,7 +645,7 @@ describe("AlertRowDetail", () => {
     await waitFor(() => expect(seen.at(-1)).toBe(false));
   });
 
-  it("shares ONE analysis request between the tab label, the header line and the pane", async () => {
+  it("shares ONE analysis request between the tab label and the pane", async () => {
     stubComments();
     let hits = 0;
     mswServer.use(
@@ -612,8 +655,8 @@ describe("AlertRowDetail", () => {
       }),
     );
     renderDetail({ uid: "r1", host: "srv-1", date_epoch: 1 }, "analysis");
-    await waitFor(() => expect(screen.getByText("Cause:")).toBeInTheDocument());
-    expect(screen.getByText("Remediation plan")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /What to do/ })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Analysis" })).toBeInTheDocument();
     // Same query key from both readers — TanStack Query dedupes them.
     expect(hits).toBe(1);
   });

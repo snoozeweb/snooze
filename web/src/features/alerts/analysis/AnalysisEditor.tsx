@@ -30,6 +30,7 @@ import type { components } from "@/lib/api/types.gen";
 import { analysisFieldErrors, useSetAnalysis, type AgenticEnvelope } from "./api";
 import { AutomatableSwitch } from "./AutomatableSwitch";
 import { isAddressablePath, toRhfPath } from "./fieldErrors";
+import { PlanStatusSelect } from "./PlanStatusSelect";
 import { RootCauseEditor } from "./RootCauseEditor";
 import { StepListEditor } from "./StepListEditor";
 import {
@@ -181,6 +182,7 @@ export function AnalysisEditor({ uid, initial, onSaved, onCancel }: AnalysisEdit
       noun="step"
       removeDisabledHint="A plan needs at least one step"
       validateOnChange={isSubmitted}
+      withWhen
     />
   );
 
@@ -214,6 +216,12 @@ export function AnalysisEditor({ uid, initial, onSaved, onCancel }: AnalysisEdit
 
         <section className={styles.section}>
           <h3 className={styles.sectionTitle}>Remediation</h3>
+          <PlanStatusSelect
+            control={control}
+            setValue={setValue}
+            errors={errors}
+            validateOnChange={isSubmitted}
+          />
           {stepList}
           {rollbackStartsEmpty ? (
             <CollapsibleSection title="Rollback" summary="None recorded">

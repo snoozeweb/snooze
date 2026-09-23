@@ -36,7 +36,9 @@ describe("severity cell", () => {
     } as Record_);
     expect(screen.getByLabelText("Severity escalated")).toBeInTheDocument();
     const dot = screen.getByRole("img", { name: "Analysed · low confidence" });
-    expect(dot).toHaveAttribute("data-tone", "critical");
+    // Neutral: the dot's tone is the plan's verdict (none here), never the
+    // confidence — a red dot beside a red Critical read as two severities.
+    expect(dot).toHaveAttribute("data-tone", "neutral");
     // Order inside the cell: badge, then trend, then dot.
     const cell = container.firstElementChild;
     expect(cell?.lastElementChild).toBe(dot);

@@ -9,10 +9,9 @@
 // they are also the orders the option lists render in, so a reader never has
 // to re-learn a control's direction.
 //
-// The two share a tone vocabulary but map onto it in opposite directions:
-// high confidence is good news, high risk is bad news. Keeping both mappings
-// in one file is what stops a future badge from quietly painting a high-risk
-// step green.
+// Only risk takes a tone. Confidence used to paint green/amber/red too, which
+// set a green pill beside a red Critical and made a low-confidence cause read
+// as a second Critical; it now renders as a neutral meter (ConfidenceMeter).
 
 /** Accepted values of `root_cause.confidence`, best first. */
 export const CONFIDENCE_LEVELS = ["high", "medium", "low"] as const;
@@ -29,12 +28,6 @@ export type Risk = (typeof RISK_LEVELS)[number];
  * is never used here (it is reserved for interactive chrome).
  */
 export type Tone = "ok" | "warning" | "critical";
-
-const CONFIDENCE_TONES: Record<Confidence, Tone> = {
-  high: "ok",
-  medium: "warning",
-  low: "critical",
-};
 
 const RISK_TONES: Record<Risk, Tone> = {
   low: "ok",
@@ -64,12 +57,7 @@ export function isRisk(value: unknown): value is Risk {
   return typeof value === "string" && (RISK_LEVELS as readonly string[]).includes(value);
 }
 
-/** Tone for a confidence level: high is reassuring, low is not. */
-export function confidenceTone(level: Confidence): Tone {
-  return CONFIDENCE_TONES[level];
-}
-
-/** Tone for a step's risk: the inverse of {@link confidenceTone}. */
+/** Tone for a step's risk: low is reassuring, high is not. */
 export function riskTone(level: Risk): Tone {
   return RISK_TONES[level];
 }

@@ -6,6 +6,7 @@
 // the picked window; printed side by side without saying which is which they
 // read as contradictions — the "TOTAL 0 next to OPEN 8" bug. Every panel
 // states its source in one line.
+import type { ReactNode } from "react";
 import { Icon } from "@/shared/icons/Icon";
 import type { IconName } from "@/shared/icons/icon-names";
 import styles from "./Panel.module.css";
@@ -28,9 +29,15 @@ export type PanelEmptyProps = {
   description?: string;
   /** Shorter vertical footprint for empties inside a panel section. */
   compact?: boolean;
+  /**
+   * The way out, when there is one — e.g. "Clear filters" under an empty that
+   * the reader's own narrowing caused. An empty they made and cannot undo from
+   * where they are looking is a dead end.
+   */
+  action?: ReactNode;
 };
 
-export function PanelEmpty({ title, description, compact }: PanelEmptyProps) {
+export function PanelEmpty({ title, description, compact, action }: PanelEmptyProps) {
   return (
     <div
       className={compact ? `${styles.empty} ${styles.emptyCompact}` : styles.empty}
@@ -38,6 +45,7 @@ export function PanelEmpty({ title, description, compact }: PanelEmptyProps) {
     >
       <p className={styles.emptyTitle}>{title}</p>
       {description ? <p className={styles.emptyText}>{description}</p> : null}
+      {action ? <div className={styles.emptyAction}>{action}</div> : null}
     </div>
   );
 }

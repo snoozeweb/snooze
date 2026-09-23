@@ -74,3 +74,12 @@
   font-size: var(--text-sm);
   resize: vertical;
 }
+
+/* The short controls (Risk, and When on the plan's steps) stack in the grid's
+   narrow column beside the command. */
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}

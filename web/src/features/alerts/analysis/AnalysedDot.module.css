@@ -1,18 +1,19 @@
 /* An 8px token-sized disc (--space-2) that sits beside the severity badge and
    the trend arrow in the alerts table. `flex-shrink: 0` keeps it a circle when
-   the cell's flex layout runs out of room; the severity family supplies the
-   three tones, so the dot re-themes with everything else. */
+   the cell's flex layout runs out of room. Neutral by default — "analysed,
+   nothing more to say" — and a state hue only for the two verdicts that ask
+   something of the operator (see AnalysedDot.tsx). */
 .dot {
   display: inline-block;
   flex-shrink: 0;
   width: var(--space-2);
   height: var(--space-2);
   border-radius: var(--radius-pill);
+  background: var(--text-muted);
+}
+.dot[data-tone="ok"] {
   background: var(--severity-ok);
 }
 .dot[data-tone="warning"] {
   background: var(--severity-warning);
-}
-.dot[data-tone="critical"] {
-  background: var(--severity-critical);
 }

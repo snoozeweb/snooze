@@ -21,9 +21,16 @@ const VIEWS: ReadonlyArray<{ id: DashboardView; label: string; icon: IconName }>
 export type ViewSwitchProps = {
   value: DashboardView;
   onChange: (next: DashboardView) => void;
+  /**
+   * How many open alerts carry an analysis. Printed on the Analyses segment
+   * when above zero, so the switch says there is a queue behind it before
+   * anyone opens it; zero or unknown prints nothing rather than a "0" badge
+   * that reads as an alarm about nothing.
+   */
+  analysedCount?: number;
 };
 
-export function ViewSwitch({ value, onChange }: ViewSwitchProps) {
+export function ViewSwitch({ value, onChange, analysedCount }: ViewSwitchProps) {
   // `group` + `aria-pressed`, not `radiogroup` + `aria-checked`: the latter
   // conveys the mutual exclusivity better, but it also brings roving-tabindex
   // arrow-key semantics a radiogroup is expected to have, and the page's other
@@ -43,6 +50,15 @@ export function ViewSwitch({ value, onChange }: ViewSwitchProps) {
         >
           <Icon name={v.icon} size={14} />
           {v.label}
+          {v.id === "analyses" && analysedCount !== undefined && analysedCount > 0 ? (
+            // The space is for the accessible name ("Analyses 3", not
+            // "Analyses3"); the flex gap does the visual spacing and a
+            // whitespace-only flex item renders nothing.
+            <>
+              {" "}
+              <span className={styles.count}>{analysedCount}</span>
+            </>
+          ) : null}
         </button>
       ))}
     </div>

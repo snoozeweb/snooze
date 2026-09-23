@@ -132,6 +132,47 @@
 
 ### Changed
 
+- **Agentic analyses now lead with a verdict, on both the dashboard and the
+  alert inspector.** The contract gains four optional fields:
+  - `root_cause.detail`: the explanation, up to 2000 characters. `summary`
+    goes back to being one sentence.
+  - `root_cause.caveats`: up to 5, 300 characters each.
+  - `remediation_plan.status`: `action_required` | `self_resolved` |
+    `monitoring`.
+  - `steps[].when`: `now` | `follow_up`.
+
+  They are validated like the rest, with messages keyed by JSON path, and are
+  exposed in the OpenAPI spec and the `set_alert_analysis` MCP tool. Existing
+  analyses are unchanged and still render.
+
+  The **inspector's Analysis tab** now reads:
+  - verdict chip → one-line headline → detail;
+  - the plan, split into *Now* and *Follow-up*, marked *Automatable* or
+    *Manual*;
+  - caveats;
+  - folded evidence.
+
+  The duplicated `Cause:` block and the confidence repeated three times are
+  gone. The header keeps one line that points at the tab. **Remove** moved
+  into a ⋯ menu.
+
+  The **dashboard's Analyses view** is now a keyboard-navigable work queue:
+  - rows sort most urgent first, with the alert's state and fired time;
+  - collapsed rows show verdict, headline and a Now / Follow-ups summary;
+  - **Expand** shows the whole analysis, with copy buttons on commands;
+  - filters are single-choice and can be read at a glance;
+  - **Open alert** lets the inspector's previous/next walk the analysed set.
+
+  Across both surfaces:
+  - confidence is a neutral meter instead of a green/amber/red chip;
+  - risk is marked only above `low`;
+  - machine-written analyses are labelled **AI analysis**;
+  - an analysis older than the alert's latest refire says so;
+  - legacy `caveat:` evidence lines are shown as caveats.
+
+  The drawer's tab strip and the filter rows show a fade when they scroll
+  sideways on phones, and touch targets are 44px.
+
 - **`bulk_update` and `bulk_state` now return `403` for collections whose
   plugin carries a per-document write hook**, unless that plugin opts in by
   implementing the new `plugins.BulkWriteGuard`. Affected collections:

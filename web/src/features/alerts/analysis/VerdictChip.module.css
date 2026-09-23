@@ -1,0 +1,24 @@
+.chip {
+  --verdict: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 20px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--verdict) 55%, transparent);
+  background: color-mix(in srgb, var(--verdict) var(--badge-tint), transparent);
+  color: var(--verdict);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+}
+.chip[data-status="action_required"] {
+  --verdict: var(--severity-warning);
+}
+.chip[data-status="monitoring"] {
+  --verdict: var(--severity-info);
+}
+.chip[data-status="self_resolved"] {
+  --verdict: var(--severity-ok);
+}

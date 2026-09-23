@@ -13,6 +13,13 @@
    cell. The drawer header itself handles truncation. */
 .detailsHost {
   font-family: var(--font-mono);
+  /* One line, clipped: an FQDN host wrapped the drawer title onto three or
+     four lines beside the toolbar (and on a phone a letter at a time). The
+     full name is in the tooltip, the table row and the Record tab. */
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 /* Bulk-snooze confirmation preview — compact list of the alerts about to be
    OR'd into one snooze condition. */

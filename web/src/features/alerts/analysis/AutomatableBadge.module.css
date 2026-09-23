@@ -1,0 +1,20 @@
+/* The neutral chip recipe from shared/ui/Badge (surface fill, hairline, strong
+   ink), drawn here rather than borrowed: Badge carries the app's severity
+   bloom (a zero-offset glow in the text colour), which on a white-ink neutral
+   chip read as a halo around a capability that is not an alarm. */
+.neutral {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 18px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-strong);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  line-height: 1;
+  white-space: nowrap;
+  vertical-align: middle;
+}

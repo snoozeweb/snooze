@@ -1,7 +1,10 @@
 // One step of a remediation (or rollback) plan.
 //
 // Three facts, in the order an operator needs them: what to do, how dangerous
-// it is, and the exact command. The command is the part that gets copied and
+// it is, and the exact command. Risk is marked only when it is worth a second
+// look — medium or high. A "Low risk" chip on most steps of most plans was
+// noise that taught the eye to skip the chip, including on the step where it
+// mattered (the dashboard's Analyses rows already followed this rule). The command is the part that gets copied and
 // pasted into a terminal, so it is set in a code block with its own copy
 // button and scrolls horizontally rather than wrapping — a wrapped shell line
 // is a line you cannot trust after pasting.
@@ -59,7 +62,7 @@ function CommandBlock({ command }: { command: string }) {
 
 export function StepCard({ index, step, collapsible = false }: StepCardProps) {
   const command = step.command?.trim() ?? "";
-  const risk = isRisk(step.risk) ? step.risk : undefined;
+  const risk = isRisk(step.risk) && step.risk !== "low" ? step.risk : undefined;
   return (
     <li className={styles.step}>
       <div className={styles.head}>

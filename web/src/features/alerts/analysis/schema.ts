@@ -21,6 +21,10 @@ import type { FieldErrors, Resolver } from "react-hook-form";
 import type { components } from "@/lib/api/types.gen";
 import { CONFIDENCE_LEVELS, RISK_LEVELS, isConfidence, isRisk } from "./enums";
 import type { Confidence, Risk } from "./enums";
+// Types only: verdict.ts imports ANALYSIS_SOURCE from this file, so a value
+// import back would be a cycle whose evaluation order decides whether the
+// enum lists below exist yet.
+import type { PlanStatus, StepWhen } from "./verdict";
 
 type Agentic = components["schemas"]["Agentic"];
 type AgenticRequest = components["schemas"]["AgenticRequest"];
@@ -29,6 +33,9 @@ type AgenticStep = components["schemas"]["AgenticStep"];
 /** Size limits, mirroring the `Max*` constants in pkg/snoozetypes/agentic.go. */
 export const ANALYSIS_LIMITS = {
   summary: 500,
+  detail: 2000,
+  caveats: 5,
+  caveat: 300,
   scope: 200,
   evidenceItems: 10,
   evidence: 500,
@@ -45,6 +52,32 @@ export const ANALYSIS_SOURCE = "snooze-web";
 // them, so a reader gets the accepted values off the error itself.
 const CONFIDENCE_ENUM = CONFIDENCE_LEVELS.join("|");
 const RISK_ENUM = RISK_LEVELS.join("|");
+
+/**
+ * The two optional enums, in the SERVER's order (`planStatusEnum` /
+ * `stepWhenEnum` in agentic.go) — which is not verdict.ts's display order, and
+ * the messages must match the server's byte for byte.
+ */
+const PLAN_STATUS_VALUES: readonly PlanStatus[] = [
+  "action_required",
+  "self_resolved",
+  "monitoring",
+];
+const STEP_WHEN_VALUES: readonly StepWhen[] = ["now", "follow_up"];
+const PLAN_STATUS_ENUM = PLAN_STATUS_VALUES.join("|");
+const STEP_WHEN_ENUM = STEP_WHEN_VALUES.join("|");
+
+function asPlanStatus(value: unknown): PlanStatus | "" {
+  return typeof value === "string" && (PLAN_STATUS_VALUES as readonly string[]).includes(value)
+    ? (value as PlanStatus)
+    : "";
+}
+
+function asStepWhen(value: unknown): StepWhen | "" {
+  return typeof value === "string" && (STEP_WHEN_VALUES as readonly string[]).includes(value)
+    ? (value as StepWhen)
+    : "";
+}
 
 const NUL_MESSAGE = "must not contain the NUL character";
 
@@ -88,12 +121,14 @@ function asRecord(value: unknown): Record<string, unknown> {
 /**
  * One step, as the form holds it. `risk` widens to `""` because a fresh step
  * has no answer yet and an unset select must be a validation failure, not a
- * silent default to "low".
+ * silent default to "low". `when` widens to `""` for the opposite reason: it
+ * is optional, and `""` is "not stated", which is never sent.
  */
 export type AnalysisStepForm = {
   action: string;
   command: string;
   risk: Risk | "";
+  when: StepWhen | "";
 };
 
 /**
@@ -105,11 +140,15 @@ export type AnalysisStepForm = {
 export type AnalysisForm = {
   root_cause: {
     summary: string;
+    detail: string;
     scope: string;
     evidence: string[];
+    caveats: string[];
     confidence: Confidence | "";
   };
   remediation_plan: {
+    /** `""` is "the plan does not say" — the server's absent value. */
+    status: PlanStatus | "";
     steps: AnalysisStepForm[];
     rollback: AnalysisStepForm[];
     automatable: boolean;
@@ -170,6 +209,42 @@ function validateStepList(errs: Record<string, string>, prefix: string, steps: u
     } else if (!isRisk(risk)) {
       errs[`${path}.risk`] = `must be one of ${RISK_ENUM}`;
     }
+    // Optional, so only a value outside the enum fails — "" and absent are
+    // both "not stated", exactly as the server's `case ""` treats them.
+    const when = step["when"];
+    if (when !== "" && when !== undefined && asStepWhen(when) === "") {
+      errs[`${path}.when`] = `must be one of ${STEP_WHEN_ENUM}`;
+    }
+  });
+}
+
+/**
+ * validateTextList mirrors the server's loop over `evidence` and `caveats`:
+ * an over-long list is flagged on the list, and — unlike the step lists — the
+ * items are still walked, so a caller sees the blank item too.
+ */
+function validateTextList(
+  errs: Record<string, string>,
+  path: string,
+  raw: unknown,
+  maxItems: number,
+  maxLen: number,
+): void {
+  const items = asList(raw);
+  if (items.length > maxItems) {
+    errs[path] = `must hold at most ${maxItems} items`;
+  }
+  items.forEach((value, i) => {
+    const item = asText(value);
+    const itemPath = `${path}[${i}]`;
+    if (isBlank(item)) {
+      errs[itemPath] = "must not be empty";
+      return;
+    }
+    if (runeLength(item) > maxLen) {
+      errs[itemPath] = tooLong(maxLen);
+    }
+    checkNUL(errs, itemPath, item);
   });
 }
 
@@ -194,6 +269,12 @@ export function validateAnalysisForm(form: AnalysisForm, source?: string): Recor
   }
   checkNUL(errs, "root_cause.summary", summary);
 
+  const detail = asText(rc["detail"]);
+  if (runeLength(detail) > ANALYSIS_LIMITS.detail) {
+    errs["root_cause.detail"] = tooLong(ANALYSIS_LIMITS.detail);
+  }
+  checkNUL(errs, "root_cause.detail", detail);
+
   if (runeLength(scope) > ANALYSIS_LIMITS.scope) {
     errs["root_cause.scope"] = tooLong(ANALYSIS_LIMITS.scope);
   }
@@ -206,26 +287,26 @@ export function validateAnalysisForm(form: AnalysisForm, source?: string): Recor
     errs["root_cause.confidence"] = `must be one of ${CONFIDENCE_ENUM}`;
   }
 
-  const evidence = asList(rc["evidence"]);
-  if (evidence.length > ANALYSIS_LIMITS.evidenceItems) {
-    errs["root_cause.evidence"] = `must hold at most ${ANALYSIS_LIMITS.evidenceItems} items`;
-  }
-  // Unlike the step lists, the server keeps walking the items after flagging
-  // an over-long evidence list, so a caller sees the blank item too.
-  evidence.forEach((raw, i) => {
-    const ev = asText(raw);
-    const path = `root_cause.evidence[${i}]`;
-    if (isBlank(ev)) {
-      errs[path] = "must not be empty";
-      return;
-    }
-    if (runeLength(ev) > ANALYSIS_LIMITS.evidence) {
-      errs[path] = tooLong(ANALYSIS_LIMITS.evidence);
-    }
-    checkNUL(errs, path, ev);
-  });
+  validateTextList(
+    errs,
+    "root_cause.evidence",
+    rc["evidence"],
+    ANALYSIS_LIMITS.evidenceItems,
+    ANALYSIS_LIMITS.evidence,
+  );
+  validateTextList(
+    errs,
+    "root_cause.caveats",
+    rc["caveats"],
+    ANALYSIS_LIMITS.caveats,
+    ANALYSIS_LIMITS.caveat,
+  );
 
   const plan = asRecord(asRecord(form)["remediation_plan"]);
+  const status = plan["status"];
+  if (status !== "" && status !== undefined && asPlanStatus(status) === "") {
+    errs["remediation_plan.status"] = `must be one of ${PLAN_STATUS_ENUM}`;
+  }
   const steps = asList(plan["steps"]);
   if (steps.length === 0) {
     errs["remediation_plan.steps"] = "must hold at least one step";
@@ -304,7 +385,7 @@ export const analysisResolver: Resolver<AnalysisForm, AnalysisFormContext> = (va
 
 /** A blank step, as "Add step" appends it. */
 export function emptyAnalysisStep(): AnalysisStepForm {
-  return { action: "", command: "", risk: "" };
+  return { action: "", command: "", risk: "", when: "" };
 }
 
 /**
@@ -316,8 +397,13 @@ export function emptyAnalysisStep(): AnalysisStepForm {
  */
 export function emptyAnalysisForm(): AnalysisForm {
   return {
-    root_cause: { summary: "", scope: "", evidence: [], confidence: "" },
-    remediation_plan: { steps: [emptyAnalysisStep()], rollback: [], automatable: false },
+    root_cause: { summary: "", detail: "", scope: "", evidence: [], caveats: [], confidence: "" },
+    remediation_plan: {
+      status: "",
+      steps: [emptyAnalysisStep()],
+      rollback: [],
+      automatable: false,
+    },
   };
 }
 
@@ -328,6 +414,7 @@ function stepToForm(raw: unknown): AnalysisStepForm {
     action: asText(step["action"]),
     command: asText(step["command"]),
     risk: isRisk(risk) ? risk : "",
+    when: asStepWhen(step["when"]),
   };
 }
 
@@ -347,11 +434,14 @@ export function analysisToForm(agentic: Agentic | null | undefined): AnalysisFor
   return {
     root_cause: {
       summary: asText(rc["summary"]),
+      detail: asText(rc["detail"]),
       scope: asText(rc["scope"]),
       evidence: asList(rc["evidence"]).map(asText),
+      caveats: asList(rc["caveats"]).map(asText),
       confidence: isConfidence(confidence) ? confidence : "",
     },
     remediation_plan: {
+      status: asPlanStatus(plan["status"]),
       // An analysis stored with no steps cannot exist through the API, but a
       // form with no steps cannot be edited, so fall back to one blank row.
       steps: steps.length > 0 ? steps : [emptyAnalysisStep()],
@@ -366,6 +456,7 @@ function stepToRequest(raw: unknown): AgenticStep {
   const action = asText(step["action"]);
   const command = asText(step["command"]);
   const risk = step["risk"];
+  const when = asStepWhen(step["when"]);
   return {
     action,
     // Optional fields are omitted rather than sent empty: the PUT replaces the
@@ -375,6 +466,7 @@ function stepToRequest(raw: unknown): AgenticStep {
     // The resolver has already rejected "", so the fallback is unreachable on
     // a validated form — it is here to narrow `Risk | ""` without an assertion.
     risk: isRisk(risk) ? risk : "low",
+    ...(when === "" ? {} : { when }),
   };
 }
 
@@ -386,19 +478,26 @@ export function formToRequest(form: AnalysisForm, source?: string): AgenticReque
   const rc = asRecord(asRecord(form)["root_cause"]);
   const plan = asRecord(asRecord(form)["remediation_plan"]);
   const scope = asText(rc["scope"]);
+  const detail = asText(rc["detail"]);
   const evidence = asList(rc["evidence"]).map(asText);
+  const caveats = asList(rc["caveats"]).map(asText);
   const rollback = asList(plan["rollback"]).map(stepToRequest);
   const confidence = rc["confidence"];
+  const status = asPlanStatus(plan["status"]);
   const tag = asText(source);
   return {
     root_cause: {
       summary: asText(rc["summary"]),
+      ...(isBlank(detail) ? {} : { detail }),
       ...(isBlank(scope) ? {} : { scope }),
       ...(evidence.length === 0 ? {} : { evidence }),
+      ...(caveats.length === 0 ? {} : { caveats }),
       // Same narrowing as `risk` above: unreachable on a validated form.
       confidence: isConfidence(confidence) ? confidence : "low",
     },
     remediation_plan: {
+      // "Not stated" is the server's absent value, not a fourth status.
+      ...(status === "" ? {} : { status }),
       steps: asList(plan["steps"]).map(stepToRequest),
       ...(rollback.length === 0 ? {} : { rollback }),
       // `automatable: false` is the server's zero value and is omitted from

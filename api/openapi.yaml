@@ -2743,6 +2743,12 @@ components:
           type: string
           enum: [low, medium, high]
           description: Blast radius of this step; an executor gates on it.
+        when:
+          type: string
+          enum: [now, follow_up]
+          description: >
+            `now` is on-call work on this alert while it is live; `follow_up`
+            is post-incident work that stops it recurring. Optional.
     AgenticRootCause:
       type: object
       description: Why the alert fired.
@@ -2751,7 +2757,21 @@ components:
         summary:
           type: string
           maxLength: 500
-          description: One sentence naming the cause.
+          description: >
+            One sentence naming the cause — the headline a triager reads.
+            Keep it short (about 160 characters) and put the explanation in
+            `detail`.
+        detail:
+          type: string
+          maxLength: 2000
+          description: The longer explanation behind the summary. Optional.
+        caveats:
+          type: array
+          maxItems: 5
+          items: {type: string, maxLength: 300}
+          description: >
+            Limits of the investigation — what could not be checked, what is
+            inferred rather than observed. Optional.
         scope:
           type: string
           maxLength: 200
@@ -2775,6 +2795,12 @@ components:
       description: What to do about the alert.
       required: [steps]
       properties:
+        status:
+          type: string
+          enum: [action_required, self_resolved, monitoring]
+          description: >
+            The verdict for on-call: act now, it already recovered (safe to
+            close), or keep watching. Optional.
         steps:
           type: array
           minItems: 1

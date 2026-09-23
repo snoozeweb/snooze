@@ -19,19 +19,28 @@ endpoint may write. Every other write path in Snooze treats it as read-only.
   "agentic": {
     "root_cause": {
       "summary": "jwt-key-sync OOMKilled at its 64Mi limit",
+      "detail": "The token-sync container peaked at 67Mi during the hourly key rotation; the limit has been 64Mi since the chart was created.",
       "scope": "ovh/monitoring/jwt-key-sync",
       "evidence": [
         "kubectl describe pod: Last State Terminated, Reason: OOMKilled",
         "container_memory_max_usage_bytes peaked at 67Mi"
       ],
+      "caveats": ["Only the last 6h of container metrics were retained"],
       "confidence": "high"
     },
     "remediation_plan": {
+      "status": "action_required",
       "steps": [
         {
           "action": "Raise the memory limit to 128Mi",
           "command": "kubectl -n monitoring set resources deploy/jwt-key-sync --limits=memory=128Mi",
-          "risk": "low"
+          "risk": "low",
+          "when": "now"
+        },
+        {
+          "action": "Persist the new limit in the chart values",
+          "risk": "low",
+          "when": "follow_up"
         }
       ],
       "rollback": [
@@ -55,11 +64,14 @@ can branch on.
 
 | Field | Required | Notes |
 |---|---|---|
-| `root_cause.summary` | yes | One sentence, ≤ 500 characters. |
+| `root_cause.summary` | yes | **One sentence** — the headline a triager reads (aim for ≤ 160 characters). Hard limit 500. |
+| `root_cause.detail` | no | The explanation behind the summary: chain of events, timings, ruled-out causes. ≤ 2000 characters. |
 | `root_cause.scope` | no | What is broken, addressed however fits the alert. ≤ 200 characters. |
 | `root_cause.evidence` | no | Up to 10 short observations, ≤ 500 characters each. |
+| `root_cause.caveats` | no | Up to 5 limits of the investigation (what could not be checked, what is inferred), ≤ 300 characters each. |
 | `root_cause.confidence` | yes | `high` \| `medium` \| `low`. |
-| `remediation_plan.steps` | yes | 1–20 steps, each `{action, command?, risk}` (`action` ≤ 500, `command` ≤ 1000). |
+| `remediation_plan.status` | no | The verdict: `action_required` \| `self_resolved` \| `monitoring`. |
+| `remediation_plan.steps` | yes | 1–20 steps, each `{action, command?, risk, when?}` (`action` ≤ 500, `command` ≤ 1000, `when` = `now` \| `follow_up`). |
 | `remediation_plan.rollback` | no | Up to 20 steps, same shape. |
 | `remediation_plan.automatable` | no | True only when the steps are safe to run unattended. |
 | `analysis` | — | Stamped by the server; a client that sends it gets a 422. |
@@ -120,68 +132,105 @@ AI assistants reach the same endpoint through the MCP server
 
 ## In the web UI
 
-The alert inspector carries an **Analysis** tab, between Flow and Deliveries.
-It reads the same endpoint, so it shows whatever the agent loop last wrote: the
-cause, the scope, the evidence, the ordered plan with each step's risk and
-command, and whether the plan is automatable. The tab label carries the
-confidence (`Analysis · High`), and the inspector's header gains a one-line
-`Cause:` summary above the tabs — a reader who only wants the verdict never has
-to open the tab.
+Both surfaces read an analysis in the same order, the order on-call needs it:
+**is there anything to do** (the plan's `status`), **what happened in one line**
+(the headline), **how far to trust it** (confidence, caveats, freshness), and
+only then **why** (detail and evidence).
 
-Anyone who can read the alert can read its analysis. **Edit**, **Remove** and,
-on an unanalysed alert, **Write analysis** appear only for an identity holding
-`rw_protected` — literally, so an `rw_all` admin sees the read-only view, the
-same answer the endpoint would give. A save is a replace, not a merge: it
-overwrites the whole subtree and restamps provenance with the signed-in user
-and `source: snooze-web`, including when it corrects an analysis an agent
-wrote. The editor validates locally against the rules above before it sends, and
-places the server's field-keyed 422 on the same fields.
+- **Headline.** `summary` is set as the headline and `detail` as the paragraph
+  under it. An older analysis with no `detail` and a long summary is split at
+  its first sentence (or clipped at a word, with the rest continuing below),
+  so the headline never becomes a paragraph set in display type.
+- **Verdict.** `status` renders as a chip before the headline: *Action
+  required*, *Monitoring* or *Self-resolved*, each with an icon.
+- **Confidence** is a neutral three-segment meter plus the word (`▮▮▮ High
+  confidence`). It deliberately takes no severity colour, so it cannot read as
+  a second severity beside the alert's own.
+- **Author.** Anything not saved from the web editor is labelled **AI
+  analysis**, followed by the tool tag (`alert-rca`, `snooze-cli`) and the
+  subject. One a person saved reads *Written by &lt;user&gt;*.
+- **Risk** is marked only above `low`: a *Medium risk* or *High risk* chip. A
+  plan where every step says "Low risk" buries the one step that isn't.
+- **Now / Follow-up.** When steps carry `when`, the plan splits into *Now*
+  (on-call work while the alert is live) and *Follow-up* (post-incident
+  work). Each step keeps its original number.
+- **Caveats** are kept apart from the evidence and read before it. An older
+  agent's evidence line starting with `caveat:` is treated as a caveat.
+
+### The alert inspector
+
+The **Analysis** tab sits between Flow and Deliveries. While another tab is
+open, the inspector header carries one line pointing at the analysis
+(`[verdict] AI analysis · <headline> ›`). Clicking it opens the tab, and the
+line steps aside while the tab is open.
+
+The tab shows, in this order:
+
+1. The provenance line with the confidence meter, plus **Edit** and a **⋯**
+   menu holding **Remove**.
+2. A notice when the alert has fired again since the analysis was written.
+3. The verdict, the headline, the detail and the scope.
+4. **What to do**, marked *Automatable* or *Manual*.
+5. **Caveats**.
+6. **Evidence · N**, folded by default. A probe shared by several lines is
+   printed once as a group label.
+
+Anyone who can read the alert can read its analysis. **Edit**, **Remove**
+and, on an unanalysed alert, **Write analysis** appear only for an identity
+holding `rw_protected`. The check is literal, so an `rw_all` admin sees the
+read-only view, the same answer the endpoint would give.
+
+A save is a replace, not a merge. It overwrites the whole subtree and
+restamps provenance with the signed-in user and `source: snooze-web`,
+including when it corrects an analysis an agent wrote. The editor covers every
+field above (detail, caveats, the plan status, each step's *When*). It
+validates locally against the rules above before it sends, and places the
+server's field-keyed 422 on the same fields.
 
 In the alerts table, an analysed alert carries a small dot beside its severity
-badge, coloured by confidence, titled `Analysed · low confidence`. It rides the
-severity cell rather than taking a column, so it costs the message no width.
+badge. The dot is coloured by the verdict, not by confidence, and titled
+`Analysed · high confidence · Monitoring`.
+
+### The dashboard's Analyses view
 
 The dashboard has two views, switched from the segmented control next to its
-title: **Overview** and **Analyses**. The Analyses view lists the open alerts
-somebody has already explained; the "Right now" tile strip counts them on an
-**Analysed** tile ("17 of 42 open") that opens the view when clicked. The view
-rides in the URL, so `/web/dashboard?view=analyses` is a deep link — and because
-the list is live rather than windowed, the time-range picker is not on screen
-there. Both surfaces read the record collection, so they are offered only to an
-identity holding `ro_record` (or `rw_record`); a stats-only role gets the
-Overview, with no switch and no tile, and that deep link lands on the Overview
-too.
+title: **Overview** and **Analyses**. The switch shows the analysed count. The
+"Right now" tile strip also counts analysed alerts, on an **Analysed** tile
+("17 of 42 open") that opens the view when clicked.
 
-The view lists **every** analysed alert — it is a work queue, not a top-N — so
-it opens straight onto the list with no headline above it. The ratio against the
-open backlog is the **Analysed** tile's job ("17 of 42 open"), where the number
-sits next to the other Right-now counts it is meant to be read against. A safety
-ceiling of 500 rows still applies; on the rare run that hits it, the view says
-so ("Showing 500 of 812 analysed alerts") rather than truncating in silence.
+The view rides in the URL, so `/web/dashboard?view=analyses` is a deep link.
+Both surfaces read the record collection, so they are offered only to an
+identity holding `ro_record` (or `rw_record`). A stats-only role gets the
+Overview, with no switch and no tile.
 
-Rows are newest analysis first, and a row is not a table row: it is a header bar
-over two blocks. The header names the alert on the left (a severity rail down
-the row, the severity word, the host, the alert name) and sets everything scalar
-on the right of the same line — a **confidence** chip and, where the plan claims
-it, an **Automatable** one, then the step count, when it was written and by whom — so confidence reads as a column down a screenful of
-rows. Below it, **the root cause and the remediation plan sit side by side**
-under a `Why` / `What to do` pair of labels. Three regions, three hairlines: one
-under the header, one between the cause and the plan, and the rail.
+The view lists **every** analysed open alert as a work queue. A safety ceiling
+of 500 rows applies, and the view says so when it bites. Rows sort **most
+urgent first**: severity, then unacknowledged before acknowledged, then
+fired time. *Newest analysis* is the alternative sort (`?sort=recent`).
 
-The plan prints its steps in order as one aligned grid — ordinal, action, risk —
-with each step's command on a second line in mono. The risk tag appears **only
-above `low`**: a plan whose every step is tagged `LOW` says nothing and buries
-the one step that is not, and the column costs no width when no step needs it.
-Four steps show; a longer plan ends with `+N more steps` and defers to the
-inspector. A very long cause clamps at five lines, for the same reason.
+Filters narrow the list in place:
 
-A subtree missing any of that still gets a row (an em-dash cause, an em-dash
-plan, no confidence badge), because the server counted it. The confidence and
-automatable chips narrow the list in place. Below ~880px the two columns become
-one: the cause is the paragraph above the plan. Clicking a row opens that alert with its inspector already on the
-Analysis tab, pinning the table to that one alert so an old alert with a fresh
-analysis is never off the first page:
-`/web/alerts?tab=all&record=<uid>&analysis=1&search=uid = "<uid>"`.
+- **Confidence:** *Any*, *Medium+*, *High*.
+- **Automatable:** *Any*, *Yes*, *No*.
+- **Verdict:** shown once some analysis states one.
+
+Each row names the alert: severity, host and message as a heading that links
+to it, with its state and when it fired on the right. Collapsed, the row shows:
+
+- the verdict and the headline;
+- the author, when the analysis was written, the confidence meter and the
+  caveat count;
+- a plan summary: "Now: …" and "Follow-ups: N · M medium/high risk", or
+  "Plan: N steps" when the steps are not split.
+
+**Expand** reveals the full explanation, the caveats and every step, with its
+command and a copy button.
+
+The keyboard works the list: J/K (or the arrow keys) move between rows,
+Enter opens the alert, and Space or E expands. **Open alert** lands on the
+alert with its inspector on the Analysis tab, filtered to the analysed alerts,
+so the inspector's previous/next walks the queue. With more analysed alerts
+than one alerts page holds, it pins the table to that one alert instead.
 
 ## Protected fields
 

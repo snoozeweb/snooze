@@ -777,12 +777,15 @@ const notificationsRoute = createRoute({
 // Dashboard deep-link. `view` picks which of the page's two views is on
 // screen; `range` is the time picker's preset key and, for the "custom"
 // preset, `from`/`to` carry the window bounds as epoch milliseconds.
+// `sort` is the Analyses view's order: omitted means "most urgent", the one
+// alternative is `recent` (newest analysis first).
 // All optional — no params means the Overview on its default 1d range,
 // exactly as before. Types are validated defensively (numeric strings coerced
-// to number, an unknown `view` dropped) so a hand-edited URL can't poison the
-// page.
+// to number, an unknown `view` or `sort` dropped) so a hand-edited URL can't
+// poison the page.
 type DashboardSearchParams = {
   view?: "overview" | "analyses";
+  sort?: "recent";
   range?: "1d" | "1w" | "1m" | "1y" | "custom";
   from?: number;
   to?: number;
@@ -801,6 +804,9 @@ const dashboardRoute = createRoute({
     // param is omitted from the URL in that case, so `?view=overview` and no
     // param at all are the same state.
     if (raw["view"] === "analyses") out["view"] = "analyses";
+    // Same rule for the sort: the default ("most urgent") is the absence of
+    // the param, so only the one alternative is ever kept.
+    if (raw["sort"] === "recent") out["sort"] = "recent";
     const rangeRaw = raw["range"];
     if (
       rangeRaw === "1d" ||

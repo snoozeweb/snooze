@@ -46,3 +46,9 @@
   line-height: 1.5;
   color: var(--text-muted);
 }
+
+/* Set apart from the copy above it: the copy says what happened, this is the
+   one thing to do about it. */
+.emptyAction {
+  margin-top: var(--space-2);
+}

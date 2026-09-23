@@ -132,6 +132,110 @@ describe("AnalysisEditor", () => {
     ).toBeInTheDocument();
   });
 
+  it("opens the fields the contract grew — detail, caveats, verdict, timing — on their stored values", () => {
+    loginWithPerms(["rw_protected"]);
+    renderEditor({
+      ...STORED,
+      root_cause: {
+        ...STORED.root_cause!,
+        detail: "The journal grew 4.2G in six hours after the upgrade.",
+        caveats: ["Could not read the standby's journal"],
+      },
+      remediation_plan: {
+        ...STORED.remediation_plan!,
+        status: "action_required",
+        steps: [
+          { action: "Vacuum the journal to 500M", risk: "low", when: "now" },
+          { action: "Add a retention alert", risk: "low", when: "follow_up" },
+        ],
+      },
+    });
+
+    expect(screen.getByLabelText("Detail")).toHaveValue(
+      "The journal grew 4.2G in six hours after the upgrade.",
+    );
+    expect(screen.getByLabelText("Caveat 1")).toHaveValue("Could not read the standby's journal");
+    expect(screen.getByRole("combobox", { name: /^Status/ })).toHaveTextContent("Action required");
+    const whens = within(stepList()).getAllByRole("combobox", { name: /^When/ });
+    expect(whens.map((w) => w.textContent)).toEqual(["Now", "Follow-up"]);
+    // The summary hint says what the field is FOR, now that it has a sibling.
+    expect(screen.getByText(/put the explanation in Detail/i)).toBeInTheDocument();
+  });
+
+  it("does not offer a timing on rollback steps, which have no 'now' of their own", () => {
+    loginWithPerms(["rw_protected"]);
+    renderEditor(STORED);
+    const rollback = screen.getByRole("list", { name: "Rollback" });
+    expect(within(rollback).queryByRole("combobox", { name: /^When/ })).toBeNull();
+  });
+
+  it("PUTs detail, caveats, the verdict and a step's timing, and omits them when blank", async () => {
+    const user = userEvent.setup();
+    loginWithPerms(["rw_protected"]);
+    const save = stubSave();
+    renderEditor(STORED);
+
+    await user.type(screen.getByLabelText("Detail"), "Grew after the upgrade.");
+    await user.click(screen.getByRole("button", { name: "Add caveat" }));
+    await user.type(screen.getByLabelText("Caveat 1"), "Standby not checked");
+    await user.click(screen.getByRole("combobox", { name: /^Status/ }));
+    await user.click(screen.getByRole("option", { name: "Self-resolved" }));
+    await user.click(within(stepList()).getAllByRole("combobox", { name: /^When/ })[0]!);
+    await user.click(screen.getByRole("option", { name: "Follow-up" }));
+
+    await user.click(screen.getByRole("button", { name: "Save analysis" }));
+    await waitFor(() => expect(save.body()).not.toBeNull());
+    const body = save.body() as {
+      root_cause: Record<string, unknown>;
+      remediation_plan: { status?: string; steps: Record<string, unknown>[] };
+    };
+    expect(body.root_cause["detail"]).toBe("Grew after the upgrade.");
+    expect(body.root_cause["caveats"]).toEqual(["Standby not checked"]);
+    expect(body.remediation_plan.status).toBe("self_resolved");
+    expect(body.remediation_plan.steps[0]?.["when"]).toBe("follow_up");
+    // The step nobody gave a timing to carries no key at all.
+    expect(body.remediation_plan.steps[1]).not.toHaveProperty("when");
+  });
+
+  it("lands a server 422 on the new fields too", async () => {
+    const user = userEvent.setup();
+    loginWithPerms(["rw_protected"]);
+    mswServer.use(
+      http.put("/api/v1/record/r1/agentic", () =>
+        HttpResponse.json(
+          {
+            error: {
+              code: "unprocessable",
+              message: "agentic analysis is invalid",
+              details: {
+                "root_cause.detail": "must be at most 2000 characters",
+                "root_cause.caveats[0]": "must be at most 300 characters",
+                "remediation_plan.status":
+                  "must be one of action_required|self_resolved|monitoring",
+                "remediation_plan.steps[0].when": "must be one of now|follow_up",
+              },
+            },
+          },
+          { status: 422 },
+        ),
+      ),
+    );
+    renderEditor({
+      ...STORED,
+      root_cause: { ...STORED.root_cause!, caveats: ["too long, per the server"] },
+    });
+
+    await user.click(screen.getByRole("button", { name: "Save analysis" }));
+    expect(await screen.findByText("Detail must be at most 2000 characters.")).toBeInTheDocument();
+    expect(screen.getByText("Caveat 1 must be at most 300 characters.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Status must be one of action_required|self_resolved|monitoring."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("When must be one of now|follow_up.")).toBeInTheDocument();
+    // Every path landed on a field, so nothing is bannered as unplaceable.
+    expect(screen.queryByText(/The server rejected the payload/)).toBeNull();
+  });
+
   it("starts an author-from-scratch form on exactly one blank step", () => {
     loginWithPerms(["rw_protected"]);
     renderEditor(null);

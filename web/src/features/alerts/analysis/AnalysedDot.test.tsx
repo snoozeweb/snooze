@@ -3,9 +3,15 @@ import { describe, expect, it } from "vitest";
 import type { Record_ } from "../types";
 import { AnalysedDot } from "./AnalysedDot";
 
-/** A record carrying an analysis at the given confidence. */
-function analysed(confidence: unknown): Record_ {
-  return { uid: "r1", agentic: { root_cause: { summary: "s", confidence } } } as Record_;
+/** A record carrying an analysis at the given confidence (and plan verdict). */
+function analysed(confidence: unknown, status?: unknown): Record_ {
+  return {
+    uid: "r1",
+    agentic: {
+      root_cause: { summary: "s", confidence },
+      ...(status !== undefined ? { remediation_plan: { status, steps: [] } } : {}),
+    },
+  } as Record_;
 }
 
 describe("AnalysedDot", () => {
@@ -27,19 +33,41 @@ describe("AnalysedDot", () => {
     expect(dot).toHaveAttribute("title", "Analysed · low confidence");
   });
 
-  it("takes its tone from the confidence", () => {
-    const { rerender } = render(<AnalysedDot record={analysed("high")} />);
-    expect(screen.getByRole("img", { name: /high confidence/ })).toHaveAttribute("data-tone", "ok");
-    rerender(<AnalysedDot record={analysed("medium")} />);
-    expect(screen.getByRole("img", { name: /medium confidence/ })).toHaveAttribute(
+  it("takes its tone from the verdict, never from the confidence", () => {
+    // Confidence used to paint the dot green/amber/red, so a low-confidence
+    // cause read as a second Critical beside the severity badge. The dot now
+    // says what the alert needs: amber for "act", green for "recovered".
+    const { rerender } = render(<AnalysedDot record={analysed("low", "action_required")} />);
+    expect(screen.getByRole("img", { name: /low confidence/ })).toHaveAttribute(
       "data-tone",
       "warning",
     );
+    rerender(<AnalysedDot record={analysed("high", "self_resolved")} />);
+    expect(screen.getByRole("img", { name: /high confidence/ })).toHaveAttribute("data-tone", "ok");
+    rerender(<AnalysedDot record={analysed("high", "monitoring")} />);
+    expect(screen.getByRole("img", { name: /high confidence/ })).toHaveAttribute(
+      "data-tone",
+      "neutral",
+    );
+    // No verdict stated: neutral whatever the confidence.
     rerender(<AnalysedDot record={analysed("low")} />);
     expect(screen.getByRole("img", { name: /low confidence/ })).toHaveAttribute(
       "data-tone",
-      "critical",
+      "neutral",
     );
+  });
+
+  it("names the verdict in words when the plan states one", () => {
+    render(<AnalysedDot record={analysed("medium", "action_required")} />);
+    expect(
+      screen.getByRole("img", { name: "Analysed · medium confidence · Action required" }),
+    ).toBeInTheDocument();
+  });
+
+  it("ignores a verdict outside the three known values", () => {
+    render(<AnalysedDot record={analysed("high", "panic")} />);
+    const dot = screen.getByRole("img", { name: "Analysed · high confidence" });
+    expect(dot).toHaveAttribute("data-tone", "neutral");
   });
 
   it("ignores a confidence outside the three known levels rather than picking a tone for it", () => {

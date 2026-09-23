@@ -76,6 +76,11 @@ func stepSchema() map[string]any {
 			"enum":        []any{"low", "medium", "high"},
 			"description": "Blast radius of this step. Required.",
 		},
+		"when": map[string]any{
+			"type":        "string",
+			"enum":        []any{"now", "follow_up"},
+			"description": "`now` = on-call work on this alert while it is live; `follow_up` = post-incident work that stops it recurring.",
+		},
 	}, "action", "risk")
 }
 
@@ -151,7 +156,16 @@ func catalog() []tool {
 				"root_cause": objSchema(map[string]any{
 					"summary": map[string]any{
 						"type":        "string",
-						"description": "One sentence naming the cause. Required.",
+						"description": "ONE sentence naming the cause — the headline a triager reads at a glance. Keep it under ~160 characters and put the explanation in `detail`. Required.",
+					},
+					"detail": map[string]any{
+						"type":        "string",
+						"description": "The longer explanation behind the summary: chain of events, timings, ruled-out causes. Max 2000 characters.",
+					},
+					"caveats": map[string]any{
+						"type":        "array",
+						"items":       map[string]any{"type": "string"},
+						"description": "Limits of the investigation: what could not be checked, what is inferred rather than observed. Max 5, 300 characters each.",
 					},
 					"scope": map[string]any{
 						"type":        "string",
@@ -169,9 +183,14 @@ func catalog() []tool {
 					},
 				}, "summary", "confidence"),
 				"remediation_plan": objSchema(map[string]any{
+					"status": map[string]any{
+						"type":        "string",
+						"enum":        []any{"action_required", "self_resolved", "monitoring"},
+						"description": "The verdict for on-call: act now, it already recovered (safe to close), or watch it.",
+					},
 					"steps": map[string]any{
 						"type":        "array",
-						"description": "Ordered fix actions, at least one. Each: {action, command?, risk: low|medium|high}.",
+						"description": "Ordered actions, at least one. Each: {action, command?, risk: low|medium|high, when?: now|follow_up}.",
 						"items":       stepSchema(),
 					},
 					"rollback": map[string]any{

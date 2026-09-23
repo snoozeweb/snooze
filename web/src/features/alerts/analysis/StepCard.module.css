@@ -52,20 +52,22 @@
 /* The wrapper owns the copy button so it stays pinned while the <pre> beneath
    it scrolls sideways. */
 .commandWrap {
-  position: relative;
+  /* The copy button takes its own column instead of floating over the
+     scroller: a pinned overlay covered the end of every long command, which
+     is exactly the part (flags, the target) a reader checks before pasting. */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-1);
   margin-inline-start: var(--space-5);
 }
 .command {
   /* No wrapping: a shell line broken across two rows is a line you cannot
-     trust after pasting. Scroll instead, and keep the right padding clear of
-     the copy button. */
+     trust after pasting. Scroll instead. */
   white-space: pre;
   overflow-x: auto;
   overflow-wrap: normal;
-  padding-inline-end: var(--space-8);
 }
 .copy {
-  position: absolute;
-  inset-block-start: var(--space-1);
-  inset-inline-end: var(--space-1);
+  margin-block-start: var(--space-1);
 }

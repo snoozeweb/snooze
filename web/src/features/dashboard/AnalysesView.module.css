@@ -7,367 +7,51 @@
   padding-block: var(--space-2);
 }
 
-.filters {
+/* Filters on the left, the result count and the order on the right — the
+   count sits beside the controls that change it. Wraps as two blocks, never
+   as a scatter of chips. */
+.toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-2) var(--space-3);
-  margin-bottom: var(--space-3);
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-5);
+  padding-bottom: var(--space-3);
+  margin-bottom: var(--space-1);
+  border-bottom: 1px solid var(--border-muted);
+  /* Its own container, so the chip groups (ChoiceGroup.module.css) answer to
+     the toolbar's width. */
+  container-type: inline-size;
 }
 
-/* Label and chips stay one unit, so a narrow container wraps the group whole
-   rather than orphaning "Automatable" at the end of the previous line. */
-.filterGroup {
-  display: inline-flex;
+.filters,
+.toolbarEnd {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-2) var(--space-4);
+  /* A flex item defaults to its content's width, so without this the filter
+     groups could not wrap their options on a phone — they pushed past it. */
+  min-width: 0;
+  max-width: 100%;
 }
 
-/* Which question each chip group answers. Muted and small: the chips are the
-   control, this is only the noun in front of them. */
-.filterLabel {
+.count {
+  margin: 0;
   font-size: var(--text-xs);
+  font-feature-settings: var(--font-features-numeric);
   color: var(--text-muted);
-}
-
-/* Same chip recipe as the delivery timeline's segmented control, so the two
-   read as one control family. */
-.chips {
-  display: inline-flex;
-  gap: var(--space-1);
-}
-
-.chip {
-  background: var(--surface-3);
-  color: var(--text-muted);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: var(--space-1) var(--space-2);
-  font-size: var(--text-xs);
-  cursor: pointer;
-}
-.chip:hover {
-  color: var(--text-strong);
-}
-/* Focus is the global ring (styles/base.css). The active chip additionally
-   draws its own, because its amber fill is the focus colour itself in dark
-   (--accent-solid and --focus-ring are both #ffb000) — an amber outline hugging
-   an amber chip is no outline at all. */
-.chip[data-active="true"] {
-  background: var(--accent-solid);
-  color: var(--accent-solid-fg);
-  border-color: var(--accent);
-}
-.chip[data-active="true"]:focus-visible {
-  box-shadow: inset 0 0 0 2px var(--accent-solid-fg);
+  white-space: nowrap;
 }
 
 /* The list is its own container: the rows answer to the width of the list, not
    of the window, so the view behaves the same in a narrow browser as it does
-   beside a sidebar. */
+   beside a sidebar (AnalysisRow.module.css reads it). */
 .list {
   container-type: inline-size;
   margin: 0;
   padding: 0;
   list-style: none;
-}
-
-.row {
-  border-top: 1px solid var(--border);
-}
-.row:first-child {
-  border-top: none;
-}
-
-/* One row is three stacked lines — identity, metadata, the analysis itself —
-   not a set of columns. Nothing here is a card: no border, no fill, no shadow.
-   The rail and the hairline above it are what make it one object. */
-.rowLink {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  padding: var(--space-3);
-  border-radius: var(--radius-sm);
-  color: inherit;
-  text-decoration: none;
-}
-/* The severity rail, drawn exactly as DataTable draws a row accent
-   (`inset 3px 0 0 0 var(--row-accent)`) so the alerts table and this list
-   speak the same language. Inset, so it never shifts the text beside it. */
-.rowLink[data-accent] {
-  box-shadow: inset 3px 0 0 0 var(--row-accent);
-}
-/* The row is one big <a>, so base.css's `a:hover { text-decoration: underline }`
-   (0-1-1) outranks the `.rowLink` reset and underlines every word in the row,
-   commands included. Restated on hover, where it wins, with the same
-   --bg-hover paint the DataTable rows use. */
-.rowLink:hover {
-  background: var(--bg-hover);
-  text-decoration: none;
-}
-.rowLink:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: -2px;
-}
-
-/* ── The header bar: which alert, and every scalar about its analysis ────── */
-
-/* One line, two ends. The alert names itself on the left and the analysis
-   describes itself on the right, so confidence lands in a column the eye can
-   run down a whole screen of rows. The rule under it is what separates the
-   subject of the row from the analysis of it. */
-.header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-1) var(--space-3);
-  padding-bottom: var(--space-2);
-  border-bottom: 1px solid var(--border-muted);
-}
-
-.identity {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-2);
-  min-width: 0;
-}
-
-.sevBadge {
-  flex: none;
-  align-self: center;
-}
-
-.host {
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  color: var(--text-strong);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.alertname {
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-/* The separator the eye reads between a host and what fired on it — drawn
-   rather than typed, so it never lands in a copied selection. */
-.alertname::before {
-  content: "·";
-  margin-right: var(--space-2);
-  color: var(--border);
-}
-
-.meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  /* Pushed to the trailing edge when the header fits on one line; it simply
-     wraps under the alert name when it does not. */
-  margin-left: auto;
-  gap: var(--space-1) var(--space-2);
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-}
-
-/* The two badges that survive the collapse: confidence — the reader's licence
-   to trust the sentence under it — and, when the plan claims it, automatable.
-   Both shrunk to sit ON a metadata line rather than lead one. */
-.confidenceBadge,
-.metaBadge {
-  font-size: var(--text-xs);
-}
-
-/* The icon inside the automatable chip rides with its text. */
-.metaBadge svg {
-  margin-right: 2px;
-  vertical-align: -1px;
-}
-
-.metaItem {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  white-space: nowrap;
-}
-.metaItem + .metaItem::before {
-  content: "·";
-  margin-right: var(--space-1);
-  color: var(--border);
-}
-
-/* ── The analysis: the only two things that get width ────────────────────── */
-
-.analysis {
-  display: grid;
-  grid-template-columns: minmax(0, 0.75fr) minmax(0, 1fr);
-  gap: var(--space-3) 0;
-  margin-top: var(--space-3);
-}
-
-/* The rule between the diagnosis and the plan. A hairline rather than a panel
-   each: two filled boxes inside a row inside the page's Card would be three
-   nested containers, and the reading order here needs a seam, not a box. */
-.block + .block {
-  padding-left: var(--space-5);
-  border-left: 1px solid var(--border-muted);
-}
-.block:first-child {
-  padding-right: var(--space-5);
-}
-
-.block {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  min-width: 0;
-}
-
-/* The column headers used to live in a legend row that scrolled away from the
-   rows it named and forced every row onto one shared grid. Two words per block
-   do the same job, travel with the row, and cost no layout. */
-.blockLabel {
-  font-size: var(--text-xs);
-  font-weight: var(--weight-medium);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-muted);
-}
-
-/* Clamped at five lines: past that an analysis is an essay, and the inspector
-   this row opens is where an essay belongs. */
-.cause {
-  font-size: var(--text-sm);
-  line-height: 1.55;
-  color: var(--text);
-  /* The measure, not the column, decides where a sentence breaks: on a wide
-     screen the 0.75fr column runs past 90ch, which is past the point a reader
-     finds the next line reliably. */
-  max-width: 70ch;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 5;
-  line-clamp: 5;
-  overflow: hidden;
-}
-
-.planEmpty {
-  color: var(--text-muted);
-}
-
-.steps {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  min-width: 0;
-}
-
-/* The plan as one grid rather than a stack of self-measuring rows: ordinal,
-   action, risk. Every step's cells join it through `display: contents`, so the
-   numbers share an edge and the risk tags share a column an operator can run an
-   eye down. No borders and no header — a three-column rule set with a `risk`
-   header over four blank cells is the table that does not pay for itself. The
-   risk column is `auto`, so a plan with nothing above `low` gives it no width. */
-.steps {
-  display: grid;
-  grid-template-columns: 1.25rem minmax(0, max-content) auto;
-  column-gap: var(--space-3);
-  row-gap: 2px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  min-width: 0;
-}
-
-.step {
-  display: contents;
-}
-
-/* The gap between two steps is larger than the gap between a step and its own
-   command — that is what keeps a six-line plan readable as three things and not
-   six. */
-.step + .step > .stepNum,
-.step + .step > .stepAction,
-.step + .step > .risk,
-.step + .step > .riskEmpty,
-.more {
-  margin-top: var(--space-2);
-}
-
-.stepNum {
-  font-family: var(--font-mono);
-  font-feature-settings: var(--font-features-numeric);
-  font-variant-numeric: tabular-nums;
-  font-size: var(--text-xs);
-  line-height: 1.55;
-  color: var(--text-muted);
-  text-align: right;
-}
-
-.stepAction {
-  font-size: var(--text-sm);
-  line-height: 1.55;
-  color: var(--text);
-}
-
-/* One line, ellipsised, full text in the title. A command is copied from the
-   inspector, not from a dashboard row — here it only has to be recognisable,
-   so it reads as a quiet second line under its action rather than a filled bar
-   competing with it. */
-.stepCommand {
-  grid-column: 2 / -1;
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.stepCommand::before {
-  content: "$ ";
-  color: var(--border);
-}
-
-/* Risk is printed only above low. A plan whose every step was tagged LOW spent
-   five lines saying nothing and buried the one step that was not; the tag now
-   appears exactly when it changes who may run the step. */
-.risk {
-  font-size: var(--text-xs);
-  line-height: 1.55;
-  font-weight: var(--weight-medium);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  white-space: nowrap;
-}
-/* An empty cell so the column exists for every step; it collapses with the
-   column when no step in the plan carries a risk worth printing. */
-.riskEmpty {
-  display: block;
-}
-
-.risk[data-risk="medium"] {
-  color: var(--severity-warning);
-}
-.risk[data-risk="high"] {
-  color: var(--severity-critical);
-}
-
-/* What the card is not showing, said plainly rather than by silent truncation.
-   Spans the grid and lines up with the actions above it. */
-.more {
-  grid-column: 2 / -1;
-  font-size: var(--text-xs);
-  color: var(--text-muted);
 }
 
 .srOnly {
@@ -381,37 +65,4 @@
   clip-path: inset(50%);
   white-space: nowrap;
   border: 0;
-}
-
-/* Narrow container: the cause stops being a column and becomes the paragraph
-   above the plan. Two 300px columns of prose are two columns of hyphenation. */
-@container (max-width: 880px) {
-  .analysis {
-    grid-template-columns: minmax(0, 1fr);
-    gap: var(--space-3);
-  }
-  /* Stacked, the seam between the two blocks is horizontal — the same rule,
-     turned through ninety degrees. */
-  .block + .block {
-    padding-left: 0;
-    padding-top: var(--space-3);
-    border-left: none;
-    border-top: 1px solid var(--border-muted);
-  }
-  .block:first-child {
-    padding-right: 0;
-  }
-  .cause {
-    -webkit-line-clamp: 4;
-    line-clamp: 4;
-  }
-}
-
-/* Touch: the whole row is the target, and it is already far taller than the
-   minimum — only the chips need growing. */
-@media (pointer: coarse) {
-  .chip {
-    min-height: var(--touch-target);
-    padding-inline: var(--space-3);
-  }
 }

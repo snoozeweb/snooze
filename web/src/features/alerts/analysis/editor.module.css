@@ -82,3 +82,9 @@
 .addButton {
   align-self: flex-start;
 }
+
+/* A select whose options are a few short words: sized to them, not to the
+   form's full width. */
+.narrowSelect {
+  max-width: 16rem;
+}

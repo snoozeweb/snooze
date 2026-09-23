@@ -18,10 +18,11 @@ import { DeliveryTimeline } from "@/features/notifications/deliveries/DeliveryTi
 import { useDeliverySummary } from "@/features/notifications/deliveries/api";
 import { useCanReadDeliveries } from "@/features/notifications/deliveries/perms";
 import type { DeliveryFilter } from "@/features/notifications/deliveries/types";
+import { Icon } from "@/shared/icons/Icon";
 import { AnalysisTab } from "./analysis/AnalysisTab";
-import { ConfidenceBadge } from "./analysis/ConfidenceBadge";
+import { VerdictChip } from "./analysis/VerdictChip";
 import { useAnalysis } from "./analysis/api";
-import { confidenceLabel, isConfidence } from "./analysis/enums";
+import { authorOf, isPlanStatus, planStatusLabel, splitSummary } from "./analysis/verdict";
 import { escalationLabel, severityDisplayLabel, stateBadgeVariant, stateLabel } from "./format";
 import { lastDeliverySummary } from "./lastDelivery";
 import { CommentTimeline } from "./CommentTimeline";
@@ -63,8 +64,8 @@ function stripPrivateKeys(row: Record<string, unknown>): Record<string, unknown>
  *
  * A compact summary header (severity + state badges, an escalation badge when
  * the alert has been re-escalated, source chip, the alert message, received
- * time, the last delivery, and the analysed cause when there is one) sits
- * above five tabs:
+ * time, the last delivery, and — when the alert has been analysed — one line
+ * pointing at the analysis) sits above five tabs:
  *   - Timeline (default): comment/activity history + composer — the read-write
  *     action surface, given top billing since triage lives here.
  *   - Flow: the pipeline path the alert took (AlertFlowChart) — read-only.
@@ -125,19 +126,26 @@ export function AlertRowDetail({
       : "Deliveries";
 
   // The SAME query the Analysis tab runs. TanStack Query serves both readers
-  // from one request (identical key), so labelling the tab with the confidence
-  // and printing the cause in the header costs no extra network. A 404 —
-  // "this alert carries no analysis", the normal case — resolves to null, so
-  // neither surface appears rather than showing an error.
+  // from one request (identical key), so marking the tab and pointing at the
+  // analysis from the header costs no extra network. A 404 — "this alert
+  // carries no analysis", the normal case — resolves to null, so neither
+  // surface appears rather than showing an error.
   const showAnalysis = !!row.uid;
   const analysis = useAnalysis(row.uid, { enabled: showAnalysis });
-  const rootCause = analysis.data?.agentic.root_cause;
-  // `confidence` is whatever the stored document carries — a hand-written
-  // analysis, or one from a server that knows a level this bundle does not.
-  // Read unguarded it prints "Analysis · undefined" on the tab.
-  const confidence = isConfidence(rootCause?.confidence) ? rootCause.confidence : undefined;
-  const analysisTabLabel =
-    confidence !== undefined ? `Analysis · ${confidenceLabel(confidence)}` : "Analysis";
+  const agentic = analysis.data?.agentic;
+  const rootCause = agentic?.root_cause;
+  // The header says THAT there is an analysis and what it concludes, in one
+  // line, and hands the reader to the tab for the rest. It used to print the
+  // whole cause as a "Cause:" paragraph plus a confidence chip — the same
+  // sentence the tab opens on, and confidence a third time (header, tab label,
+  // tab body). Confidence is now said once, in the tab.
+  const headline =
+    rootCause && typeof rootCause.summary === "string"
+      ? splitSummary(rootCause.summary, rootCause.detail).headline
+      : "";
+  const planStatus = agentic?.remediation_plan?.status;
+  const verdict = isPlanStatus(planStatus) ? planStatus : undefined;
+  const analysisNoun = authorOf(agentic?.analysis).kind === "agent" ? "AI analysis" : "Analysis";
 
   // Which surface is on screen. Controlled rather than uncontrolled because
   // two things have to be arbitrated here and Radix cannot do either on its
@@ -215,12 +223,32 @@ export function AlertRowDetail({
             {lastDelivery.batchCount ? ` · batch of ${lastDelivery.batchCount}` : null}
           </div>
         ) : null}
-        {rootCause ? (
-          <div className={styles.cause}>
-            <span className={styles.causeLabel}>Cause:</span>
-            <span className={styles.causeText}>{rootCause.summary}</span>
-            {confidence !== undefined ? <ConfidenceBadge confidence={confidence} /> : null}
-          </div>
+        {/* A pointer to the Analysis tab, so it steps aside while that tab is
+            open: the pane leads with the same verdict and headline. */}
+        {rootCause && headline !== "" && activeTab !== "analysis" ? (
+          <button
+            type="button"
+            className={styles.analysisLine}
+            title={headline}
+            // Spelled out so the verdict chip (whose hint is a title, not a
+            // name) and the headline read as one sentence.
+            aria-label={[
+              ...(verdict !== undefined ? [planStatusLabel(verdict)] : []),
+              analysisNoun,
+              headline,
+            ].join(" · ")}
+            onClick={() => handleTabChange("analysis")}
+          >
+            {verdict !== undefined ? <VerdictChip status={verdict} /> : null}
+            {/* One run of text, so the ellipsis clips the headline and never
+                the noun in front of it. */}
+            <span className={styles.analysisText}>
+              <span className={styles.analysisNoun}>{analysisNoun}</span>
+              {" · "}
+              {headline}
+            </span>
+            <Icon name="chevron-right" size={14} className={styles.analysisChevron!} />
+          </button>
         ) : null}
       </div>
 
@@ -230,7 +258,17 @@ export function AlertRowDetail({
           <TabTrigger value="flow">Flow</TabTrigger>
           {/* Analysis sits between Flow and Deliveries: Flow says what the
               pipeline did, Analysis says why the alert fired at all. */}
-          {showAnalysis ? <TabTrigger value="analysis">{analysisTabLabel}</TabTrigger> : null}
+          {/* A dot, not a word, says "there is one": the accessible name stays
+              "Analysis" (the header line already announces it), and the
+              confidence that used to ride here is said once, in the pane. */}
+          {showAnalysis ? (
+            <TabTrigger value="analysis">
+              Analysis
+              {rootCause ? (
+                <span className={styles.tabMarker} data-slot="analysis-marker" aria-hidden="true" />
+              ) : null}
+            </TabTrigger>
+          ) : null}
           {/* Deliveries follows: both it and Flow answer "what did the pipeline
               do with this alert?", and Record is the raw-JSON fallback that
               closes the strip. */}
@@ -248,7 +286,11 @@ export function AlertRowDetail({
             is what keeps the inspector from rendering nothing at all. Only the
             trigger is conditional. */}
         <TabPanel value="analysis">
-          <AnalysisTab uid={row.uid} onEditingChange={handleEditingChange} />
+          <AnalysisTab
+            uid={row.uid}
+            lastEpoch={row.date_epoch}
+            onEditingChange={handleEditingChange}
+          />
         </TabPanel>
         {showDeliveries ? (
           <TabPanel value="deliveries">

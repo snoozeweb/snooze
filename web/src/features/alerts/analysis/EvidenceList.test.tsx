@@ -93,4 +93,46 @@ describe("EvidenceList", () => {
     expect(container.querySelector("code")).toHaveTextContent("kubectl");
     expect(screen.getByRole("listitem")).toHaveTextContent("kubectl: pod A: CrashLoopBackOff");
   });
+
+  it("leaves a single lowercase prose word as prose — 'caveat' and 'note' are not commands", () => {
+    // One lowercase token with no path/flag shape passed the "at most three
+    // tokens" rule, so an older agent's "caveat: could not reach the host" was
+    // set in code font like a probe the operator should re-run.
+    const { container } = render(
+      <EvidenceList items={["caveat: could not reach the host", "note: the unit flapped twice"]} />,
+    );
+    expect(container.querySelector("code")).toBeNull();
+  });
+
+  it("leaves a lowercase lead-in built on a prose word as prose", () => {
+    const { container } = render(<EvidenceList items={["root cause: the journal grew"]} />);
+    expect(container.querySelector("code")).toBeNull();
+  });
+
+  it("names a probe shared by several lines once, as the group's label", () => {
+    const { container } = render(
+      <EvidenceList
+        items={[
+          "df -h: /var at 100%",
+          "journalctl: 4.2G under /var/log/journal",
+          "df -h: /tmp at 3%",
+        ]}
+      />,
+    );
+    // The shared command is printed once, not once per line…
+    const codes = Array.from(container.querySelectorAll("code")).map((c) => c.textContent);
+    expect(codes).toEqual(["df -h", "journalctl"]);
+    // …and both of its results sit under it, in the order they were recorded.
+    const group = screen.getByRole("list", { name: "df -h" });
+    expect(Array.from(group.querySelectorAll("li")).map((li) => li.textContent)).toEqual([
+      "/var at 100%",
+      "/tmp at 3%",
+    ]);
+  });
+
+  it("does not group a probe that appears only once", () => {
+    render(<EvidenceList items={["df -h: /var at 100%", "the unit restarted twice"]} />);
+    expect(screen.queryByRole("list", { name: "df -h" })).toBeNull();
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+  });
 });

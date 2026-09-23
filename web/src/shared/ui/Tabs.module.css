@@ -99,3 +99,35 @@
   white-space: nowrap;
   flex-shrink: 0;
 }
+
+/*
+ * Edge fades for a strip that scrolls (set by useScrollEdges in Tabs.tsx only
+ * while there are tabs beyond that edge). A mask rather than a gradient
+ * overlay: the strip sits on different surfaces in different places, and a
+ * mask fades whatever is underneath without having to know its colour. The
+ * mask's colour channel is ignored — only alpha matters — so the literal
+ * `black` below is not a theme colour.
+ */
+.list[data-fade-end] {
+  mask-image: linear-gradient(to right, black calc(100% - var(--space-6)), transparent);
+}
+.list[data-fade-start] {
+  mask-image: linear-gradient(to right, transparent, black var(--space-6));
+}
+.list[data-fade-start][data-fade-end] {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    black var(--space-6),
+    black calc(100% - var(--space-6)),
+    transparent
+  );
+}
+
+/* Touch: each trigger is a full-size hit area. Fine pointers keep the dense
+   strip above. */
+@media (pointer: coarse) {
+  .trigger {
+    min-height: var(--touch-target);
+  }
+}

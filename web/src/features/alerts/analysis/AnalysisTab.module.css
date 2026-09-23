@@ -1,31 +1,70 @@
+/* Sections are spaced a clear step apart (--space-5) while each section's own
+   parts sit tight (--space-2/3 inside them): the pane reads as five blocks,
+   not as one column of evenly spaced lines. */
 .pane {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-5);
 }
 
-/* Trust strip: how much to believe the conclusion, and who wrote it. The
+/* Byline + freshness + verdict: tight, because the first two are read as
+   qualifiers of the third. */
+.lead {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* Trust strip: who wrote the conclusion and how much to believe it. The
    right-hand slot is reserved for the edit actions so they never push the
-   badge and the provenance around when they appear. */
+   provenance around when they appear. */
+/* The byline wraps inside its own column and the actions keep the top-right
+   corner: on a phone the byline runs to two lines, and letting the whole row
+   wrap instead put Edit and ⋯ on a row of their own under it. */
 .header {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
 }
 .trust {
   display: flex;
+  flex: 1 1 auto;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-2);
+  column-gap: var(--space-3);
+  row-gap: var(--space-1);
   min-width: 0;
 }
 .actions {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
+  gap: var(--space-1);
+}
+
+/* The stale notice: neutral raised surface, hairline all round, an info
+   glyph. No coloured side border and no severity hue — see StaleNotice. */
+.notice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
   gap: var(--space-2);
-  margin-inline-start: auto;
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border-muted);
+  border-radius: var(--radius-md);
+}
+.noticeIcon {
+  margin-top: 1px;
+  color: var(--text-muted);
+}
+.noticeText {
+  margin: 0;
+  max-width: 70ch;
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+  color: var(--text);
 }
 
 .loading {

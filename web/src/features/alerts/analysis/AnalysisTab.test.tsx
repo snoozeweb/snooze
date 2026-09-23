@@ -85,8 +85,15 @@ function makeWrapper() {
   };
 }
 
-function renderTab(uid: string | undefined) {
-  return render(<AnalysisTab uid={uid} />, { wrapper: makeWrapper() });
+function renderTab(uid: string | undefined, lastEpoch?: number) {
+  return render(<AnalysisTab uid={uid} {...(lastEpoch !== undefined ? { lastEpoch } : {})} />, {
+    wrapper: makeWrapper(),
+  });
+}
+
+/** The ⋯ menu beside Edit, where Remove lives. */
+async function openMoreMenu(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: "More analysis actions" }));
 }
 
 /**
@@ -142,8 +149,12 @@ describe("AnalysisTab", () => {
     renderTab("r1");
     expect(await screen.findByText("No analysis yet")).toBeInTheDocument();
     expect(
-      screen.getByText(/The alert-rca agent loop writes analyses onto open alerts/),
+      screen.getByText(
+        "Analyses are written by the alert-rca agent, or by anyone allowed to edit analyses.",
+      ),
     ).toBeInTheDocument();
+    // The permission's wire name is not something a reader should have to know.
+    expect(screen.queryByText(/rw_protected/)).toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
@@ -193,58 +204,165 @@ describe("AnalysisTab", () => {
     wildcard.unmount();
   });
 
-  it("renders the cause, the evidence, the plan and the provenance", async () => {
+  it("renders the verdict, the plan, the evidence and the provenance", async () => {
+    const user = userEvent.setup();
     loginWithPerms(["ro_record"]);
     stubAnalysis(ENVELOPE);
     renderTab("r1");
-    // Root cause: the lead sentence, the scope chip and the evidence.
+    // The verdict: the headline and the scope chip.
     expect(
-      await screen.findByText("systemd-journald filled /var with 4.2G of logs"),
+      await screen.findByRole("heading", {
+        name: "systemd-journald filled /var with 4.2G of logs",
+      }),
     ).toBeInTheDocument();
     expect(screen.getByText("srv-victoria1:/var")).toBeInTheDocument();
-    expect(screen.getByText("Evidence")).toBeInTheDocument();
-    expect(screen.getByText(/4.2G under \/var\/log\/journal/)).toBeInTheDocument();
 
-    // The plan: both steps, their risks, the command, the rollback and the
-    // automatable claim with the rule spelled out beside it.
-    expect(screen.getByText("Remediation plan")).toBeInTheDocument();
+    // The plan: both steps, only the risk worth a look, the command, the
+    // automatable mark in the heading, and the rollback folded away.
+    expect(screen.getByRole("heading", { name: /What to do/ })).toBeInTheDocument();
     expect(screen.getByText("Vacuum the journal to 500M")).toBeInTheDocument();
     expect(screen.getByText("Cap SystemMaxUse in journald.conf")).toBeInTheDocument();
     expect(screen.getByText("journalctl --vacuum-size=500M")).toBeInTheDocument();
-    expect(screen.getAllByText("Low risk").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Low risk")).toBeNull();
     expect(screen.getByText("Medium risk")).toBeInTheDocument();
-    expect(screen.getByText("Rollback")).toBeInTheDocument();
-    expect(screen.getByText("Restore the previous journald.conf")).toBeInTheDocument();
-    expect(screen.getByText("Yes")).toBeInTheDocument();
-    expect(
-      screen.getByText("Safe to run unattended only when every step is low risk."),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Automatable")).toBeInTheDocument();
+    expect(screen.queryByText(/Automatable:/)).toBeNull();
+    expect(screen.getByRole("button", { name: /Rollback/ })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
 
-    // Trust strip: one confidence chip (not two — RootCauseView defers to the
-    // header here) and the provenance.
+    // Evidence is support, so it waits behind a disclosure that says how much.
+    const evidence = screen.getByRole("button", { name: "Evidence · 2" });
+    expect(evidence).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText(/4.2G under \/var\/log\/journal/)).toBeNull();
+    await user.click(evidence);
+    expect(evidence).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText(/4.2G under \/var\/log\/journal/)).toBeInTheDocument();
+
+    // Provenance: said once, and said to be a model's.
     expect(screen.getAllByText("Medium confidence")).toHaveLength(1);
+    expect(screen.getByText("AI analysis")).toBeInTheDocument();
     expect(screen.getByText("alert-rca")).toBeInTheDocument();
     expect(screen.getByText("agent-bot")).toBeInTheDocument();
   });
 
-  it("puts Edit and Remove in the actions slot for an rw_protected holder", async () => {
+  it("reads verdict → plan → caveats → evidence, top to bottom", async () => {
+    loginWithPerms(["ro_record"]);
+    stubAnalysis({
+      ...ENVELOPE,
+      agentic: {
+        ...ENVELOPE.agentic,
+        root_cause: {
+          ...ENVELOPE.agentic.root_cause!,
+          caveats: ["Could not read the journal on the standby"],
+        },
+      },
+    });
+    renderTab("r1");
+    const headline = await screen.findByRole("heading", {
+      name: "systemd-journald filled /var with 4.2G of logs",
+    });
+    const plan = screen.getByRole("heading", { name: /What to do/ });
+    const caveats = screen.getByRole("heading", { name: "Caveats" });
+    const evidence = screen.getByRole("button", { name: /^Evidence/ });
+    const follows = (a: Element, b: Element) =>
+      Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(follows(headline, plan)).toBe(true);
+    expect(follows(plan, caveats)).toBe(true);
+    expect(follows(caveats, evidence)).toBe(true);
+  });
+
+  it("lifts a legacy 'caveat:' evidence line into Caveats, out of the evidence count", async () => {
+    // The prod analysis filed its only caveat as evidence #7, where it was set
+    // in code font at the bottom of a list nobody reads first.
+    loginWithPerms(["ro_record"]);
+    stubAnalysis({
+      ...ENVELOPE,
+      agentic: {
+        ...ENVELOPE.agentic,
+        root_cause: {
+          ...ENVELOPE.agentic.root_cause!,
+          evidence: [
+            "journalctl: 4.2G under /var/log/journal",
+            "caveat: the standby was not reachable over SSH",
+          ],
+        },
+      },
+    });
+    renderTab("r1");
+    expect(await screen.findByRole("heading", { name: "Caveats" })).toBeInTheDocument();
+    expect(screen.getByText("the standby was not reachable over SSH")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Evidence · 1" })).toBeInTheDocument();
+  });
+
+  it("shows no Caveats section when there are none", async () => {
+    loginWithPerms(["ro_record"]);
+    stubAnalysis(ENVELOPE);
+    renderTab("r1");
+    await screen.findByRole("heading", { name: /What to do/ });
+    expect(screen.queryByRole("heading", { name: "Caveats" })).toBeNull();
+  });
+
+  it("credits a person for an analysis saved from the web UI", async () => {
+    loginWithPerms(["ro_record"]);
+    stubAnalysis({
+      ...ENVELOPE,
+      agentic: {
+        ...ENVELOPE.agentic,
+        analysis: { at: "2026-09-21T10:00:00Z", by: "alice", source: "snooze-web" },
+      },
+    });
+    renderTab("r1");
+    expect(await screen.findByText(/Written by/)).toHaveTextContent("Written by alice");
+    expect(screen.queryByText("AI analysis")).toBeNull();
+  });
+
+  it("warns — quietly — when the alert fired again after the analysis was written", async () => {
+    loginWithPerms(["ro_record"]);
+    stubAnalysis(ENVELOPE);
+    // Written 10:00Z; the alert last fired an hour later.
+    renderTab("r1", Math.floor(Date.UTC(2026, 8, 21, 11) / 1000));
+    expect(
+      await screen.findByText(
+        "This alert fired again after the analysis was written — it may describe an earlier occurrence.",
+      ),
+    ).toBeInTheDocument();
+    // A notice, not an alarm: nothing here is a failure.
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("says nothing about freshness when the alert has not fired since", async () => {
+    loginWithPerms(["ro_record"]);
+    stubAnalysis(ENVELOPE);
+    renderTab("r1", Math.floor(Date.UTC(2026, 8, 21, 9) / 1000));
+    await screen.findByRole("heading", { name: /What to do/ });
+    expect(screen.queryByText(/fired again after the analysis/)).toBeNull();
+  });
+
+  it("puts Edit and a ⋯ menu holding Remove in the actions slot for an rw_protected holder", async () => {
+    const user = userEvent.setup();
     loginWithPerms(["ro_record", "rw_protected"]);
     stubAnalysis(ENVELOPE);
     const { container } = renderTab("r1");
-    await screen.findByText("Remediation plan");
+    await screen.findByRole("heading", { name: /What to do/ });
     const slot = container.querySelector('[data-slot="analysis-actions"]');
     expect(slot).not.toBeNull();
     expect(within(slot as HTMLElement).getByRole("button", { name: "Edit" })).toBeInTheDocument();
-    expect(within(slot as HTMLElement).getByRole("button", { name: "Remove" })).toBeInTheDocument();
+    // No destructive button sits in the trust row any more…
+    expect(within(slot as HTMLElement).queryByRole("button", { name: "Remove" })).toBeNull();
+    // …it waits one deliberate step away.
+    await openMoreMenu(user);
+    expect(screen.getByRole("menuitem", { name: "Remove" })).toBeInTheDocument();
   });
 
   it("shows an rw_all-only session the analysis, and no way to change it", async () => {
     loginWithPerms(["rw_all"]);
     stubAnalysis(ENVELOPE);
     renderTab("r1");
-    await screen.findByText("Remediation plan");
+    await screen.findByRole("heading", { name: /What to do/ });
     expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Remove" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "More analysis actions" })).toBeNull();
   });
 
   it("swaps the read views for the editor, and hides Edit/Remove while editing", async () => {
@@ -252,21 +370,21 @@ describe("AnalysisTab", () => {
     loginWithPerms(["ro_record", "rw_protected"]);
     stubAnalysis(ENVELOPE);
     renderTab("r1");
-    await screen.findByText("Remediation plan");
+    await screen.findByRole("heading", { name: /What to do/ });
 
     await user.click(screen.getByRole("button", { name: "Edit" }));
     expect(screen.getByText("Editing")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Remove" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "More analysis actions" })).toBeNull();
     // The read views are gone; the form holds the same analysis.
-    expect(screen.queryByText("Remediation plan")).toBeNull();
+    expect(screen.queryByRole("heading", { name: /What to do/ })).toBeNull();
     expect(await screen.findByLabelText("Summary")).toHaveValue(
       "systemd-journald filled /var with 4.2G of logs",
     );
 
     // Cancel on an untouched form goes straight back to reading.
     await user.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(await screen.findByText("Remediation plan")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /What to do/ })).toBeInTheDocument();
   });
 
   it("returns to the empty state once Remove is confirmed", async () => {
@@ -288,14 +406,16 @@ describe("AnalysisTab", () => {
       }),
     );
     renderTab("r1");
-    await screen.findByText("Remediation plan");
+    await screen.findByRole("heading", { name: /What to do/ });
 
-    await user.click(screen.getByRole("button", { name: "Remove" }));
-    await user.click(screen.getByRole("button", { name: "Remove analysis" }));
+    await openMoreMenu(user);
+    await user.click(screen.getByRole("menuitem", { name: "Remove" }));
+    // The menu item only asks; the dialog is still what removes.
+    await user.click(await screen.findByRole("button", { name: "Remove analysis" }));
     expect(await screen.findByText("No analysis yet")).toBeInTheDocument();
   });
 
-  it("says 'No' when the plan is not automatable", async () => {
+  it("says 'Manual' when the plan is not automatable", async () => {
     loginWithPerms(["ro_record"]);
     stubAnalysis({
       ...ENVELOPE,
@@ -305,8 +425,9 @@ describe("AnalysisTab", () => {
       },
     });
     renderTab("r1");
-    expect(await screen.findByText("No")).toBeInTheDocument();
-    expect(screen.queryByText("Rollback")).toBeNull();
+    expect(await screen.findByText("Manual")).toBeInTheDocument();
+    expect(screen.queryByText("Automatable")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Rollback/ })).toBeNull();
   });
 
   it("returns to reading when the tab is pointed at another alert mid-edit", async () => {
@@ -318,7 +439,7 @@ describe("AnalysisTab", () => {
       ),
     );
     const { rerender } = renderTab("r1");
-    await screen.findByText("Remediation plan");
+    await screen.findByRole("heading", { name: /What to do/ });
     await user.click(screen.getByRole("button", { name: "Edit" }));
     expect(await screen.findByLabelText("Summary")).toBeInTheDocument();
 
@@ -327,7 +448,7 @@ describe("AnalysisTab", () => {
     // draft onto it.
     rerender(<AnalysisTab uid="r2" />);
 
-    expect(await screen.findByText("Remediation plan")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /What to do/ })).toBeInTheDocument();
     expect(screen.queryByText("Editing")).toBeNull();
     expect(screen.queryByLabelText("Summary")).toBeNull();
   });
@@ -337,7 +458,7 @@ describe("AnalysisTab", () => {
     loginWithPerms(["ro_record", "rw_protected"]);
     stubAnalysis(ENVELOPE);
     const { client } = renderTabWithClient("r1");
-    await screen.findByText("Remediation plan");
+    await screen.findByRole("heading", { name: /What to do/ });
     await user.click(screen.getByRole("button", { name: "Edit" }));
     await screen.findByLabelText("Summary");
 
@@ -365,7 +486,7 @@ describe("AnalysisTab", () => {
     loginWithPerms(["ro_record"]);
     stubAnalysis(ENVELOPE);
     const { client } = renderTabWithClient("r1");
-    await screen.findByText("Remediation plan");
+    await screen.findByRole("heading", { name: /What to do/ });
 
     mswServer.use(
       http.get("/api/v1/record/r1/agentic", () =>
@@ -380,7 +501,7 @@ describe("AnalysisTab", () => {
     });
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/backend is having a moment/i);
-    expect(screen.getByText("Remediation plan")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /What to do/ })).toBeInTheDocument();
   });
 
   it("drops the confidence chip when the stored value is not one of the three", async () => {
@@ -396,8 +517,9 @@ describe("AnalysisTab", () => {
       },
     } as unknown as AgenticEnvelope);
     renderTab("r1");
-    await screen.findByText("Remediation plan");
+    await screen.findByRole("heading", { name: /What to do/ });
     expect(screen.queryByText(/undefined/)).toBeNull();
+    expect(screen.queryByText(/confidence/)).toBeNull();
   });
 
   it("surfaces a real failure as an inline error, with the server's own words", async () => {

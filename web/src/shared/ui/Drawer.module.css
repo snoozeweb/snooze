@@ -90,6 +90,12 @@
   color: var(--text-strong);
   margin: 0;
   flex: 1;
+  /* A flex item will not shrink below its longest word by default, and a
+     title that is one long identifier (an FQDN host on the alerts drawer)
+     then pushed the toolbar — prev/next and the ✕ — off the panel's edge,
+     where nothing could reach them. Let it shrink and break instead. */
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .toolbar {
   display: inline-flex;
@@ -127,6 +133,13 @@
   background: var(--bg-hover);
   color: var(--text-strong);
 }
+/* Touch: the ✕ is a full-size hit area, like every IconButton. */
+@media (pointer: coarse) {
+  .closeBtn {
+    min-width: var(--touch-target);
+    min-height: var(--touch-target);
+  }
+}
 
 /* Full-screen sheet on phones: the 560px right panel becomes an edge-to-edge
    sheet that slides up. Desktop (>768px) keeps the side panel above. */
@@ -148,6 +161,36 @@
   }
   .footer {
     padding-bottom: calc(var(--space-3) + var(--safe-bottom));
+  }
+  /* A header with a toolbar (the row-details drawer's Acknowledge / Close
+     alert / prev-next, an editor's Enabled switch) cannot share one phone-
+     width row with its title: the title wrapped a letter at a time beside the
+     buttons, and the toolbar ran off the edge. Stack it instead — title and ✕
+     on the first row, the title held to one line with an ellipsis, and the
+     toolbar on its own single row underneath, scrolling sideways rather than
+     wrapping if it still does not fit. */
+  .header:has(.toolbar) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "title close"
+      "toolbar toolbar";
+    row-gap: var(--space-2);
+  }
+  .header:has(.toolbar) .title {
+    grid-area: title;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .header:has(.toolbar) .toolbar {
+    grid-area: toolbar;
+    min-width: 0;
+    overflow-x: auto;
+  }
+  .header:has(.toolbar) .closeBtn {
+    grid-area: close;
   }
 }
 @keyframes sheetUp {

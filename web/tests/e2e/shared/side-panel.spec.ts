@@ -23,7 +23,7 @@ test.describe("alert inspector panel", () => {
     // test is about renders disabled and the assertion below tests nothing.
     const deadline = Date.now() + 15_000;
     for (;;) {
-      const rows = (await api.alerts.list()) as unknown[];
+      const rows = (await api.alerts.list());
       if (rows.length > PAGE_SIZE) break;
       if (Date.now() >= deadline) throw new Error(`only ${rows.length} records ingested`);
       await new Promise((r) => setTimeout(r, 200));
