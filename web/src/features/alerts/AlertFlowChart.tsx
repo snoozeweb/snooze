@@ -3,7 +3,9 @@
 // The stage list is fixed: every stage renders even when it matched nothing,
 // because "which stage let this through?" is only answerable if the stages that
 // stayed quiet are visible too. A snooze hit makes the run terminal, so the
-// Notifications node then says so instead of being dropped from the chart.
+// Notifications node then says so instead of being dropped from the chart —
+// unless the record's plugin trail shows the run carried on past the snooze
+// stage (the recovery of a silenced alert keeps `snoozed` but is notified).
 // All data comes from the record row; no fetch. Colours via Badge variants only.
 // Every entity (rule, aggregate, snooze, notification, action) deep-links to
 // its management page with the page's search filter pre-set to the clicked
@@ -161,6 +163,13 @@ export function AlertFlowChart({ row }: { row: Record_ }) {
   const notifications = row.notifications ?? [];
   const actions = row.actions ?? [];
   const snoozed = row.snoozed;
+  // `snoozed` names the filter that silenced the alert, but not necessarily
+  // THIS run: the snooze plugin keeps it on the recovery (close) of a silenced
+  // alert and lets that close through to notification. The plugin trail of the
+  // last run tells the two apart; a row with no trail (older data) reads as
+  // silenced, the only case that existed before.
+  const passedThrough = !!snoozed && (row.plugins ?? []).includes("notification");
+  const silenced = !!snoozed && !passedThrough;
   // "default" is the aggregaterule plugin's synthetic fallback bucket — it has
   // no backing rule, so a deep-link would dead-end on an empty list. Render it
   // (and the empty "—") as plain text; link only real aggregate rule names.
@@ -243,7 +252,11 @@ export function AlertFlowChart({ row }: { row: Record_ }) {
                   <span aria-hidden="true">⊘</span> {snoozed}
                 </Badge>
               </Link>
-              <span className={styles.subtle}>silenced — pipeline stopped</span>
+              <span className={styles.subtle}>
+                {passedThrough
+                  ? "silenced earlier — the recovery passed through"
+                  : "silenced — pipeline stopped"}
+              </span>
             </>
           ) : (
             <span className={styles.none}>No snooze matched — this one was meant to reach you</span>
@@ -254,7 +267,7 @@ export function AlertFlowChart({ row }: { row: Record_ }) {
             no branches and no action links — saying "none" here would read as
             "nothing was configured", which is a different and wrong story. */}
         <Node label="Notifications">
-          {snoozed ? (
+          {silenced ? (
             <span className={styles.none}>not reached — silenced upstream</span>
           ) : notifications.length > 0 || actions.length > 0 ? (
             <div className={styles.fork}>

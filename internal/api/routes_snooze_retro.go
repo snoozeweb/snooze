@@ -12,7 +12,7 @@
 //     the snooze's name on every matching record so dashboards / filters can
 //     hide them. The field name comes from the plugin
 //     (plugins.SuppressionOwner), which owns it — see that interface for why
-//     nothing outside the owning plugin hard-codes it.
+//     server code outside the owner reads the name instead of hard-coding it.
 //
 // The handler is gated on the `rw_record` permission because it mutates
 // the alert collection. We also bump the snooze's hit counter by the

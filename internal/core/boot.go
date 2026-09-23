@@ -524,7 +524,7 @@ func (c *Core) housekeeperJobs(notify func(context.Context, snoozetypes.Record) 
 		}
 	}
 
-	return []registration{
+	regs := []registration{
 		liveIntervalReg(housekeeper.CleanupTimeoutJob(c.Driver, "record"),
 			liveInterval(func(h config.HousekeeperConfig) time.Duration { return h.CleanupAlert.AsDuration() }, 5*time.Minute)),
 		liveIntervalReg(housekeeper.CleanupAggregateJob(c.Driver),
@@ -563,6 +563,31 @@ func (c *Core) housekeeperJobs(notify func(context.Context, snoozetypes.Record) 
 		liveIntervalReg(housekeeper.UnshelveTimeoutJob(c.Driver, housekeeper.SystemClock()),
 			func(context.Context) time.Duration { return time.Minute }),
 	}
+	// Suppression reconcile: fixed minute cadence. The owner of the `snoozed`
+	// attribution clears the attributions whose filter can no longer silence
+	// anything (expired, disabled, deleted — including by cleanup_snooze
+	// above), which per-occurrence re-deciding never reaches for a row that
+	// does not fire again. Looked up by capability, not by plugin name.
+	for _, name := range sortedPluginNames(c.plugins) {
+		if owner, ok := c.plugins[name].(plugins.SuppressionOwner); ok {
+			regs = append(regs, liveIntervalReg(
+				housekeeper.ReconcileSuppressionJob(c.Driver, owner.ReconcileSuppression),
+				func(context.Context) time.Duration { return time.Minute }))
+			break
+		}
+	}
+	return regs
+}
+
+// sortedPluginNames returns the plugin map's keys in name order, for
+// deterministic iteration.
+func sortedPluginNames(m map[string]plugins.Plugin) []string {
+	names := make([]string, 0, len(m))
+	for n := range m {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // StopPlugins runs the plugins.LifecycleHook shutdown hook of every registered
@@ -599,12 +624,7 @@ func (c *Core) StopPlugins(ctx context.Context) {
 	if c == nil {
 		return
 	}
-	names := make([]string, 0, len(c.plugins))
-	for name := range c.plugins {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	for _, name := range names {
+	for _, name := range sortedPluginNames(c.plugins) {
 		hook, ok := c.plugins[name].(plugins.LifecycleHook)
 		if !ok {
 			continue

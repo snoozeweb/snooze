@@ -133,6 +133,25 @@ describe("AlertFlowChart", () => {
     expect(screen.queryByRole("link", { name: /email/ })).not.toBeInTheDocument();
   });
 
+  it("shows a recovery that passed a kept snooze attribution as notified, not silenced", () => {
+    // The snooze plugin keeps `snoozed` on the recovery of a silenced alert
+    // but lets the close through to notification; the plugin trail says so.
+    renderChart({
+      ...base,
+      state: "close",
+      snoozed: "maint-window",
+      plugins: ["rule", "aggregaterule", "snooze", "notification"],
+      notifications: ["oncall"],
+      actions: [{ name: "email", notification: "oncall", status: "success" }],
+    });
+    expect(screen.getByRole("link", { name: /maint-window/ })).toBeInTheDocument();
+    expect(screen.getByText("silenced earlier — the recovery passed through")).toBeInTheDocument();
+    expect(screen.queryByText("silenced — pipeline stopped")).not.toBeInTheDocument();
+    expect(screen.queryByText("not reached — silenced upstream")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "oncall" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /email/ })).toBeInTheDocument();
+  });
+
   it("always renders the snooze stage, saying so when nothing matched", () => {
     renderChart({ ...base, notifications: ["oncall"] });
     expect(screen.getByText("Snooze")).toBeInTheDocument();

@@ -344,16 +344,19 @@ func (p *Plugin) Process(ctx context.Context, rec snoozetypes.Record) (plugins.R
 		recMap["hash"] = defaultHash(recMap)
 	}
 
-	out, action, err := p.matchAggregate(ctx, host, recMap, aggrName, throttle, flapping, watchKeys, now())
+	var afterPersist []func(context.Context)
+	out, action, err := p.matchAggregate(ctx, host, recMap, aggrName, throttle, flapping, watchKeys, now(), &afterPersist)
 	if err != nil {
 		return plugins.Result{Action: plugins.ActionAbort, Record: rec}, err
 	}
 	mergeMapIntoRecord(&rec, out)
-	return plugins.Result{Action: action, Record: rec}, nil
+	return plugins.Result{Action: action, Record: rec, AfterPersist: afterPersist}, nil
 }
 
 // matchAggregate looks up the existing aggregate row by hash and decides
-// the verdict. Returns the (possibly mutated) record map and the action.
+// the verdict. Returns the (possibly mutated) record map and the action; the
+// lifecycle comments the verdict implies are appended to afterPersist rather
+// than written, so they land only if the pipeline stores the record.
 func (p *Plugin) matchAggregate(
 	ctx context.Context,
 	host plugins.Host,
@@ -363,6 +366,7 @@ func (p *Plugin) matchAggregate(
 	flapping int64,
 	watch []string,
 	now time.Time,
+	afterPersist *[]func(context.Context),
 ) (map[string]any, plugins.Action, error) {
 	if host == nil || host.DB() == nil {
 		// In tests with no DB the plugin is a no-op pass-through.
@@ -468,7 +472,7 @@ func (p *Plugin) matchAggregate(
 			// clear the escalation lifecycle rather than letting the next
 			// delivery inherit a count (and comment on a resolved ticket).
 			resetEscalation(rec)
-			p.writeAutoComment(ctx, host, prevUID, "close",
+			p.queueAutoComment(afterPersist, host, prevUID, "close",
 				fmt.Sprintf("Auto closed: Severity %s => %s", prevSeverity, newSeverity), now)
 			return rec, plugins.ActionContinue, nil
 		}
@@ -515,10 +519,10 @@ func (p *Plugin) matchAggregate(
 		if fc <= 0 {
 			// Flapping: discard with a write so the counter / countdown stick.
 			msg += "\n" + flappingNote(throttle, now.Unix()-prevDate)
-			p.writeAutoComment(ctx, host, prevUID, ctype, msg, now)
+			p.queueAutoComment(afterPersist, host, prevUID, ctype, msg, now)
 			return rec, plugins.ActionAbortUpdate, nil
 		}
-		p.writeAutoComment(ctx, host, prevUID, ctype, msg, now)
+		p.queueAutoComment(afterPersist, host, prevUID, ctype, msg, now)
 		return rec, plugins.ActionContinue, nil
 	}
 
@@ -531,10 +535,10 @@ func (p *Plugin) matchAggregate(
 		msg := "Auto re-opened"
 		if fc <= 0 {
 			msg += "\n" + flappingNote(throttle, now.Unix()-prevDate)
-			p.writeAutoComment(ctx, host, prevUID, "open", msg, now)
+			p.queueAutoComment(afterPersist, host, prevUID, "open", msg, now)
 			return rec, plugins.ActionAbortUpdate, nil
 		}
-		p.writeAutoComment(ctx, host, prevUID, "open", msg, now)
+		p.queueAutoComment(afterPersist, host, prevUID, "open", msg, now)
 		return rec, plugins.ActionContinue, nil
 	}
 
@@ -551,7 +555,7 @@ func (p *Plugin) matchAggregate(
 				rec["state"] = prevState
 			}
 			rec["comment_count"] = commentCount + 1
-			p.writeAutoComment(ctx, host, prevUID, ctype,
+			p.queueAutoComment(afterPersist, host, prevUID, ctype,
 				fmt.Sprintf("Severity escalated: %s => %s (throttle bypassed)", prevSeverity, newSeverity), now)
 			return rec, plugins.ActionContinue, nil
 		}
@@ -572,7 +576,7 @@ func (p *Plugin) matchAggregate(
 		rec["state"] = prevState
 	}
 	rec["comment_count"] = commentCount + 1
-	p.writeAutoComment(ctx, host, prevUID, ctype, "New escalation", now)
+	p.queueAutoComment(afterPersist, host, prevUID, ctype, "New escalation", now)
 	return rec, plugins.ActionContinue, nil
 }
 
@@ -610,7 +614,7 @@ func nextFlappingCountdown(countdown int64, hasCountdown bool, budget int64, thr
 	return fc
 }
 
-// writeAutoComment persists an automatic lifecycle comment onto the `comment`
+// queueAutoComment queues an automatic lifecycle comment for the `comment`
 // collection so a record's timeline reflects the state transitions the
 // aggregate pipeline performs (close, re-open, re-escalation, watch-field
 // changes).
@@ -621,12 +625,18 @@ func nextFlappingCountdown(countdown int64, hasCountdown bool, budget int64, thr
 // comment_count inflated unbounded while the timeline — which reads real
 // comment docs by record_uid — stayed empty. This restores the 1:1 invariant.
 //
+// The comment is QUEUED on plugins.Result.AfterPersist, not written here: the
+// comment_count bump rides on the record, which a plugin behind this one (a
+// snooze discard) can still drop, and a comment written up front then
+// narrated a transition that was never stored — "Auto re-opened" on a row
+// that stayed closed. The pipeline runs the effect only after the write.
+//
 // The write goes straight to the driver, not through POST /api/v1/comment, so
 // the comment plugin's AfterCreate hook does NOT fire and does NOT double-count
 // (the caller already bumps comment_count on the record). Failures are
 // best-effort logged: a missing timeline entry must never drop the alert.
-func (p *Plugin) writeAutoComment(ctx context.Context, host plugins.Host, recordUID, ctype, message string, now time.Time) {
-	if host == nil || host.DB() == nil || recordUID == "" || message == "" {
+func (p *Plugin) queueAutoComment(afterPersist *[]func(context.Context), host plugins.Host, recordUID, ctype, message string, now time.Time) {
+	if afterPersist == nil || host == nil || host.DB() == nil || recordUID == "" || message == "" {
 		return
 	}
 	doc := db.Document{
@@ -636,12 +646,14 @@ func (p *Plugin) writeAutoComment(ctx context.Context, host plugins.Host, record
 		"date_epoch": now.Unix(),
 		"auto":       true,
 	}
-	if _, err := host.DB().Write(ctx, "comment", []db.Document{doc}, db.WriteOptions{UpdateTime: true}); err != nil {
-		if host.Logger() != nil {
-			host.Logger().Warn("aggregaterule: write auto comment",
-				"record_uid", recordUID, "type", ctype, "error", err)
+	*afterPersist = append(*afterPersist, func(ctx context.Context) {
+		if _, err := host.DB().Write(ctx, "comment", []db.Document{doc}, db.WriteOptions{UpdateTime: true}); err != nil {
+			if host.Logger() != nil {
+				host.Logger().Warn("aggregaterule: write auto comment",
+					"record_uid", recordUID, "type", ctype, "error", err)
+			}
 		}
-	}
+	})
 }
 
 // trendString maps the return value of snoozetypes.CompareSeverity to the

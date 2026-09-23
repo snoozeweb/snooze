@@ -61,6 +61,14 @@ on PUT, false on POST/PATCH; non-nil error → 403) and `DeleteGuard`
 (`GuardDelete(ctx, uids)` — protects must-not-vanish rows, e.g. the last
 platform admin).
 
+`Processor` plugins have their own refinements: `Filter` (the verdict is a
+suppression decision, so the pipeline still asks it when an earlier plugin
+aborts-and-persists — the `snooze` plugin), `SuppressionOwner` (owns the
+`snoozed` field and reconciles it on a housekeeper sweep — also `snooze`), and
+`Result.AfterPersist` — side effects that describe the stored change (a
+lifecycle comment) belong there, not inline in `Process`, because a later
+plugin can still discard the record (see `aggregaterule.queueAutoComment`).
+
 > `Actioner` has **no concrete implementation** in `internal/pluginimpl/` yet,
 > so there is no "copy the nearest plugin" example for it — implementing one is
 > breaking new ground. `UpdateHook.AfterUpdate`'s third argument is the *full*

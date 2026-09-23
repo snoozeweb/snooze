@@ -95,9 +95,26 @@ const SHELVED: Condition = {
   ],
 };
 
+/**
+ * "Snoozed" — alerts a snooze filter is currently silencing:
+ *
+ *   AND(EXISTS snoozed, NOT(state=close))
+ *
+ * The snooze plugin keeps the `snoozed` attribution on the recovery of a
+ * silenced alert (it is the reason the alert was hidden), but a closed alert
+ * is resolved, not silenced — it lives in the Closed tab.
+ */
+const SNOOZED: Condition = {
+  type: "AND",
+  args: [
+    { type: "EXISTS", field: "snoozed" },
+    { type: "NOT", arg: { type: "EQUALS", field: "state", value: "close" } },
+  ],
+};
+
 export const ALERT_TABS: TabDef[] = [
   { id: "alerts", label: "Alerts", condition: ACTIVE_ALERTS },
-  { id: "snoozed", label: SNOOZED_NOUN, condition: { type: "EXISTS", field: "snoozed" } },
+  { id: "snoozed", label: SNOOZED_NOUN, condition: SNOOZED },
   { id: "ack", label: STATE_NOUN.ack, condition: { type: "EQUALS", field: "state", value: "ack" } },
   { id: "esc", label: STATE_NOUN.esc, condition: REESCALATED },
   {

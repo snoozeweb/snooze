@@ -238,14 +238,53 @@
   re-open held as flapping, after which every repeat was throttled for 24h. The
   row went back to `open` with nothing left saying why it should be hidden.
 
-- **Deleting a snooze filter left the alerts it had silenced hidden behind it.**
-  Every record the deleted filter had stamped stayed out of the alerts list —
-  permanently, for any alert that never fires again. The `snooze` plugin now
-  clears its own attribution when a filter is deleted (a `DeleteGuard` captures
-  the name, since the document is gone by the time `AfterDelete` runs). On the
-  live server one deleted catch-all filter had left 305 such rows, one of them
-  an open critical. Renaming a filter is unchanged: records re-attribute on
-  their next occurrence.
+- **Alerts silenced by a filter that could no longer silence anything stayed
+  hidden for good.** `snoozed` is re-decided on each occurrence, so an alert
+  that never fires again kept it after its filter was deleted, disabled or
+  renamed, or after its time window ended — including every "snooze for 2h"
+  from the MCP and Teams bridges, and every filter the `cleanup_snooze`
+  housekeeping job deletes straight in the database. On the live server one
+  deleted catch-all filter had left 305 such rows, one of them an open
+  critical. The `snooze` plugin now reconciles stored attributions against the
+  filters that can still silence (they exist, are enabled, and their absolute
+  window is not over; a recurring window that is merely closed right now still
+  counts): immediately after an API delete or edit of a filter, and on a new
+  fixed minute-cadence `reconcile_suppression` housekeeping sweep per tenant,
+  which also covers a cluster peer re-stamping a name just after its filter was
+  deleted. The live filter set is read from the database, never a node's cache.
+
+- **A `discard` snooze filter left phantom lifecycle comments.** When a filter
+  dropped an occurrence of an existing aggregate, `aggregaterule` had already
+  written its "Auto re-opened" / "New escalation" comment, so the timeline
+  narrated a transition that was never stored (and `comment_count` fell out of
+  step with the comments). Processors can now return side effects on
+  `plugins.Result.AfterPersist`, which the pipeline runs only after the record
+  write lands and drops when the record is discarded; the aggregate comments
+  use it.
+
+- **A recovered silenced alert read as "not notified" and stayed in the Snoozed
+  tab.** The recovery (close) of a silenced alert keeps its `snoozed`
+  attribution and passes through to notification. The web flow chart now reads
+  the record's plugin trail and shows "silenced earlier — the recovery passed
+  through" with the notifications it reached, instead of "not reached —
+  silenced upstream"; the **Snoozed** tab now excludes closed alerts, which
+  appear under **Closed**. Because the recovery carries `snoozed`, a
+  notification condition can use `NOT snoozed EXISTS` to skip the recovery of
+  an alert whose firing never paged.
+
+- **Snooze filter hits cost two synchronous database round-trips per match.**
+  Throttled repeats now reach the `snooze` plugin, so this landed on exactly
+  the storm traffic the throttle exists for. The hit counter is now batched
+  through the server's async writer via a new never-upserting
+  `asyncwriter.IncrementExisting` (so a filter deleted before the flush cannot
+  come back as a condition-less phantom that matches everything), falling back
+  to one atomic increment; the old read-modify-write also undercounted
+  concurrent matches.
+
+- **A throttled repeat caught by a snooze filter was counted twice on the
+  dashboard**, once as throttled and once as snoozed. The filter pass on a held
+  occurrence no longer records `alert_snoozed`; the filter's own Hits counter
+  still counts it.
 
 - **The `ro_all` read catch-all now satisfies `ro_*` gates on bespoke routes**
   (`GET /api/v1/inputs`, the agentic read) exactly as it already did on plugin

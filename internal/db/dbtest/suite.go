@@ -50,6 +50,7 @@ func RunDriverSuite(t *testing.T, name string, factory Factory) {
 		{"IncMany", testIncMany},
 		{"SetFields", testSetFields},
 		{"UnsetFields", testUnsetFields},
+		{"UnsetFieldsExceptValues", testUnsetFieldsExceptValues},
 		{"AppendList", testAppendList},
 		{"PrependList", testPrependList},
 		{"RemoveList", testRemoveList},
@@ -469,6 +470,37 @@ func testUnsetFields(t *testing.T, drv db.Driver) {
 		[]string{"snoozed"}, mustCond(t, []any{"=", "host", "h"}))
 	require.NoError(t, err)
 	require.Equal(t, 0, matched)
+}
+
+// testUnsetFieldsExceptValues pins the snooze plugin's reconcile query shape
+// on every backend: unset a field wherever it EXISTS and holds none of a set
+// of still-valid values — EXISTS f AND NOT (f = v1 OR f = v2).
+func testUnsetFieldsExceptValues(t *testing.T, drv db.Driver) {
+	mustWrite(t, drv, "record",
+		db.Document{"host": "keep-a", "snoozed": "A"},
+		db.Document{"host": "keep-b", "snoozed": "B"},
+		db.Document{"host": "stale", "snoozed": "gone"},
+		db.Document{"host": "none"},
+	)
+	stale := condition.And(
+		condition.Exists("snoozed"),
+		condition.Not(condition.Or(
+			condition.Equals("snoozed", "A"),
+			condition.Equals("snoozed", "B"),
+		)),
+	)
+	matched, err := drv.UnsetFields(ctx(), "record", []string{"snoozed"}, stale)
+	require.NoError(t, err)
+	require.Equal(t, 1, matched)
+
+	docs, total := search(t, drv, "record", condition.Exists("snoozed"))
+	require.Equal(t, 2, total)
+	kept := map[string]bool{}
+	for _, d := range docs {
+		h, _ := d["host"].(string)
+		kept[h] = true
+	}
+	require.Equal(t, map[string]bool{"keep-a": true, "keep-b": true}, kept)
 }
 
 func testAppendList(t *testing.T, drv db.Driver) {

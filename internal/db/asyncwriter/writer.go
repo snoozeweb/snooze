@@ -20,6 +20,9 @@ type incRequest struct {
 	search     db.Document
 	delta      int64
 	ctx        context.Context // carries tenant slug for partitioned coalescing
+	// existingOnly opts this request out of the writer's upsert flag: it may
+	// only bump a row that already exists (see IncrementExisting).
+	existingOnly bool
 }
 
 // Writer batches increment mutations and flushes them periodically. Pass
@@ -40,8 +43,9 @@ type Writer struct {
 }
 
 type aggEntry struct {
-	search db.Document
-	deltas map[string]int64
+	search       db.Document
+	deltas       map[string]int64
+	existingOnly bool
 }
 
 // Option configures Writer construction.
@@ -76,15 +80,31 @@ func New(d db.Driver, period time.Duration, clock Clock, opts ...Option) *Writer
 // coalescing and for the downstream BulkIncrement call. Returns immediately;
 // merges happen inside the flusher.
 func (w *Writer) Increment(ctx context.Context, collection, field string, search db.Document, delta int64) {
+	w.enqueue(ctx, collection, field, search, delta, false)
+}
+
+// IncrementExisting is Increment for a counter on a row that must already
+// exist: it is never upserted, whatever the writer's WithUpsert flag. A search
+// that matches nothing at flush time (the row was deleted meanwhile) is a
+// no-op. The process-wide writer upserts for the stats counters, so anything
+// counting on a user-managed document — a snooze filter's `hits` — goes
+// through here, or a filter deleted between the match and the flush would come
+// back as a phantom row.
+func (w *Writer) IncrementExisting(ctx context.Context, collection, field string, search db.Document, delta int64) {
+	w.enqueue(ctx, collection, field, search, delta, true)
+}
+
+func (w *Writer) enqueue(ctx context.Context, collection, field string, search db.Document, delta int64, existingOnly bool) {
 	select {
 	case <-w.closing:
 		return
 	case w.requests <- incRequest{
-		collection: collection,
-		field:      field,
-		search:     cloneDocWithTenant(ctx, search),
-		delta:      delta,
-		ctx:        ctx,
+		collection:   collection,
+		field:        field,
+		search:       cloneDocWithTenant(ctx, search),
+		delta:        delta,
+		ctx:          ctx,
+		existingOnly: existingOnly,
 	}:
 	}
 }
@@ -132,9 +152,14 @@ func (w *Writer) accept(r incRequest) {
 		w.buckets[r.collection] = bucket
 	}
 	key := hashSearch(r.search)
+	if r.existingOnly {
+		// Keep existing-only and upserting increments of the same search in
+		// separate entries so neither inherits the other's upsert behaviour.
+		key = "\x01existing\x00" + key
+	}
 	entry, ok := bucket[key]
 	if !ok {
-		entry = &aggEntry{search: cloneDoc(r.search), deltas: map[string]int64{}}
+		entry = &aggEntry{search: cloneDoc(r.search), deltas: map[string]int64{}, existingOnly: r.existingOnly}
 		bucket[key] = entry
 	}
 	entry.deltas[r.field] += r.delta
@@ -162,8 +187,13 @@ func (w *Writer) flush(_ context.Context) error {
 	w.mu.Unlock()
 	for collection, entries := range pending {
 		// Partition this collection's entries by the tenant baked into each
-		// search doc. "" is the platform/global bucket (no tenant_id present).
-		opsByTenant := map[string][]db.IncrementOp{}
+		// search doc ("" is the platform/global bucket, no tenant_id present)
+		// and by whether the entry may upsert.
+		type partition struct {
+			tenant string
+			upsert bool
+		}
+		opsByPartition := map[partition][]db.IncrementOp{}
 		for _, e := range entries {
 			// Skip zero-net updates: matches Python's `if value > 0` short-circuit,
 			// generalised to any non-zero delta (we accept negative deltas too).
@@ -178,9 +208,11 @@ func (w *Writer) flush(_ context.Context) error {
 				continue
 			}
 			tenant, _ := e.search["tenant_id"].(string)
-			opsByTenant[tenant] = append(opsByTenant[tenant], db.IncrementOp{Search: e.search, Deltas: e.deltas})
+			part := partition{tenant: tenant, upsert: w.upsert && !e.existingOnly}
+			opsByPartition[part] = append(opsByPartition[part], db.IncrementOp{Search: e.search, Deltas: e.deltas})
 		}
-		for tenant, ops := range opsByTenant {
+		for part, ops := range opsByPartition {
+			tenant := part.tenant
 			if len(ops) == 0 {
 				continue
 			}
@@ -194,7 +226,7 @@ func (w *Writer) flush(_ context.Context) error {
 			} else {
 				flushCtx = snoozetypes.WithTenant(context.Background(), tenant)
 			}
-			if err := w.d.BulkIncrement(flushCtx, collection, ops, w.upsert); err != nil {
+			if err := w.d.BulkIncrement(flushCtx, collection, ops, part.upsert); err != nil {
 				return err
 			}
 		}

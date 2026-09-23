@@ -102,6 +102,11 @@ The Go schema lives in `internal/config/schema/housekeeper.go`.
 >
 > Cleanup snooze filters that have been expired for the given duration (in seconds). Run daily
 
+> Alerts silenced by an expired, disabled or deleted snooze filter do not wait
+> for this job: the fixed minute-cadence `reconcile_suppression` sweep (not
+> configurable) returns them to the alerts list — see
+> [A filter that can no longer silence releases its alerts](../general/snooze.md#a-filter-that-can-no-longer-silence-releases-its-alerts).
+
 ### cleanup_notification
 
 > Type  

@@ -12,7 +12,7 @@ This page will list all the tools available to manage alerts.
 
 Alerts that have not been [snoozed](./snooze.md), [acknowledged](./alerts.md#acknowledge) or [closed](./alerts.md#close) will be displayed under the first tab of the **Alerts** page on the web interface.
 
-Alerts that have been snoozed will be displayed under the **Snoozed** tab on the same page.
+Alerts that have been snoozed will be displayed under the **Snoozed** tab on the same page, until they are closed (a recovered alert moves to the **Closed** tab).
 
 Alerts that have been [re-escalated](./alerts.md#re-escalate) or [re-opened](./alerts.md#re-open) will be displayed under the **Re-escalated** tab on the same page.
 

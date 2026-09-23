@@ -2,6 +2,7 @@ package housekeeper
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -261,7 +262,7 @@ func escalateOverdueOpens(tctx context.Context, d db.Driver, now int64, escalate
 }
 
 // writeLifecycleComment appends an auto lifecycle comment to the timeline and
-// bumps the record's comment_count, mirroring aggregaterule.writeAutoComment.
+// bumps the record's comment_count, mirroring aggregaterule.queueAutoComment.
 // The write goes straight to the driver (the comment plugin's AfterCreate is
 // bypassed) so the counter bump is done here explicitly. Best-effort: a failed
 // timeline write must never abort the sweep.
@@ -384,7 +385,7 @@ func revertExpiredShelves(tctx context.Context, d db.Driver, now int64) error {
 
 // writeUnshelveAutoComment appends an auto unshelve comment to the timeline and
 // bumps the record's comment_count. Adapted from writeLifecycleComment /
-// aggregaterule.writeAutoComment: the write goes straight to the driver (the
+// aggregaterule.queueAutoComment: the write goes straight to the driver (the
 // comment plugin's AfterCreate is bypassed) so the counter bump is explicit.
 // Best-effort: a failed timeline write must never abort the sweep.
 func writeUnshelveAutoComment(tctx context.Context, d db.Driver, recordUID string, now int64) {
@@ -420,6 +421,39 @@ func CleanupSnoozeJob(d db.Driver) IntervalJob {
 				_, err := d.CleanupSnooze(tctx)
 				return err
 			})
+		}),
+	}
+}
+
+// ReconcileSuppressionJob runs the suppression owner's reconcile (the snooze
+// plugin's plugins.SuppressionOwner.ReconcileSuppression) for every active
+// tenant on a fixed minute cadence.
+//
+// A record's `snoozed` attribution is re-decided on each occurrence, which
+// cannot reach a row that never fires again. Without this sweep such a row
+// stays hidden for good once its filter can no longer silence anything: a
+// time-boxed filter whose window ran out ("snooze for 2h" from the MCP or
+// Teams bridges), the one cleanup_snooze above deletes straight in the
+// database, or a name a cluster peer re-stamped after an API delete had
+// already reconciled. The minute cadence keeps a short snooze ending close to
+// on time; the reconcile itself is one filter read and one conditional unset
+// per tenant.
+//
+// One tenant failing does not stop the others; the errors are joined.
+func ReconcileSuppressionJob(d db.Driver, reconcile func(ctx context.Context) (int, error)) IntervalJob {
+	return IntervalJob{
+		Interval: time.Minute,
+		Job: NewJobFunc("reconcile_suppression", func(ctx context.Context) error {
+			var errs []error
+			if err := ForEachTenant(ctx, d, func(tctx context.Context, tid string) error {
+				if _, err := reconcile(tctx); err != nil {
+					errs = append(errs, fmt.Errorf("tenant %s: %w", tid, err))
+				}
+				return nil
+			}); err != nil {
+				errs = append(errs, err)
+			}
+			return errors.Join(errs...)
 		}),
 	}
 }

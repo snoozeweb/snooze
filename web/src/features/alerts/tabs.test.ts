@@ -46,8 +46,16 @@ describe("alert tabs catalog", () => {
     expect(args).toContainEqual({ type: "NOT", arg: { type: "LT", field: "ttl", value: 0 } });
   });
 
-  it("Snoozed tab matches records with a snoozed field set", () => {
-    expect(tabById("snoozed").condition).toEqual({ type: "EXISTS", field: "snoozed" });
+  it("Snoozed tab matches silenced records that are not closed", () => {
+    // A recovery keeps its `snoozed` attribution (the reason it was hidden),
+    // but a closed alert is resolved, not silenced — it belongs to Closed.
+    expect(tabById("snoozed").condition).toEqual({
+      type: "AND",
+      args: [
+        { type: "EXISTS", field: "snoozed" },
+        { type: "NOT", arg: { type: "EQUALS", field: "state", value: "close" } },
+      ],
+    });
   });
 
   it("Re-escalated tab is an OR of state=esc and state=open", () => {

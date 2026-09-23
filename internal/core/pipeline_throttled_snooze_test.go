@@ -241,3 +241,79 @@ func TestFlapThenThrottle_KeepsAlertSilenced(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "WAF processes", stored["snoozed"])
 }
+
+// TestDiscardBehindAHold_LeavesNoPhantomComment is the end-to-end guard for
+// plugins.Result.AfterPersist. A closed aggregate re-fires while its
+// anti-flapping budget is spent, so aggregaterule re-opens it under an
+// abort_update hold and narrates "Auto re-opened"; a discard filter behind it
+// then drops the occurrence. The stored row therefore stays closed — and its
+// timeline must not claim otherwise.
+func TestDiscardBehindAHold_LeavesNoPhantomComment(t *testing.T) {
+	t.Parallel()
+	c, drv, snz, ctx := newThrottleCore(t, 1)
+
+	_, _, err := c.ProcessRecord(ctx, wafAlert())
+	require.NoError(t, err)
+	closing := wafAlert()
+	closing.State = "close"
+	out, _, err := c.ProcessRecord(ctx, closing)
+	require.NoError(t, err)
+	uid := out.UID
+	require.NotEmpty(t, uid)
+
+	_, err = drv.Write(ctx, "snooze", []db.Document{{
+		"name": "Drop WAF", "condition": []any{"=", "process", "WAF alerts"},
+		"discard": true, "enabled": true,
+	}}, db.WriteOptions{})
+	require.NoError(t, err)
+	require.NoError(t, snz.Reload(ctx))
+
+	_, action, err := c.ProcessRecord(ctx, wafAlert())
+	require.NoError(t, err)
+	require.Equal(t, plugins.ActionAbort, action, "the discard filter drops the held re-open")
+
+	stored, err := drv.GetOne(ctx, recordCollection, db.Document{"uid": uid})
+	require.NoError(t, err)
+	require.Equal(t, "close", stored["state"])
+	comments, _, err := drv.Search(ctx, "comment", condition.Equals("record_uid", uid), db.Page{})
+	require.NoError(t, err)
+	require.Len(t, comments, 1, "only the close was stored, so only the close is narrated")
+	require.Equal(t, "close", comments[0]["type"])
+}
+
+// TestRecoveryOfASilencedAlert_KeepsAttributionAndReachesNotification pins the
+// close-branch decision end to end: the recovery keeps `snoozed` on the stored
+// row AND continues past the snooze stage, and the record's plugin trail says
+// so — which is what the web flow chart reads to avoid claiming "notifications
+// not reached" for a recovery that was in fact notified.
+func TestRecoveryOfASilencedAlert_KeepsAttributionAndReachesNotification(t *testing.T) {
+	t.Parallel()
+	c, drv, snz, ctx := newThrottleCore(t, 3)
+	notif := &fakeProcessor{name: "notification"}
+	c.processOrder = append(c.processOrder, notif)
+
+	_, err := drv.Write(ctx, "snooze", []db.Document{{
+		"name": "WAF processes", "condition": []any{"=", "process", "WAF alerts"}, "enabled": true,
+	}}, db.WriteOptions{})
+	require.NoError(t, err)
+	require.NoError(t, snz.Reload(ctx))
+
+	_, _, err = c.ProcessRecord(ctx, wafAlert())
+	require.NoError(t, err)
+	require.Zero(t, notif.calls, "a silenced firing never reaches notification")
+
+	closing := wafAlert()
+	closing.State = "close"
+	out, action, err := c.ProcessRecord(ctx, closing)
+	require.NoError(t, err)
+	require.Equal(t, plugins.ActionContinue, action)
+	require.Equal(t, 1, notif.calls, "the recovery passes through to notification")
+	require.Equal(t, "WAF processes", notif.recvRec.Extra["snoozed"],
+		"notification conditions can see the recovery belongs to a silenced alert")
+
+	stored, err := drv.GetOne(ctx, recordCollection, db.Document{"uid": out.UID})
+	require.NoError(t, err)
+	require.Equal(t, "close", stored["state"])
+	require.Equal(t, "WAF processes", stored["snoozed"])
+	require.Contains(t, stored["plugins"], "notification")
+}

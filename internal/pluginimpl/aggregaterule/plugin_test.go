@@ -147,6 +147,11 @@ func runProcess(t *testing.T, p *Plugin, host *testHost, in snoozetypes.Record) 
 		match["tenant_id"] = snoozetypes.DefaultTenant
 		_, err := host.driver.ReplaceOne(tctx(), recordCollection, match, doc, true)
 		require.NoError(t, err)
+		// The pipeline runs a plugin's AfterPersist effects once the write
+		// has landed; so does this stand-in.
+		for _, fx := range res.AfterPersist {
+			fx(tctx())
+		}
 	}
 	return res.Record, res.Action
 }
@@ -1523,4 +1528,42 @@ func TestAggregate_HeldBackTransitionDoesNotLeakATrailingRepeat(t *testing.T) {
 	require.Len(t, results, 1)
 	require.Equal(t, int64(1), toInt64(results[0]["comment_count"], 0),
 		"exactly one timeline entry: the re-open, not a trailing escalation")
+}
+
+// TestAutoComment_OnlyOnceTheRecordIsStored pins the lifecycle comments to the
+// write they describe. They used to be written from inside Process, so when a
+// snooze discard behind this plugin dropped the occurrence the timeline still
+// said "Auto re-opened" for a row that stayed closed, and comment_count (which
+// only moves with the write) fell out of step with the comments. They now ride
+// on plugins.Result.AfterPersist, which the pipeline runs only after the write.
+func TestAutoComment_OnlyOnceTheRecordIsStored(t *testing.T) {
+	t.Parallel()
+	host := newTestHost(t)
+	writeRule(t, host, db.Document{
+		"name":   "hm",
+		"fields": []any{"host", "message"},
+	})
+	p := freshPlugin(t, host)
+
+	first := snoozetypes.Record{Host: "h1", Message: "down", Severity: "critical"}
+	runProcess(t, p, host, first)
+	uid := aggregateUID(t, host, "hm")
+
+	closing := first
+	closing.State = "close"
+	runProcess(t, p, host, closing)
+	require.Len(t, commentsByRecord(t, host, uid), 1, "the close comment, once persisted")
+
+	// The re-open pass, WITHOUT the pipeline's write: nothing may be on the
+	// timeline yet, and the effect that will put it there must be returned.
+	res, err := p.Process(tctx(), first)
+	require.NoError(t, err)
+	require.Equal(t, "open", res.Record.State)
+	require.Len(t, commentsByRecord(t, host, uid), 1,
+		"Process must not narrate a transition before it is stored")
+	require.Len(t, res.AfterPersist, 1)
+
+	res.AfterPersist[0](tctx())
+	comments := commentsByRecord(t, host, uid)
+	require.Len(t, comments, 2)
 }

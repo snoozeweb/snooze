@@ -31,16 +31,22 @@
 // Being the owner only works if the plugin actually runs on every occurrence
 // that gets persisted, which is why it also implements plugins.Filter.
 //
+// Re-deciding on every occurrence cannot help a row that never fires again, so
+// the owner also reconciles stored attributions against the filters that can
+// still silence anything (ReconcileSuppression): after an API delete or edit
+// of a filter, and on a minute housekeeper sweep that catches the rest — a
+// time-boxed filter whose window ran out, the housekeeper's own cleanup_snooze
+// deleting it, or a cluster peer re-stamping a name its cache had not yet
+// dropped.
+//
 // Porting notes (vs src/snooze/plugins/core/snooze/plugin.py):
 //
 //   - Python's `Abort()` maps to plugins.ActionAbort (discard, no persist).
 //   - Python's `AbortAndWrite(record=...)` maps to plugins.ActionAbortWrite
 //     (persist with a fresh updated_at).
-//   - The hit counter is bumped via a synchronous Driver.UpdateOne fetched
-//     by name, rather than via the AsyncIncrement coroutine the Python
-//     plugin uses. Trade-off: one extra round-trip per match. The
-//     asyncwriter package is available; promoting this to a batched flush
-//     is a follow-up.
+//   - The hit counter is bumped through the server's asyncwriter (the Go
+//     counterpart of the Python plugin's AsyncIncrement coroutine), falling
+//     back to one atomic Driver.IncMany when no writer is wired.
 package snooze
 
 import (
@@ -72,8 +78,6 @@ const (
 	// rule that silenced the alert. Nothing outside this package may write or
 	// delete it — see plugins.SuppressionOwner.
 	attributionField = "snoozed"
-	// maxPendingDeletes caps the GuardDelete → AfterDelete handover map.
-	maxPendingDeletes = 1024
 )
 
 func init() {
@@ -83,8 +87,8 @@ func init() {
 var (
 	_ plugins.SuppressionOwner = (*Plugin)(nil)
 	_ plugins.Filter           = (*Plugin)(nil)
-	_ plugins.DeleteGuard      = (*Plugin)(nil)
 	_ plugins.DeleteHook       = (*Plugin)(nil)
+	_ plugins.UpdateHook       = (*Plugin)(nil)
 )
 
 func factory(meta plugins.Metadata) (plugins.Plugin, error) {
@@ -129,10 +133,6 @@ type Plugin struct {
 	mu    sync.RWMutex
 	rules map[string][]rule // tenantID → rules
 	host  plugins.Host
-	// pendingDelete remembers uid → rule name between GuardDelete and
-	// AfterDelete: by the time AfterDelete runs the document — and with it the
-	// name records were attributed under — is already gone.
-	pendingDelete map[string]string
 }
 
 // Name returns the registered plugin name.
@@ -211,10 +211,14 @@ func (p *Plugin) SuppressionField() string { return attributionField }
 // whole throttle window, and this plugin could not own `snoozed` at all
 // because it never ran.
 //
-// The decision is identical to an ordinary pass, so this delegates to Process;
-// the pipeline guarantees only one of the two runs per record.
+// The decision is identical to an ordinary pass; the pipeline guarantees only
+// one of the two runs per record. The one difference is bookkeeping: the
+// occurrence was already stopped — and counted, as alert_throttled — by the
+// plugin that held it, and the dashboard's Snoozed series counts where the
+// pipeline stopped, so the filter pass records no alert_snoozed stat. The
+// filter's Hits counter still counts it: Hits measures what a filter covers.
 func (p *Plugin) Filter(ctx context.Context, rec snoozetypes.Record) (plugins.Result, error) {
-	return p.Process(ctx, rec)
+	return p.decide(ctx, rec, false)
 }
 
 // Process walks the cached rules in load order. The first enabled rule that
@@ -229,6 +233,12 @@ func (p *Plugin) Filter(ctx context.Context, rec snoozetypes.Record) (plugins.Re
 // keep, set or clear, never "leave it to someone else". See the package doc
 // for the table and for the outage that made the ownership explicit.
 func (p *Plugin) Process(ctx context.Context, rec snoozetypes.Record) (plugins.Result, error) {
+	return p.decide(ctx, rec, true)
+}
+
+// decide is the shared body of Process and Filter; recordStat says whether a
+// match is recorded as an alert_snoozed stat (see Filter for why not always).
+func (p *Plugin) decide(ctx context.Context, rec snoozetypes.Record, recordStat bool) (plugins.Result, error) {
 	now := p.now()
 	asMap := recordToMap(rec)
 
@@ -255,6 +265,14 @@ func (p *Plugin) Process(ctx context.Context, rec snoozetypes.Record) (plugins.R
 	// clearing here would strip the reason a row was hidden with nothing left
 	// to restore it — the shape of the original bug. An alert silenced for its
 	// whole life should not resurface at the moment it recovers.
+	//
+	// Keeping it is also visible downstream: the recovery continues to the
+	// notification plugin carrying `snoozed`, so a notification condition can
+	// test it (`NOT snoozed EXISTS` skips the recovery of an alert that never
+	// paged), and the stored close row keeps the attribution — the web's
+	// Snoozed tab excludes closed rows, and its flow chart reads the record's
+	// plugin trail rather than `snoozed` alone to tell "silenced here" from
+	// "silenced earlier, recovery passed through".
 	if rec.State == "close" {
 		if dup, ok := toInt64(rec.Extra["duplicates"]); ok && dup >= 2 {
 			return plugins.Result{Action: plugins.ActionContinue, Record: rec}, nil
@@ -299,9 +317,11 @@ func (p *Plugin) Process(ctx context.Context, rec snoozetypes.Record) (plugins.R
 		rec.Extra[attributionField] = r.Name
 
 		// Persist alert_snoozed metric for dashboard aggregation.
-		plugins.RecordStat(ctx, host, rec.DateEpoch, "alert_snoozed", map[string]string{"name": r.Name}, 1)
+		if recordStat {
+			plugins.RecordStat(ctx, host, rec.DateEpoch, "alert_snoozed", map[string]string{"name": r.Name}, 1)
+		}
 
-		// Best-effort hit counter bump (synchronous UpdateOne).
+		// Best-effort hit counter bump.
 		if r.HitsEnabled && host != nil && host.DB() != nil && r.UID != "" {
 			if err := bumpHits(ctx, host, r); err != nil && host.Logger() != nil {
 				host.Logger().Warn("snooze: hit-counter update failed",
@@ -353,83 +373,76 @@ func (p *Plugin) clearAttribution(ctx context.Context, host plugins.Host, rec *s
 	}
 }
 
-// GuardDelete never blocks a delete — it exists only to capture the names of
-// the filters about to be removed, so AfterDelete can strip the attribution
-// they left on records. The names are unavailable afterwards (the documents
-// are gone) and reading them from the in-memory cache would race the syncer's
-// reload.
-func (p *Plugin) GuardDelete(ctx context.Context, uids []string) error {
+// ReconcileSuppression implements plugins.SuppressionOwner: for the tenant in
+// ctx it clears every stored attribution that names no filter able to silence
+// anything any more, and reports how many records it cleared.
+//
+// A filter can still silence when it exists, parses, is enabled, and its
+// absolute datetime window is not wholly in the past — the same test that
+// retires a filter in the pipeline for good. A recurring window that is merely
+// closed at this moment (a nightly maintenance slot, at noon) still counts: its
+// rows re-decide on their next occurrence, and clearing them here would pull
+// every quiet overnight alert into the list each morning.
+//
+// The live set is read from the database, not the in-memory cache, so the
+// answer never lags a syncer reload.
+func (p *Plugin) ReconcileSuppression(ctx context.Context) (int, error) {
 	p.mu.RLock()
 	host := p.host
 	p.mu.RUnlock()
 	if host == nil || host.DB() == nil {
-		return nil
+		return 0, nil
 	}
-	for _, uid := range uids {
-		if uid == "" {
-			continue
-		}
-		doc, err := host.DB().GetOne(ctx, collectionName, db.Document{"uid": uid})
-		if err != nil || doc == nil {
-			continue
-		}
-		name, _ := doc["name"].(string)
-		if name == "" {
-			continue
-		}
-		p.mu.Lock()
-		if p.pendingDelete == nil {
-			p.pendingDelete = make(map[string]string)
-		}
-		// Bound the map: a GuardDelete whose delete then fails leaves an entry
-		// behind, and this must never grow without limit.
-		if len(p.pendingDelete) > maxPendingDeletes {
-			p.pendingDelete = make(map[string]string)
-		}
-		p.pendingDelete[uid] = name
-		p.mu.Unlock()
+	docs, _, err := host.DB().Search(ctx, collectionName, condition.Cond{}, db.Page{})
+	if err != nil {
+		return 0, fmt.Errorf("snooze: reconcile: list filters: %w", err)
 	}
-	return nil
+	now := p.now()
+	var live []condition.Cond
+	for _, d := range docs {
+		r, err := docToRule(d)
+		if err != nil || !r.Enabled || r.Name == "" {
+			continue
+		}
+		if status, _ := classify(d["time_constraints"], now); status == "" || status == statusExpired {
+			continue
+		}
+		live = append(live, condition.Equals(attributionField, r.Name))
+	}
+	stale := condition.Exists(attributionField)
+	if len(live) > 0 {
+		stale = condition.And(stale, condition.Not(condition.Or(live...)))
+	}
+	n, err := host.DB().UnsetFields(ctx, recordCollection, []string{attributionField}, stale)
+	if err != nil {
+		return 0, fmt.Errorf("snooze: reconcile: clear stale attribution: %w", err)
+	}
+	if n > 0 {
+		if lg := host.Logger(); lg != nil {
+			lg.Info("snooze: cleared attribution of filters that no longer silence", "records", n)
+		}
+	}
+	return n, nil
 }
 
-// AfterDelete clears the attribution a deleted filter left behind.
-//
-// An alert that is still firing re-decides on its next occurrence anyway (that
-// is what the no-match clear above is for). This hook is what covers the rest:
-// a record that never fires again would otherwise stay hidden for good behind
-// a filter that no longer exists. Deleting one broad filter left 305 such rows
-// on the live server, one of them an open critical.
-func (p *Plugin) AfterDelete(ctx context.Context, uids []string) error {
-	p.mu.RLock()
-	host := p.host
-	p.mu.RUnlock()
-	if host == nil || host.DB() == nil {
-		return nil
-	}
-	names := make([]string, 0, len(uids))
-	p.mu.Lock()
-	for _, uid := range uids {
-		if name, ok := p.pendingDelete[uid]; ok {
-			names = append(names, name)
-			delete(p.pendingDelete, uid)
-		}
-	}
-	p.mu.Unlock()
+// AfterDelete reconciles as soon as a filter is deleted through the API, so
+// the rows it silenced return to the alerts list at once instead of on the
+// next housekeeper sweep. A record that is still firing would re-decide on its
+// next occurrence anyway; this is for the ones that never fire again, which
+// otherwise stayed hidden for good behind a filter that no longer exists —
+// deleting one broad filter left 305 such rows on the live server, one of them
+// an open critical.
+func (p *Plugin) AfterDelete(ctx context.Context, _ []string) error {
+	_, err := p.ReconcileSuppression(ctx)
+	return err
+}
 
-	var firstErr error
-	for _, name := range names {
-		if _, err := host.DB().UnsetFields(ctx, recordCollection,
-			[]string{attributionField}, condition.Equals(attributionField, name)); err != nil {
-			if firstErr == nil {
-				firstErr = fmt.Errorf("snooze: clear attribution of deleted filter %q: %w", name, err)
-			}
-			continue
-		}
-		if lg := host.Logger(); lg != nil {
-			lg.Info("snooze: cleared attribution of deleted filter", "name", name)
-		}
-	}
-	return firstErr
+// AfterUpdate reconciles after an API edit of a filter: a rename orphans the
+// rows attributed under the old name, and disabling a filter or ending its
+// window means it silences nothing any more.
+func (p *Plugin) AfterUpdate(ctx context.Context, _ string, _ map[string]any) error {
+	_, err := p.ReconcileSuppression(ctx)
+	return err
 }
 
 // bypassSeverities returns the current general.snooze_bypass_severities list
@@ -472,19 +485,25 @@ func (p *Plugin) now() time.Time {
 	return time.Now()
 }
 
-// bumpHits increments the `hits` field on the matching snooze rule. The
-// driver does not expose a typed counter increment for a single UID, so we
-// fetch the current value, +1, and write it back. Concurrent matches may
-// undercount: acceptable for an audit hint, and a follow-up can swap this
-// for an asyncwriter-backed batch.
+// bumpHits increments the `hits` field on the matching snooze rule.
+//
+// With the server's asyncwriter available the bump is coalesced there: hits
+// arrive in storms (throttled repeats reach this plugin too), and two
+// synchronous round-trips per match on the ingest path are exactly the cost a
+// storm cannot afford. The shared writer upserts — the stats counters rely on
+// it — so this goes through IncrementExisting: a filter deleted between the
+// match and the flush must not come back as a phantom document, which, having
+// no condition, would match every alert. Without a writer (tests, tools) it
+// falls back to one atomic IncMany.
 func bumpHits(ctx context.Context, host plugins.Host, r rule) error {
-	doc, err := host.DB().GetOne(ctx, collectionName, db.Document{"uid": r.UID})
-	if err != nil {
-		return err
+	if wh, ok := host.(plugins.AsyncWriterHost); ok {
+		if w := wh.AsyncWriter(); w != nil {
+			w.IncrementExisting(ctx, collectionName, "hits", db.Document{"uid": r.UID}, 1)
+			return nil
+		}
 	}
-	current, _ := toInt64(doc["hits"])
-	return host.DB().UpdateOne(ctx, collectionName, r.UID,
-		db.Document{"hits": current + 1}, false)
+	_, err := host.DB().IncMany(ctx, collectionName, "hits", condition.Equals("uid", r.UID), 1)
+	return err
 }
 
 // docToRule maps a raw snooze document into a parsed rule. Unknown or

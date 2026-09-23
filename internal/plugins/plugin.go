@@ -59,19 +59,28 @@ type Processor interface {
 //
 // The rules that fall out of that:
 //
-//   - Only the owning plugin sets, keeps or clears the field. Everything else
-//     that needs it — the retro-apply endpoint, a query, the UI — asks for the
-//     name here rather than hard-coding it, and mutates the field only through
-//     the owner.
+//   - No other pipeline plugin sets, keeps or clears the field. Server code
+//     outside the owner that has to name it — the retro-apply endpoint, which
+//     stamps a filter's name on the rows it matches — reads the name from
+//     SuppressionField rather than hard-coding it. (The web client and the
+//     demo seed use the literal: it is part of the record's public shape.)
 //   - A plugin that has state to carry across occurrences (aggregaterule)
 //     hands the stored value FORWARD onto the in-flight record and lets the
 //     owner decide, rather than predicting what the owner will do.
 //   - The owner must be consulted on every occurrence that gets persisted, or
 //     it cannot own anything: see Filter.
+//   - Re-deciding per occurrence cannot reach a row that never fires again,
+//     so the owner also reconciles stored attributions on its own: see
+//     ReconcileSuppression.
 type SuppressionOwner interface {
 	Plugin
 	// SuppressionField returns the record field this plugin owns.
 	SuppressionField() string
+	// ReconcileSuppression clears, for the tenant in ctx, every stored
+	// attribution that names a rule unable to silence anything any more
+	// (deleted, disabled, or past its window), and returns how many records
+	// it cleared. The housekeeper runs it on a fixed cadence per tenant.
+	ReconcileSuppression(ctx context.Context) (int, error)
 }
 
 // Filter is an optional refinement a Processor may implement to declare that

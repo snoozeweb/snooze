@@ -686,3 +686,41 @@ func TestBackfillNotificationsRolePerms_NilDriver(t *testing.T) {
 	t.Parallel()
 	require.Error(t, BackfillNotificationsRolePerms(context.Background(), nil))
 }
+
+// fakeSuppressionOwner is a plugins.SuppressionOwner that counts reconciles.
+type fakeSuppressionOwner struct {
+	fakeProcessor
+	reconciles int
+}
+
+func (f *fakeSuppressionOwner) SuppressionField() string { return "snoozed" }
+func (f *fakeSuppressionOwner) ReconcileSuppression(context.Context) (int, error) {
+	f.reconciles++
+	return 0, nil
+}
+
+// TestHousekeeperJobs_ReconcilesSuppressionEveryMinute: the owner of the
+// suppression attribution gets a fixed one-minute sweep, so a row silenced by
+// a time-boxed filter returns to the alerts list soon after the window ends
+// even if it never fires again. No owner registered, no job.
+func TestHousekeeperJobs_ReconcilesSuppressionEveryMinute(t *testing.T) {
+	t.Parallel()
+	owner := &fakeSuppressionOwner{fakeProcessor: fakeProcessor{name: "snooze"}}
+	c := &Core{Cfg: config.Default(), Driver: newFakeDB(),
+		plugins: map[string]plugins.Plugin{"snooze": owner}}
+
+	var reg *registration
+	for _, j := range c.housekeeperJobs(nil) {
+		if j.name == "reconcile_suppression" {
+			reg = &j
+		}
+	}
+	require.NotNil(t, reg, "reconcile_suppression must be registered")
+	require.NotNil(t, reg.sched.LiveInterval)
+	require.Equal(t, time.Minute, reg.sched.LiveInterval(context.Background()))
+
+	bare := &Core{Cfg: config.Default(), Driver: newFakeDB()}
+	for _, j := range bare.housekeeperJobs(nil) {
+		require.NotEqual(t, "reconcile_suppression", j.name)
+	}
+}

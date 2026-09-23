@@ -330,3 +330,30 @@ func TestWriter_NoFlushWhenEmpty(t *testing.T) {
 	time.Sleep(20 * time.Millisecond)
 	require.Empty(t, d.Snapshot())
 }
+
+// TestWriter_IncrementExistingNeverUpserts pins the per-request opt-out of an
+// upserting writer. The server runs ONE writer with upsert on (the stats
+// counters rely on it), but a counter on a row that must already exist — a
+// snooze filter's `hits` — must never create one: a filter deleted between the
+// match and the flush would come back as a phantom document with no condition,
+// which matches every alert. Existing-only and upserting increments against
+// the same search are also kept apart, so neither flag leaks onto the other.
+func TestWriter_IncrementExistingNeverUpserts(t *testing.T) {
+	d := newStubDriver()
+	w := New(d, time.Hour, NewMockClock(time.Unix(0, 0)), WithUpsert(true))
+	ctx := snoozetypes.WithTenant(context.Background(), "alpha")
+
+	w.IncrementExisting(ctx, "snooze", "hits", db.Document{"uid": "f1"}, 1)
+	w.IncrementExisting(ctx, "snooze", "hits", db.Document{"uid": "f1"}, 2)
+	w.Increment(ctx, "snooze", "hits", db.Document{"uid": "f1"}, 10)
+	require.NoError(t, w.Flush(context.Background()))
+
+	byUpsert := map[bool]int64{}
+	for _, call := range d.Snapshot() {
+		require.Equal(t, "alpha", call.tenant)
+		for _, op := range call.ops {
+			byUpsert[call.upsert] += op.Deltas["hits"]
+		}
+	}
+	require.Equal(t, map[bool]int64{false: 3, true: 10}, byUpsert)
+}

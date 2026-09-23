@@ -603,3 +603,100 @@ func TestProcessRecord_FilterError_AttachesExceptionField(t *testing.T) {
 	require.Equal(t, "snooze", exc["plugin"])
 	require.Equal(t, 1, drv.writeCount(recordCollection))
 }
+
+// persistProbe returns an AfterPersist effect that counts its runs, plus the
+// counter it bumps.
+func persistProbe() (func(context.Context), *int) {
+	n := new(int)
+	return func(context.Context) { *n++ }, n
+}
+
+// TestProcessRecord_AfterPersist_RunsOnlyWhenTheRecordLands pins the contract
+// of plugins.Result.AfterPersist: a side effect that describes the write (an
+// aggregaterule lifecycle comment, say) happens if and only if the record is
+// actually persisted. aggregaterule used to write its "Auto re-opened" comment
+// straight away, so a snooze discard behind it left a timeline entry for a
+// transition that was never stored.
+func TestProcessRecord_AfterPersist_RunsOnlyWhenTheRecordLands(t *testing.T) {
+	t.Parallel()
+
+	t.Run("final write", func(t *testing.T) {
+		t.Parallel()
+		fx, ran := persistProbe()
+		agg := &fakeProcessor{name: "aggregaterule", result: plugins.Result{
+			Action: plugins.ActionContinue, AfterPersist: []func(context.Context){fx},
+		}}
+		c, drv := newPipelineCore(t, agg, &fakeProcessor{name: "notification"})
+		_, _, err := c.ProcessRecord(pctx(), snoozetypes.Record{UID: "uid-fx-final"})
+		require.NoError(t, err)
+		require.Equal(t, 1, drv.writeCount(recordCollection))
+		require.Equal(t, 1, *ran)
+	})
+
+	t.Run("abort-and-persist write", func(t *testing.T) {
+		t.Parallel()
+		fx, ran := persistProbe()
+		agg := &fakeProcessor{name: "aggregaterule", result: plugins.Result{
+			Action: plugins.ActionAbortUpdate, AfterPersist: []func(context.Context){fx},
+		}}
+		snz := &fakeFilter{
+			fakeProcessor: fakeProcessor{name: "snooze"},
+			filterResult:  plugins.Result{Action: plugins.ActionContinue},
+		}
+		c, drv := newPipelineCore(t, agg, snz)
+		_, _, err := c.ProcessRecord(pctx(), snoozetypes.Record{UID: "uid-fx-hold"})
+		require.NoError(t, err)
+		require.Equal(t, 1, drv.writeCount(recordCollection))
+		require.Equal(t, 1, *ran)
+	})
+
+	t.Run("a later processor discards", func(t *testing.T) {
+		t.Parallel()
+		fx, ran := persistProbe()
+		agg := &fakeProcessor{name: "aggregaterule", result: plugins.Result{
+			Action: plugins.ActionContinue, AfterPersist: []func(context.Context){fx},
+		}}
+		snz := &fakeProcessor{name: "snooze", result: plugins.Result{Action: plugins.ActionAbort}}
+		c, drv := newPipelineCore(t, agg, snz)
+		_, _, err := c.ProcessRecord(pctx(), snoozetypes.Record{UID: "uid-fx-discard"})
+		require.NoError(t, err)
+		require.Equal(t, 0, drv.writeCount(recordCollection))
+		require.Equal(t, 0, *ran, "nothing was stored, so nothing may describe a store")
+	})
+
+	t.Run("a filter discards the held record", func(t *testing.T) {
+		t.Parallel()
+		fx, ran := persistProbe()
+		agg := &fakeProcessor{name: "aggregaterule", result: plugins.Result{
+			Action: plugins.ActionAbortUpdate, AfterPersist: []func(context.Context){fx},
+		}}
+		snz := &fakeFilter{
+			fakeProcessor: fakeProcessor{name: "snooze"},
+			filterResult:  plugins.Result{Action: plugins.ActionAbort},
+		}
+		c, drv := newPipelineCore(t, agg, snz)
+		_, _, err := c.ProcessRecord(pctx(), snoozetypes.Record{UID: "uid-fx-filter-discard"})
+		require.NoError(t, err)
+		require.Equal(t, 0, drv.writeCount(recordCollection))
+		require.Equal(t, 0, *ran)
+	})
+
+	t.Run("effects of every plugin run, in pipeline order", func(t *testing.T) {
+		t.Parallel()
+		var order []string
+		mark := func(s string) func(context.Context) { return func(context.Context) { order = append(order, s) } }
+		agg := &fakeProcessor{name: "aggregaterule", result: plugins.Result{
+			Action: plugins.ActionAbortUpdate, AfterPersist: []func(context.Context){mark("agg")},
+		}}
+		snz := &fakeFilter{
+			fakeProcessor: fakeProcessor{name: "snooze"},
+			filterResult: plugins.Result{
+				Action: plugins.ActionAbortWrite, AfterPersist: []func(context.Context){mark("snooze")},
+			},
+		}
+		c, _ := newPipelineCore(t, agg, snz)
+		_, _, err := c.ProcessRecord(pctx(), snoozetypes.Record{UID: "uid-fx-order"})
+		require.NoError(t, err)
+		require.Equal(t, []string{"agg", "snooze"}, order)
+	})
+}

@@ -1,6 +1,10 @@
 package plugins
 
-import "github.com/snoozeweb/snooze/pkg/snoozetypes"
+import (
+	"context"
+
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
+)
 
 // Action discriminates the four terminal verdicts a Processor.Process call
 // can produce. The pipeline interprets each as follows:
@@ -43,6 +47,15 @@ type Result struct {
 	// Record carries the record forward; for ActionContinue this is the
 	// record the next plugin sees.
 	Record snoozetypes.Record
+	// AfterPersist are side effects that describe this pass's change to the
+	// stored record — aggregaterule's lifecycle comments ("Auto re-opened",
+	// "Auto closed") are the canonical case. The pipeline runs them, in plugin
+	// order, only once the record has actually been written; if a later plugin
+	// discards the record (ActionAbort, including a Filter on the
+	// abort-and-persist path) they are dropped, so the timeline never narrates a
+	// transition that was not stored. Each runs under the pipeline's
+	// tenant-scoped context and must be best-effort: it cannot fail the record.
+	AfterPersist []func(context.Context)
 }
 
 // NotificationPayload is the rendered content a Notifier consumes.

@@ -56,7 +56,7 @@ record carrying it as silenced. The Snooze plugin owns that field outright: it
 is re-decided every time an occurrence of the alert reaches the server, and
 nothing else in the server writes or removes it.
 
-Re-deciding means one of three outcomes per occurrence:
+Each occurrence ends in one of these outcomes:
 
 | The occurrence… | `snoozed` becomes |
 |---|---|
@@ -69,6 +69,16 @@ The recovery row is the deliberate exception. A filter must never suppress a
 close — that would wedge the alert open forever — so the plugin passes it
 straight through without re-deciding, and an alert silenced for its whole life
 does not resurface at the moment it recovers.
+
+Two consequences of keeping it:
+
+- The recovery continues to your [notifications](./notifications.md) carrying
+  `snoozed`, like any close. To avoid paging the recovery of an alert whose
+  firing never paged, add `NOT snoozed EXISTS` to the notification's condition.
+- The closed row keeps its attribution, but the **Snoozed** tab lists only
+  alerts that are not closed; a recovered one appears under **Closed**. Its
+  flow chart shows the filter that silenced it and the notifications the
+  recovery reached.
 
 This holds for occurrences an [aggregate rule](./aggregaterules.md) holds back
 inside its throttle window or its anti-flapping budget, too. Those are
@@ -83,17 +93,33 @@ window, staying open and un-silenced in the alerts list.
 
 One consequence to expect: a filter's **Hits** counter now counts every
 occurrence it suppresses, including throttled repeats, so it climbs faster than
-the number of notifications it prevented.
+the number of notifications it prevented. Hits are batched and written a few
+seconds after the match. The dashboard's **Snoozed** series is different: it
+counts the occurrences the pipeline stopped *at* the snooze stage, so a
+throttled repeat counts once, as throttled, not a second time as snoozed.
 
-## Deleting a filter releases the alerts it silenced
+## A filter that can no longer silence releases its alerts
 
-Deleting a filter clears `snoozed` from every record it had stamped, so nothing
-stays hidden behind a filter that no longer exists. Alerts that are still
-firing would re-decide on their next occurrence anyway; this covers the ones
-that never fire again.
+An alert that is still firing re-decides on its next occurrence. One that
+never fires again has no next occurrence, so the Snooze plugin also clears
+`snoozed` from stored alerts whose filter can no longer silence anything:
 
-Renaming a filter is not the same thing: records stamped with the old name keep
-it until their next occurrence re-attributes them.
+- the filter was **deleted** — through the API or web interface, or by the
+  [`cleanup_snooze`](../configuration/housekeeping.md#cleanup_snooze)
+  housekeeping job;
+- the filter was **disabled**, or **renamed** (alerts stamped with the old
+  name are released);
+- the filter's absolute time window is **over** — a "snooze for 2 hours" ends
+  when the two hours do, even for an alert that fired once and went quiet.
+
+A filter whose *recurring* window is only closed right now (a nightly
+maintenance slot, at noon) can still silence, so its alerts are left alone
+until their next occurrence re-decides.
+
+An API delete or edit releases alerts immediately. Everything else is caught
+by the minute-cadence `reconcile_suppression` housekeeping sweep, which also
+covers a cluster peer that re-stamped a filter's name just after it was
+deleted.
 
 ## Web interface
 

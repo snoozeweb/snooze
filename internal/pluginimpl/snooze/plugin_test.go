@@ -3,6 +3,7 @@ package snooze
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -491,8 +492,15 @@ func TestSnoozeAlertSnoozedCounter(t *testing.T) {
 	// Flush queued increments to the capture driver.
 	require.NoError(t, h.asyncWriter.Flush(context.Background()))
 
-	require.Len(t, *calls, 1, "expected exactly one alert_snoozed increment")
-	c := (*calls)[0]
+	// The hit counter shares the async writer; keep only the stat.
+	var stats []capturedInc
+	for _, c := range *calls {
+		if c.metric == "alert_snoozed" {
+			stats = append(stats, c)
+		}
+	}
+	require.Len(t, stats, 1, "expected exactly one alert_snoozed increment")
+	c := stats[0]
 	require.Equal(t, "alert_snoozed", c.metric)
 	require.Equal(t, "name", c.dim)
 	require.Equal(t, "Maintenance", c.key)
@@ -930,63 +938,219 @@ func TestSnoozeFilter_MatchesProcess(t *testing.T) {
 	require.Equal(t, plugins.ActionAbort, res.Action)
 }
 
-// TestSnoozeAfterDelete_ClearsStaleAttribution covers the rows a live alert
-// would never fix for itself: `snoozed` is an attribution BY NAME and the
-// alerts list reads it as silenced, so a record that never fires again stayed
-// hidden for good behind a deleted filter. Deleting one broad filter left 305
-// such rows on the live server, one of them an open critical.
+// seedAttributed writes one record per attribution value (nil = no
+// attribution) and returns their uids in the same order.
+func seedAttributed(t *testing.T, h *stubHost, names ...any) []string {
+	t.Helper()
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+	docs := make([]db.Document, 0, len(names))
+	for i, n := range names {
+		doc := db.Document{"name": fmt.Sprintf("rec-%d", i)}
+		if n != nil {
+			doc["snoozed"] = n
+		}
+		docs = append(docs, doc)
+	}
+	res, err := h.driver.Write(ctx, recordCollection, docs, db.WriteOptions{UpdateTime: true})
+	require.NoError(t, err)
+	require.Len(t, res.Added, len(names))
+	return res.Added
+}
+
+// attributionOf returns a stored record's `snoozed` value ("" when absent).
+func attributionOf(t *testing.T, h *stubHost, uid string) string {
+	t.Helper()
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+	doc, err := h.driver.GetOne(ctx, recordCollection, db.Document{"uid": uid})
+	require.NoError(t, err)
+	v, _ := doc["snoozed"].(string)
+	return v
+}
+
+// TestSnoozeReconcile covers the rows a live alert never fixes for itself.
+// `snoozed` is an attribution BY NAME and the alerts list reads it as
+// silenced, so a record that never fires again stayed hidden for good once
+// the filter that silenced it could no longer silence anything. Deleting one
+// broad filter left 305 such rows on the live server, one of them an open
+// critical — and the housekeeper's cleanup_snooze deletes every expired
+// time-boxed filter (every "snooze for 2h") without going near the API.
+//
+// A filter can still silence if it exists, is enabled, parses, and its
+// absolute datetime window is not wholly in the past. A recurring window that
+// is merely closed right now (a nightly maintenance slot, at noon) still can,
+// so its rows are left alone: they re-decide on their next occurrence.
+func TestSnoozeReconcile(t *testing.T) {
+	t.Parallel()
+	h := newStubHost(t)
+	now := time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC)
+	window := func(from, until time.Time) map[string]any {
+		return map[string]any{"datetime": []any{map[string]any{
+			"from": from.Format(time.RFC3339), "until": until.Format(time.RFC3339),
+		}}}
+	}
+	writeRule(t, h, db.Document{"name": "live", "condition": []any{"=", "a", "1"}})
+	writeRule(t, h, db.Document{"name": "off", "condition": []any{"=", "a", "1"}, "enabled": false})
+	writeRule(t, h, db.Document{"name": "expired", "condition": []any{"=", "a", "1"},
+		"time_constraints": window(now.Add(-4*time.Hour), now.Add(-2*time.Hour))})
+	writeRule(t, h, db.Document{"name": "upcoming", "condition": []any{"=", "a", "1"},
+		"time_constraints": window(now.Add(2*time.Hour), now.Add(4*time.Hour))})
+	writeRule(t, h, db.Document{"name": "nightly", "condition": []any{"=", "a", "1"},
+		"time_constraints": map[string]any{"time": []any{map[string]any{"from": "22:00", "until": "06:00"}}}})
+	p := newPlugin(t, h, func() time.Time { return now })
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+
+	uids := seedAttributed(t, h, "live", "off", "expired", "upcoming", "nightly", "deleted-long-ago", nil)
+
+	cleared, err := p.ReconcileSuppression(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 3, cleared)
+
+	got := make([]string, len(uids))
+	for i, uid := range uids {
+		got[i] = attributionOf(t, h, uid)
+	}
+	require.Equal(t, []string{"live", "", "", "upcoming", "nightly", "", ""}, got)
+
+	// Idempotent: a second sweep finds nothing left to clear.
+	cleared, err = p.ReconcileSuppression(ctx)
+	require.NoError(t, err)
+	require.Zero(t, cleared)
+}
+
+// TestSnoozeReconcile_NoFiltersClearsEverything: with no filter left at all,
+// no attribution can be current.
+func TestSnoozeReconcile_NoFiltersClearsEverything(t *testing.T) {
+	t.Parallel()
+	h := newStubHost(t)
+	p := newPlugin(t, h, nil)
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+	uids := seedAttributed(t, h, "a", "b")
+
+	cleared, err := p.ReconcileSuppression(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 2, cleared)
+	require.Empty(t, attributionOf(t, h, uids[0]))
+	require.Empty(t, attributionOf(t, h, uids[1]))
+}
+
+// TestSnoozeAfterDelete_ClearsStaleAttribution: an API delete reconciles
+// immediately rather than waiting for the housekeeper sweep. It reads the
+// surviving filters from the database, not the in-memory cache, so it cannot
+// race the syncer's reload.
 func TestSnoozeAfterDelete_ClearsStaleAttribution(t *testing.T) {
 	t.Parallel()
 	h := newStubHost(t)
-	uid := writeRule(t, h, db.Document{
-		"name":      "all",
-		"condition": []any{"=", "severity", "warning"},
-	})
+	uid := writeRule(t, h, db.Document{"name": "all", "condition": []any{"=", "severity", "warning"}})
+	writeRule(t, h, db.Document{"name": "Warnings", "condition": []any{"=", "severity", "warning"}})
 	p := newPlugin(t, h, nil)
 	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+	recs := seedAttributed(t, h, "all", "Warnings")
 
-	written, err := h.driver.Write(ctx, recordCollection, []db.Document{
-		{"name": "rec-stamped", "snoozed": "all", "severity": "warning"},
-		{"name": "rec-other", "snoozed": "Warnings", "severity": "warning"},
-	}, db.WriteOptions{UpdateTime: true})
-	require.NoError(t, err)
-	require.Len(t, written.Added, 2)
-	stampedUID, otherUID := written.Added[0], written.Added[1]
-
-	// The CRUD delete handler's order: GuardDelete, the DB delete, AfterDelete.
-	require.NoError(t, p.GuardDelete(ctx, []string{uid}))
-	_, err = h.driver.Delete(ctx, collectionName, condition.Equals("uid", uid), false)
+	// The CRUD delete handler's order: the DB delete, then AfterDelete.
+	_, err := h.driver.Delete(ctx, collectionName, condition.Equals("uid", uid), false)
 	require.NoError(t, err)
 	require.NoError(t, p.AfterDelete(ctx, []string{uid}))
 
-	stamped, err := h.driver.GetOne(ctx, recordCollection, db.Document{"uid": stampedUID})
-	require.NoError(t, err)
-	require.NotContains(t, stamped, "snoozed",
+	require.Empty(t, attributionOf(t, h, recs[0]),
 		"a record attributed to the deleted filter must not stay silenced")
-
-	other, err := h.driver.GetOne(ctx, recordCollection, db.Document{"uid": otherUID})
-	require.NoError(t, err)
-	require.Equal(t, "Warnings", other["snoozed"],
+	require.Equal(t, "Warnings", attributionOf(t, h, recs[1]),
 		"records attributed to a surviving filter must be left alone")
 }
 
-// TestSnoozeAfterDelete_WithoutGuardIsANoop: AfterDelete has no name to work
-// from if GuardDelete never ran, and must not touch records on a guess.
-func TestSnoozeAfterDelete_WithoutGuardIsANoop(t *testing.T) {
+// TestSnoozeAfterUpdate_ReconcilesRenameAndDisable: renaming a filter orphans
+// the rows attributed under the old name, and disabling one means it silences
+// nothing — both must return those rows to the alerts list.
+func TestSnoozeAfterUpdate_ReconcilesRenameAndDisable(t *testing.T) {
 	t.Parallel()
 	h := newStubHost(t)
+	renamed := writeRule(t, h, db.Document{"name": "old name", "condition": []any{"=", "a", "1"}})
+	disabled := writeRule(t, h, db.Document{"name": "maint", "condition": []any{"=", "a", "1"}})
+	p := newPlugin(t, h, nil)
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+	recs := seedAttributed(t, h, "old name", "maint")
+
+	require.NoError(t, h.driver.UpdateOne(ctx, collectionName, renamed, db.Document{"name": "new name"}, true))
+	require.NoError(t, p.AfterUpdate(ctx, renamed, db.Document{"name": "new name"}))
+	require.Empty(t, attributionOf(t, h, recs[0]))
+	require.Equal(t, "maint", attributionOf(t, h, recs[1]))
+
+	require.NoError(t, h.driver.UpdateOne(ctx, collectionName, disabled, db.Document{"enabled": false}, true))
+	require.NoError(t, p.AfterUpdate(ctx, disabled, db.Document{"enabled": false}))
+	require.Empty(t, attributionOf(t, h, recs[1]))
+}
+
+// TestSnoozeHitsCounter_BatchedAndNeverUpserted: with the server's async
+// writer available the hit counter is coalesced there instead of costing two
+// synchronous round-trips per match — throttled repeats reach this plugin too
+// now, and those are exactly the storm traffic. The shared writer upserts (the
+// stats counters need it), so the bump must opt out: a filter deleted between
+// the match and the flush must not come back as a condition-less phantom that
+// matches every alert.
+func TestSnoozeHitsCounter_BatchedAndNeverUpserted(t *testing.T) {
+	t.Parallel()
+	h := newStubHost(t)
+	h.asyncWriter = asyncwriter.New(h.driver, time.Hour,
+		asyncwriter.NewMockClock(time.Unix(0, 0)), asyncwriter.WithUpsert(true))
+	uid := writeRule(t, h, db.Document{"name": "Filter 1", "condition": []any{"=", "a", "1"}})
 	p := newPlugin(t, h, nil)
 	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
 
-	written, err := h.driver.Write(ctx, recordCollection, []db.Document{
-		{"name": "rec-keep", "snoozed": "all"},
-	}, db.WriteOptions{UpdateTime: true})
+	rec := snoozetypes.Record{Extra: map[string]any{"a": "1"}}
+	for i := 0; i < 3; i++ {
+		_, err := p.Process(ctx, rec)
+		require.NoError(t, err)
+	}
+	got, err := h.driver.GetOne(ctx, collectionName, db.Document{"uid": uid})
 	require.NoError(t, err)
-	require.Len(t, written.Added, 1)
+	_, bumped := got["hits"]
+	require.False(t, bumped, "the bump is queued, not written inline")
 
-	require.NoError(t, p.AfterDelete(ctx, []string{"never-guarded"}))
-
-	kept, err := h.driver.GetOne(ctx, recordCollection, db.Document{"uid": written.Added[0]})
+	require.NoError(t, h.asyncWriter.Flush(context.Background()))
+	got, err = h.driver.GetOne(ctx, collectionName, db.Document{"uid": uid})
 	require.NoError(t, err)
-	require.Equal(t, "all", kept["snoozed"])
+	hits, _ := toInt64(got["hits"])
+	require.EqualValues(t, 3, hits)
+
+	// Match, then lose the filter before the flush.
+	_, err = p.Process(ctx, rec)
+	require.NoError(t, err)
+	_, err = h.driver.Delete(ctx, collectionName, condition.Equals("uid", uid), false)
+	require.NoError(t, err)
+	require.NoError(t, h.asyncWriter.Flush(context.Background()))
+	docs, _, err := h.driver.Search(ctx, collectionName, condition.Cond{}, db.Page{})
+	require.NoError(t, err)
+	require.Empty(t, docs, "a hit on a deleted filter must not resurrect it")
+}
+
+// TestSnoozeFilter_CountsHitsButNotTheStat: on the abort-and-persist path the
+// occurrence was already stopped — and counted, as alert_throttled — by the
+// plugin that held it. The dashboard's Snoozed series counts where the
+// pipeline stopped, so the filter pass must not add a second alert_snoozed for
+// the same occurrence. The filter's own Hits counter does count it: Hits
+// answers "how much is this filter covering", not "where did alerts stop".
+func TestSnoozeFilter_CountsHitsButNotTheStat(t *testing.T) {
+	t.Parallel()
+	h := newStubHost(t)
+	capDrv, calls := newCaptureDrv()
+	h.asyncWriter = asyncwriter.New(capDrv, time.Hour,
+		asyncwriter.NewMockClock(time.Unix(0, 0)), asyncwriter.WithUpsert(true))
+	writeRule(t, h, db.Document{"name": "Maintenance", "condition": []any{"=", "host", "h1"}})
+	p := newPlugin(t, h, nil)
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+
+	res, err := p.Filter(ctx, snoozetypes.Record{Host: "h1", DateEpoch: 1780302245})
+	require.NoError(t, err)
+	require.Equal(t, plugins.ActionAbortWrite, res.Action)
+	require.NoError(t, h.asyncWriter.Flush(context.Background()))
+
+	var stats, hits int
+	for _, c := range *calls {
+		if c.metric == "alert_snoozed" {
+			stats++
+		} else {
+			hits++
+		}
+	}
+	require.Zero(t, stats, "the filter pass must not double-count a held occurrence")
+	require.Equal(t, 1, hits)
 }

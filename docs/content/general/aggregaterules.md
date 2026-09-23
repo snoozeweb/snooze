@@ -138,6 +138,11 @@ decision. A held occurrence is still evaluated against the
 an alert is mid-window takes effect on the very next occurrence rather than at
 the end of the window.
 
+The automatic timeline comments an aggregate writes ("Auto closed", "Auto
+re-opened", "New escalation", …) are written only once the occurrence is
+actually stored. If a `discard` snooze filter drops the occurrence, the alert
+is left as it was and its timeline says nothing about it.
+
 ## Flapping
 
 Even during the throttle period, closed alerts getting new hits are being re-opened and therefore notified. However, an anti-flapping feature is present to cap the number of the times this behavior can happen. by default it is set to 3, meaning only 3 subsequent hits can be notified until the throttle period ends.
