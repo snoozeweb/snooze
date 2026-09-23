@@ -19,7 +19,7 @@ export type RowDetailsDrawerProps<T> = {
   actions?: ReactNode;
 };
 
-/** Modal detail drawer shared by every table-like surface (DataTable,
+/** Detail side panel shared by every table-like surface (DataTable,
  *  RulesTreeTable): a wide Drawer showing one row's details with prev/next
  *  navigation and an "N / M" position counter. Extracted from DataTable so
  *  bespoke row surfaces (the Rules tree, which isn't a <table>) can offer the
@@ -95,6 +95,12 @@ export function RowDetailsDrawer<T>({
 
   return (
     <Drawer
+      // Non-modal: this is a side panel, not a dialog. It opens beside the
+      // table it belongs to and the operator keeps working there — paging,
+      // sorting, opening the next row. Modal Radix put a fixed scrim at
+      // --z-modal over the whole app, so every one of those controls was inert
+      // while the panel was open: "next page" simply did nothing.
+      modal={false}
       open
       onOpenChange={(o) => {
         if (!o) onClose();
@@ -102,6 +108,13 @@ export function RowDetailsDrawer<T>({
     >
       <DrawerContent
         wide
+        nonModal
+        // …and it does NOT close when the operator touches the table. Paging
+        // to another page with the panel open is a normal thing to do; having
+        // the panel vanish on that click is the same bug wearing a different
+        // coat. Escape and the ✕ close it; a row click retargets it.
+        onPointerDownOutside={(e) => e.preventDefault()}
+        onInteractOutside={(e) => e.preventDefault()}
         // Radix would focus the first tabbable element on open — a
         // quick-action IconButton here, which pops its Tooltip over the
         // drawer. Land the initial focus on the key-nav wrapper instead:

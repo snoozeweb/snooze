@@ -21,7 +21,7 @@
   top: 0;
   right: 0;
   bottom: 0;
-  width: 560px;
+  width: var(--panel-width-edit);
   max-width: calc(100vw - 64px);
   background: var(--bg-surface);
   color: var(--text);
@@ -38,8 +38,18 @@
    source order (equal specificity), so it still fullscreens this variant —
    no !important needed. */
 .wide {
-  width: clamp(720px, 60vw, 1200px);
+  width: var(--panel-width);
   max-width: calc(100vw - 64px);
+}
+
+/* The non-modal side panel (DrawerContent nonModal): no scrim stands between
+   it and the table it was opened from, so its own edge has to do the work the
+   dimming used to. A heavier shadow and a full-strength border are what
+   separate it from the live, still-clickable surface behind it. */
+.panel {
+  box-shadow:
+    -1px 0 0 0 var(--border),
+    var(--shadow-pop);
 }
 
 .content[data-state="open"] {

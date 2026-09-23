@@ -59,14 +59,10 @@ function decodeQ(request: Request): string {
 }
 
 /**
- * Both queries the view makes, off one handler, told apart by the condition
- * they carry rather than by their limit — the count and the page are the same
- * predicate at two page sizes.
- *
- * `activeTotal` answers an ACTIVE_ALERTS-shaped probe (the one with the `ack`
- * and `snoozed` clauses). The view must never ask for it: that population
- * excludes the acked and snoozed rows the analysed list keeps, which is how
- * "7 analysed of 6 open" got printed.
+ * The view's one query, plus a stand-in answer for any probe that does not
+ * carry the `agentic` clause — the view must not make one. The ratio against
+ * the open backlog moved to the Right-now tile, so a second population here
+ * would be a number with nothing to compare it to.
  */
 function mockRecords(
   records: unknown[],
@@ -162,11 +158,11 @@ describe("AnalysesView", () => {
     ).toBeInTheDocument();
   });
 
-  it("lists the alert, its cause, confidence, step count, automatable mark and author", async () => {
+  it("lists the alert, its cause, its plan step by step, confidence and author", async () => {
     mockRecords([DISK, OOM]);
     setup();
 
-    const rows = await screen.findAllByRole("listitem");
+    const rows = await screen.findAllByRole("link");
     expect(rows).toHaveLength(2);
 
     const disk = within(rows[0]!);
@@ -177,46 +173,85 @@ describe("AnalysesView", () => {
       disk.getByText("Kopia maintenance left 40 GB of orphaned blobs on /var"),
     ).toBeInTheDocument();
     expect(disk.getByText("High confidence")).toBeInTheDocument();
-    // The count and its noun are separate nodes: the noun is spoken and
-    // printed only once the row stacks and the column header is gone.
-    expect(disk.getByText("3")).toHaveTextContent("3 steps");
+    // The plan is beside the cause now, one line per step, rather than a count
+    // standing in for it.
+    expect(disk.getByText("step 1")).toBeInTheDocument();
+    expect(disk.getByText("step 2")).toBeInTheDocument();
+    expect(disk.getByText("step 3")).toBeInTheDocument();
     expect(disk.getByText("Automatable")).toBeInTheDocument();
-    expect(disk.getByText("agent-bot")).toBeInTheDocument();
+    expect(disk.getByText("by agent-bot")).toBeInTheDocument();
 
     const oom = within(rows[1]!);
     expect(oom.getByText("Low confidence")).toBeInTheDocument();
-    expect(oom.getByText("1")).toHaveTextContent("1 step");
+    expect(oom.getByText("step 1")).toBeInTheDocument();
+    expect(oom.queryByText("step 2")).not.toBeInTheDocument();
     expect(oom.queryByText("Automatable")).not.toBeInTheDocument();
   });
 
-  it("reads its count against the population it was counted over, not the needs-attention queue", async () => {
-    // The analysed list keeps acked and snoozed rows; ACTIVE_ALERTS drops
-    // them. Measuring the two halves of the ratio differently is what printed
-    // "7 analysed of 6 open" as a normal end state.
-    mockRecords([DISK, OOM], { openTotal: 42, activeTotal: 6 });
+  it("names the alert by its message, falling back to the rule name", async () => {
+    mockRecords([
+      { ...DISK, message: "/var at 94%" },
+      // No message of its own: the rule name stands in for it.
+      { ...OOM, labels: { alertname: "KubePodCrashLooping" } },
+    ]);
     setup();
 
-    expect(await screen.findByText("2")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "42 open" })).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "6 open" })).not.toBeInTheDocument();
-    // And it says so, because "open" on its own reads as the default tab.
-    expect(screen.getByText(/acknowledged and snoozed included/i)).toBeInTheDocument();
+    const rows = await screen.findAllByRole("link");
+    expect(within(rows[0]!).getByText("/var at 94%")).toBeInTheDocument();
+    // The rule's identifier is not what fired; it does not lead the row.
+    expect(within(rows[0]!).queryByText("DiskWillFill")).not.toBeInTheDocument();
+    expect(within(rows[1]!).getByText("KubePodCrashLooping")).toBeInTheDocument();
   });
 
-  it("links the open half at the same population minus what is already explained", async () => {
-    mockRecords([DISK, OOM], { openTotal: 42 });
+  it("shows a step's command and risk beside its action", async () => {
+    mockRecords([
+      {
+        ...DISK,
+        agentic: {
+          ...DISK.agentic,
+          remediation_plan: {
+            steps: [
+              { action: "Run kopia maintenance", command: "kopia maintenance run", risk: "high" },
+              { action: "Open an MR", risk: "low" },
+            ],
+            automatable: false,
+          },
+        },
+      },
+    ]);
     setup();
 
-    const link = await screen.findByRole("link", { name: "42 open" });
-    const href = decodeURIComponent(link.getAttribute("href") ?? "");
-    expect(href).toContain("/web/alerts");
-    // EXISTS is postfix in the search DSL, so "no analysis" is `NOT agentic?`.
-    expect(href).toContain("NOT agentic?");
-    // …over the same "still in play" clauses the count was measured with, so
-    // the link lands on exactly the rows the view does not list.
-    expect(href).toContain('NOT state = "close"');
-    expect(href).toContain('NOT state = "shelved"');
-    expect(href).toContain("NOT ttl < 0");
+    const row = within((await screen.findAllByRole("link"))[0]!);
+    expect(row.getByText("kopia maintenance run")).toBeInTheDocument();
+    expect(row.getByText("high")).toBeInTheDocument();
+    // A step that is not a command says so by having none, not by an empty
+    // code block.
+    expect(row.getByText("Open an MR")).toBeInTheDocument();
+    // Risk is printed only above low: a plan of LOW tags is chrome, and it
+    // buries the one step that is not low.
+    expect(row.getAllByText(/^(medium|high)$/)).toHaveLength(1);
+    expect(row.queryByText("low")).not.toBeInTheDocument();
+  });
+
+  it("asks for the analysed population and nothing else", async () => {
+    // The ratio against the open backlog belongs to the Right-now tile. A
+    // second population fetched here would be a denominator with no numerator
+    // on screen — and it is what used to print "7 analysed of 6 open".
+    const conditions: string[] = [];
+    mswServer.use(
+      http.get("/api/v1/record", ({ request }) => {
+        conditions.push(decodeQ(request));
+        return HttpResponse.json({
+          data: [DISK],
+          meta: { count: 1, limit: 500, offset: 0, total: 1 },
+        });
+      }),
+    );
+    setup();
+
+    await screen.findAllByRole("link");
+    expect(conditions.length).toBeGreaterThan(0);
+    for (const cond of conditions) expect(cond).toContain('"agentic"');
   });
 
   it("does not hide a record it counted just because the subtree is malformed", async () => {
@@ -234,11 +269,13 @@ describe("AnalysesView", () => {
 
     // The headline counts two, so the list shows two — the second degraded to
     // an em-dash cause with no confidence badge rather than dropped.
-    const rows = await screen.findAllByRole("listitem");
+    const rows = await screen.findAllByRole("link");
     expect(rows).toHaveLength(2);
     const odd = within(rows[1]!);
     expect(odd.getByText("srv-odd")).toBeInTheDocument();
-    expect(odd.getByText("\u2014")).toBeInTheDocument();
+    // Cause and plan both degrade to an em-dash; either alone proves the row
+    // survived its own malformed subtree.
+    expect(odd.getAllByText("\u2014").length).toBeGreaterThan(0);
     expect(odd.queryByText(/confidence/i)).not.toBeInTheDocument();
     expect(screen.queryByText("No analyses yet")).not.toBeInTheDocument();
   });
@@ -248,10 +285,10 @@ describe("AnalysesView", () => {
     const user = userEvent.setup();
     setup();
 
-    expect(await screen.findAllByRole("listitem")).toHaveLength(2);
+    expect(await screen.findAllByRole("link")).toHaveLength(2);
     await user.click(screen.getByRole("button", { name: "Low" }));
 
-    const rows = screen.getAllByRole("listitem");
+    const rows = screen.getAllByRole("link");
     expect(rows).toHaveLength(1);
     expect(within(rows[0]!).getByText("srv-victoria1")).toBeInTheDocument();
   });
@@ -261,19 +298,19 @@ describe("AnalysesView", () => {
     const user = userEvent.setup();
     setup();
 
-    expect(await screen.findAllByRole("listitem")).toHaveLength(2);
+    expect(await screen.findAllByRole("link")).toHaveLength(2);
 
     await user.click(screen.getByRole("button", { name: "Yes" }));
-    expect(screen.getAllByRole("listitem")).toHaveLength(1);
+    expect(screen.getAllByRole("link")).toHaveLength(1);
     expect(screen.getByText("srv-victoria1")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "No" }));
-    expect(screen.getAllByRole("listitem")).toHaveLength(1);
+    expect(screen.getAllByRole("link")).toHaveLength(1);
     expect(screen.getByText("srv-legacy2")).toBeInTheDocument();
 
     // Automatable=no AND high-confidence-only leaves nothing.
     await user.click(screen.getByRole("button", { name: "Low" }));
-    expect(screen.queryAllByRole("listitem")).toHaveLength(0);
+    expect(screen.queryAllByRole("link")).toHaveLength(0);
     expect(screen.getByText("Nothing matches these filters")).toBeInTheDocument();
   });
 
@@ -281,15 +318,25 @@ describe("AnalysesView", () => {
     mockRecords([DISK, OOM], { total: 73 });
     setup();
 
-    expect(await screen.findByText("Top 50 of 73")).toBeInTheDocument();
+    expect(await screen.findByText("Showing 2 of 73 analysed alerts")).toBeInTheDocument();
+  });
+
+  it("says nothing above the list when it holds every analysed alert", async () => {
+    mockRecords([DISK, OOM]);
+    setup();
+
+    await screen.findAllByRole("link");
+    expect(screen.queryByText(/Showing \d+ of/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/newest analysis first/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/acknowledged and snoozed included/i)).not.toBeInTheDocument();
   });
 
   it("links each row to its alert on the All tab, opened on the Analysis tab", async () => {
     mockRecords([DISK]);
     setup();
 
-    const rows = await screen.findAllByRole("listitem");
-    const href = within(rows[0]!).getByRole("link").getAttribute("href") ?? "";
+    const rows = await screen.findAllByRole("link");
+    const href = rows[0]!.getAttribute("href") ?? "";
     expect(href).toContain("/web/alerts");
     // The All tab, because an analysed alert is often already acknowledged and
     // the drawer closes itself when the uid isn't on the page it lands on.
@@ -321,5 +368,24 @@ describe("focus is visible on the chip that is on", () => {
   it("gives the active chip a ring drawn in the on-accent ink", () => {
     expect(css).toMatch(/\.chip\[data-active="true"\]:focus-visible/);
     expect(css).toMatch(/inset 0 0 0 2px var\(--accent-solid-fg\)/);
+  });
+});
+
+// The whole row is one <a>, so base.css's `a:hover { text-decoration: underline }`
+// (0-1-1) outranks a `.rowLink` (0-1-0) reset and underlines every word in the
+// row, commands included — which no other table in the app does. The reset has
+// to be restated on :hover, where it wins, and the hover paint has to be the
+// same --bg-hover the DataTable rows use.
+describe("row hover matches the app's other tables", () => {
+  const css = readFileSync(
+    resolve(process.cwd(), "src/features/dashboard/AnalysesView.module.css"),
+    "utf8",
+  );
+
+  it("cancels the global link underline on hover", () => {
+    const hover = /\.rowLink:hover\s*\{([^}]*)\}/.exec(css);
+    expect(hover).not.toBeNull();
+    expect(hover![1]).toMatch(/text-decoration:\s*none/);
+    expect(hover![1]).toMatch(/background:\s*var\(--bg-hover\)/);
   });
 });

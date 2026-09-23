@@ -379,7 +379,10 @@ describe("DashboardPage", () => {
       await user.click(within(viewSwitch).getByRole("button", { name: "Analyses" }));
 
       expect(await screen.findByText("Orphaned blobs filled /var")).toBeInTheDocument();
-      expect(screen.getByRole("link", { name: "37 open" })).toBeInTheDocument();
+      // The ratio against the open backlog lives on the Right-now tile, not
+      // above this list: the view lists every analysed alert and says nothing
+      // about the ones it does not cover.
+      expect(screen.queryByRole("link", { name: /\d+ open$/ })).not.toBeInTheDocument();
       // The view is "right now", so the window picker has no say in it.
       expect(screen.queryByRole("button", { name: "1d" })).not.toBeInTheDocument();
       // Shareable: the view rides in the URL.

@@ -11,6 +11,18 @@
   pointer-events: none;
 }
 
+/* A side panel is open. Toasts stack bottom-right, which is where that panel's
+   own footer actions sit — and a toast is interactive, so it
+   swallowed clicks meant for the Save button behind it. (It never showed while
+   the panel was modal: Radix put `pointer-events: none` on everything outside
+   the dialog, so the toast was click-through.) Slide the stack clear of the
+   panel instead; it lands over the table, still in the corner the eye checks. */
+@media (min-width: 768.01px) {
+  html[data-side-panel="open"] .viewport {
+    right: calc(var(--open-panel-width, 0px) + var(--space-4));
+  }
+}
+
 .toast {
   display: flex;
   gap: var(--space-2);

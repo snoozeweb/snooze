@@ -152,22 +152,33 @@ identity holding `ro_record` (or `rw_record`); a stats-only role gets the
 Overview, with no switch and no tile, and that deep link lands on the Overview
 too.
 
-Its first line reads "17 analysed of 42 open — acknowledged and snoozed
-included". That denominator is wider than the alerts page's default tab on
-purpose: an analysed alert is usually acknowledged straight after, and counting
-the two halves of the ratio over different populations is how "17 of 12" gets
-printed. Both halves are the same set — not closed, not shelved, TTL not
-negative — with and without an analysis. The *open* half links to the
-complement: the same population filtered to `NOT agentic?`, what is left to
-explain. (`?` is the search DSL's EXISTS operator, so `agentic?` is "carries an
-analysis" and `NOT agentic?` is its complement.)
+The view lists **every** analysed alert — it is a work queue, not a top-N — so
+it opens straight onto the list with no headline above it. The ratio against the
+open backlog is the **Analysed** tile's job ("17 of 42 open"), where the number
+sits next to the other Right-now counts it is meant to be read against. A safety
+ceiling of 500 rows still applies; on the rare run that hits it, the view says
+so ("Showing 500 of 812 analysed alerts") rather than truncating in silence.
 
-Rows are newest analysis first, capped at 50, and each names the severity, host,
-alert, the one-line cause, the confidence, the step count, whether the plan is
-automatable, when it was written and by whom. A subtree missing any of that
-still gets a row — an em-dash cause, no confidence badge — because the count
-above the list counted it. The confidence and automatable chips narrow the list
-in place. Clicking a row opens that alert with its inspector already on the
+Rows are newest analysis first, and a row is not a table row: it is a header bar
+over two blocks. The header names the alert on the left (a severity rail down
+the row, the severity word, the host, the alert name) and sets everything scalar
+on the right of the same line — a **confidence** chip and, where the plan claims
+it, an **Automatable** one, then the step count, when it was written and by whom — so confidence reads as a column down a screenful of
+rows. Below it, **the root cause and the remediation plan sit side by side**
+under a `Why` / `What to do` pair of labels. Three regions, three hairlines: one
+under the header, one between the cause and the plan, and the rail.
+
+The plan prints its steps in order as one aligned grid — ordinal, action, risk —
+with each step's command on a second line in mono. The risk tag appears **only
+above `low`**: a plan whose every step is tagged `LOW` says nothing and buries
+the one step that is not, and the column costs no width when no step needs it.
+Four steps show; a longer plan ends with `+N more steps` and defers to the
+inspector. A very long cause clamps at five lines, for the same reason.
+
+A subtree missing any of that still gets a row (an em-dash cause, an em-dash
+plan, no confidence badge), because the server counted it. The confidence and
+automatable chips narrow the list in place. Below ~880px the two columns become
+one: the cause is the paragraph above the plan. Clicking a row opens that alert with its inspector already on the
 Analysis tab, pinning the table to that one alert so an old alert with a fresh
 analysis is never off the first page:
 `/web/alerts?tab=all&record=<uid>&analysis=1&search=uid = "<uid>"`.

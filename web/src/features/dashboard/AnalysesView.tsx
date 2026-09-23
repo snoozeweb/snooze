@@ -2,26 +2,42 @@
 // the cause of.
 //
 // The alerts table answers "what is firing"; this answers "what has been
-// explained, and can any of it be handed to a machine". It is a ranked list of
-// real links rather than a chart — every row's point is to be opened — and the
-// one number worth reading at a glance (how much of the queue is explained)
-// leads the view as a sentence rather than a tile, because the Right-now tile
-// that brought the reader here already said it.
+// explained, and can any of it be handed to a machine". It is a list of real
+// links rather than a chart — every row's point is to be opened.
+//
+// Every analysed alert is listed, not a top-N: the view is a work queue, and a
+// ratio against the open backlog belongs to the Right-now tile that brought the
+// reader here, not above a list it does not describe.
+//
+// Each row carries the two halves of an analysis side by side — the cause and
+// the plan — because they are read together: a cause without its plan is a
+// diagnosis nobody can act on, and a plan without its cause is a set of
+// commands nobody can justify. Rows are as tall as those two need.
+//
+// Not a column grid. An analysis is two blocks of prose and half a dozen
+// scalars, and a seven-column table gave the scalars a column each: four
+// one-line cells pinned to the top of a 250px row, printing the same
+// "just now / agent-bot" down the page while the cause wrapped in a third of
+// the width. So a row is a header bar — the alert on the left, every scalar set
+// right on the same line — over the two things worth reading, and the whole
+// width below belongs to them. Three regions, three quiet boundaries: the rule
+// under the header, the rule between the cause and the plan, and the 3px
+// severity rail the alerts table already paints on a row (DataTable's
+// `--row-accent`). No fills, no panels, no nested cards.
 //
 // Live, not windowed: the rows are the record store as it stands right now, so
-// the page's time-range picker is not on screen in this view and the hint says
-// "right now" instead of repeating a window.
-import { useMemo, useState } from "react";
+// the page's time-range picker is not on screen in this view.
+import { useMemo, useState, type CSSProperties } from "react";
 import { Link } from "@tanstack/react-router";
 import { Badge } from "@/shared/ui/Badge";
 import { Card } from "@/shared/ui/Card";
-import { Icon } from "@/shared/icons/Icon";
 import { InlineError } from "@/shared/ui/InlineError";
 import { Skeleton } from "@/shared/ui/Skeleton";
 import { TimeCell } from "@/shared/ui/TimeCell";
 import { describeError } from "@/lib/api/errorMessage";
-import { severityColor } from "@/lib/format/severity-color";
+import { severityColor, severityToken } from "@/lib/format/severity-color";
 import { severityDisplayLabel } from "@/features/alerts/format";
+import { AutomatableBadge } from "@/features/alerts/analysis/AutomatableBadge";
 import { ConfidenceBadge } from "@/features/alerts/analysis/ConfidenceBadge";
 import {
   CONFIDENCE_LEVELS,
@@ -29,12 +45,12 @@ import {
   type Confidence,
 } from "@/features/alerts/analysis/enums";
 import { PanelEmpty, PanelHint } from "./Panel";
-import { ANALYSES_ROW_CAP, useAnalysedOpenAlerts, useOpenAlertCount } from "./analyses-query";
+import { useAnalysedOpenAlerts } from "./analyses-query";
 import {
-  UNANALYSED_OPEN_SEARCH,
   matchesFilters,
   toAnalysedRow,
   uidSearch,
+  type AnalysedRow,
   type AutomatableFilter,
 } from "./analysis-rows";
 import styles from "./AnalysesView.module.css";
@@ -45,18 +61,69 @@ const AUTOMATABLE_CHIPS: { id: AutomatableFilter; label: string }[] = [
   { id: "no", label: "No" },
 ];
 
-/** Column legend, matched by `.head` / `.rowLink`'s shared grid template. */
-const COLUMNS: ReadonlyArray<{ id: string; label: string; title?: string }> = [
-  { id: "sev", label: "Sev", title: "Severity" },
-  { id: "host", label: "Host" },
-  { id: "alertname", label: "Alert" },
-  { id: "cause", label: "Cause" },
-  { id: "confidence", label: "Confidence" },
-  { id: "steps", label: "Steps" },
-  { id: "automatable", label: "Auto", title: "Automatable" },
-  { id: "analysedAt", label: "Analysed" },
-  { id: "by", label: "By" },
-];
+/** What a missing value reads as. */
+const EM_DASH = "—";
+
+/**
+ * How many steps a card shows before it defers to the inspector.
+ *
+ * A plan may carry twenty steps. Printing all of them lets one analysis push
+ * every other off the screen, which costs more than the steps are worth here:
+ * this surface is for deciding which alert to open, and the one it opens has
+ * the whole plan.
+ */
+const STEPS_SHOWN = 4;
+
+/**
+ * One analysis's plan.
+ *
+ * Every step is printed rather than counted — a count was only ever a promise
+ * that the plan existed. The action leads, the command sits under it in mono
+ * so the two kinds of thing never blur, and the risk tag appears **only above
+ * low**: a plan of five `LOW` tags is five words of chrome saying nothing, and
+ * it is exactly the thing an operator needs to spot when it is not low.
+ */
+function Plan({ row }: { row: AnalysedRow }) {
+  if (row.plan.length === 0) {
+    return <span className={styles.planEmpty}>{EM_DASH}</span>;
+  }
+  const shown = row.plan.slice(0, STEPS_SHOWN);
+  const hidden = row.plan.length - shown.length;
+  return (
+    <ol className={styles.steps}>
+      {shown.map((step, i) => (
+        // Steps have no id of their own and their order IS their meaning, so
+        // the index is the honest key here.
+        // `display: contents` — the <li> keeps the semantics, the cells below
+        // join the list's own grid, so the ordinals, the actions and the risk
+        // tags align down the whole plan instead of each step measuring
+        // itself. That is the part of a table worth having here.
+        <li key={i} className={styles.step}>
+          <span className={styles.stepNum}>{i + 1}</span>
+          <span className={styles.stepAction}>{step.action || EM_DASH}</span>
+          {/* The risk column sizes to content, so a plan whose every step is
+              routine spends no width on it at all. */}
+          {step.risk === "low" || step.risk === "" ? (
+            <span className={styles.riskEmpty} />
+          ) : (
+            <span className={styles.risk} data-risk={step.risk}>
+              {step.risk}
+              <span className={styles.srOnly}> risk</span>
+            </span>
+          )}
+          {step.command ? (
+            <code className={styles.stepCommand} title={step.command}>
+              {step.command}
+            </code>
+          ) : null}
+        </li>
+      ))}
+      {hidden > 0 ? (
+        <li className={styles.more}>{`+${hidden} more step${hidden === 1 ? "" : "s"}`}</li>
+      ) : null}
+    </ol>
+  );
+}
 
 export function AnalysesView() {
   // Local, deliberately not URL-synced: these narrow a list, not a page, and a
@@ -66,14 +133,6 @@ export function AnalysesView() {
   const [automatable, setAutomatable] = useState<AutomatableFilter>("any");
 
   const query = useAnalysedOpenAlerts();
-  // The denominator, over the analysed list's own population minus the
-  // analysis clause — NOT the ACTIVE_ALERTS probe behind the sidebar badge and
-  // the default alerts tab, which drops the acknowledged and snoozed rows this
-  // list keeps. Reading the ratio off two differently-measured populations is
-  // how "7 analysed of 6 open" became the ordinary end state. Same hook the
-  // tile calls, so the two can never disagree (React Query dedupes the key).
-  const open = useOpenAlertCount(true);
-  const openCount = open.data?.meta.total;
 
   const rows = useMemo(
     () => (query.data?.data ?? []).map(toAnalysedRow).filter((r) => r !== undefined),
@@ -118,36 +177,12 @@ export function AnalysesView() {
 
   return (
     <Card padded>
-      <h2 className={styles.headline}>
-        <span className={styles.count}>{analysed}</span>
-        {" analysed"}
-        {/* Withheld, not defaulted: "2 analysed of 0 open" while the count is
-            in flight is a claim, and a wrong one. */}
-        {openCount === undefined ? null : (
-          <>
-            {" of "}
-            {/* The open half links to what is still unexplained — the work this
-                view does not cover — over the same population the denominator
-                counted, so the link and the number agree. */}
-            <Link
-              className={styles.openLink}
-              to="/web/alerts"
-              search={{ tab: "all", search: UNANALYSED_OPEN_SEARCH }}
-            >
-              {`${openCount} open`}
-            </Link>
-            {/* "Open" here is wider than the alerts page's default tab, and the
-                difference is the whole reason the ratio used to read wrong. */}
-            <span className={styles.qualifier}>{" \u2014 acknowledged and snoozed included"}</span>
-          </>
-        )}
-      </h2>
-
-      {analysed > ANALYSES_ROW_CAP ? (
-        <PanelHint>{`Top ${ANALYSES_ROW_CAP} of ${analysed}`}</PanelHint>
-      ) : (
-        <PanelHint>Right now, newest analysis first</PanelHint>
-      )}
+      {/* The only line above the list, and only on the one occasion the fetch
+          ceiling bites: a truncated list that says nothing is a list claiming
+          to be the whole backlog. */}
+      {analysed > rows.length ? (
+        <PanelHint>{`Showing ${rows.length} of ${analysed} analysed alerts`}</PanelHint>
+      ) : null}
 
       {rows.length === 0 ? (
         <PanelEmpty
@@ -205,98 +240,107 @@ export function AnalysesView() {
           {visible.length === 0 ? (
             <PanelEmpty compact title="Nothing matches these filters" />
           ) : (
-            <div className={styles.table}>
-              {/* A column legend for the eye only: every cell below already
-                  carries its own meaning in text (the badges spell their level
-                  out, the step count and the automatable mark have sr-only
-                  nouns), so announcing nine extra words per list would be
-                  noise. */}
-              <div className={styles.head} aria-hidden="true">
-                {COLUMNS.map((c) => (
-                  <span
-                    key={c.id}
-                    className={`${styles.headCell} ${styles[c.id] ?? ""}`}
-                    {...(c.title ? { title: c.title } : {})}
+            <ul className={styles.list}>
+              {visible.map((row) => (
+                <li key={row.uid} className={styles.row}>
+                  {/* tab=all, not the default lifecycle tab: an analysed alert
+                      is often already acknowledged, and the drawer closes
+                      itself when the uid isn't on the page it lands on. */}
+                  {/* `search` pins the table to this one row: the alerts page
+                      fetches the newest page by date_epoch and closes a drawer
+                      whose uid is not on it — exactly the rows this view ranks
+                      first (old alert, fresh analysis). */}
+                  <Link
+                    className={styles.rowLink}
+                    to="/web/alerts"
+                    search={{
+                      tab: "all",
+                      record: row.uid,
+                      analysis: true,
+                      search: uidSearch(row.uid),
+                    }}
+                    // The severity rail, painted the same way the alerts
+                    // table paints a row's accent — so the two surfaces read
+                    // as one product and a 200px-tall row still carries its
+                    // urgency down its whole side.
+                    style={
+                      severityToken(row.severity)
+                        ? ({ "--row-accent": severityToken(row.severity) } as CSSProperties)
+                        : undefined
+                    }
+                    data-accent={severityToken(row.severity) ? "true" : undefined}
                   >
-                    {c.label}
-                  </span>
-                ))}
-              </div>
-
-              <ul className={styles.list}>
-                {visible.map((row) => (
-                  <li key={row.uid} className={styles.row}>
-                    {/* tab=all, not the default lifecycle tab: an analysed
-                        alert is often already acknowledged, and the drawer
-                        closes itself when the uid isn't on the page it lands
-                        on. */}
-                    {/* `search` pins the table to this one row: the alerts
-                        page fetches the newest page by date_epoch and closes a
-                        drawer whose uid is not on it — exactly the rows this
-                        view ranks first (old alert, fresh analysis). */}
-                    <Link
-                      className={styles.rowLink}
-                      to="/web/alerts"
-                      search={{
-                        tab: "all",
-                        record: row.uid,
-                        analysis: true,
-                        search: uidSearch(row.uid),
-                      }}
-                    >
-                      <span className={styles.sev}>
+                    {/* The header: which alert on the left, everything scalar
+                        set right on the same line. Two lines put a pill under a
+                        pill and pushed the analysis down in every row; one line
+                        reads as a header bar and gives the eye a column to run
+                        confidence down. */}
+                    <span className={styles.header}>
+                      <span className={styles.identity}>
                         <Badge
                           className={styles.sevBadge!}
                           color={severityColor(row.severity)}
-                          title={row.severity || "—"}
+                          title={row.severity || EM_DASH}
                         >
-                          {row.severity ? severityDisplayLabel(row.severity) : "—"}
+                          {row.severity ? severityDisplayLabel(row.severity) : EM_DASH}
                         </Badge>
-                      </span>
-                      <span className={styles.host}>{row.host || row.uid}</span>
-                      <span className={styles.alertname}>{row.alertname || "—"}</span>
-                      <span className={styles.cause} title={row.summary}>
-                        {row.summary}
-                      </span>
-                      <span className={styles.confidence}>
-                        {/* Absent on a subtree that carries no level this app
-                            knows. The row still lists — it was counted. */}
-                        {row.confidence === undefined ? null : (
-                          <ConfidenceBadge confidence={row.confidence} />
-                        )}
-                      </span>
-                      <span className={styles.steps}>
-                        {row.steps}
-                        {/* The noun the column header carries. Hidden from the
-                            eye while the header is on screen, spoken always,
-                            and printed once the row stacks and the header is
-                            gone. */}
-                        <span className={styles.stepsNoun}>
-                          {row.steps === 1 ? " step" : " steps"}
+                        <span className={styles.host}>{row.host || row.uid}</span>
+                        {/* The message, not the rule name: "/var at 94%" is
+                            what fired, "NodeFilesystemAlmostOutOfSpace" is only
+                            what the rule is called. The rule name stands in
+                            when a record carries no message. */}
+                        <span className={styles.alertname}>
+                          {row.message || row.alertname || EM_DASH}
                         </span>
                       </span>
-                      <span className={styles.automatable}>
-                        {/* Shown only when true, so the mark's presence is the
-                            signal and the word behind it is for readers who
-                            never see the icon. */}
-                        {row.automatable ? (
-                          <>
-                            <Icon name="rotate-cw" size={12} />
-                            <span className={styles.srOnly}>Automatable</span>
-                          </>
-                        ) : null}
-                      </span>
-                      <span className={styles.analysedAt}>
-                        {row.analysedAt === undefined ? null : (
-                          <TimeCell epoch={row.analysedAt} compact />
+
+                      {/* Everything scalar, on one line. Each of these used to
+                        own a column and spend it on one word. */}
+                      <span className={styles.meta}>
+                        {row.confidence === undefined ? null : (
+                          <ConfidenceBadge
+                            className={styles.confidenceBadge!}
+                            confidence={row.confidence}
+                          />
                         )}
+                        {/* Shown only when the plan says so, so its presence is
+                          the signal rather than a column of blanks. */}
+                        {row.automatable ? (
+                          <AutomatableBadge className={styles.metaBadge!} />
+                        ) : null}
+                        {/* Badges lead, then the plain facts — which keeps the
+                            dot separators between text items only, never
+                            hanging off the edge of a chip. */}
+                        <span className={styles.metaItem}>
+                          {`${row.steps} step${row.steps === 1 ? "" : "s"}`}
+                        </span>
+                        {row.analysedAt === undefined ? null : (
+                          <span className={styles.metaItem}>
+                            <TimeCell epoch={row.analysedAt} compact />
+                          </span>
+                        )}
+                        {row.by ? <span className={styles.metaItem}>{`by ${row.by}`}</span> : null}
                       </span>
-                      <span className={styles.by}>{row.by || "—"}</span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
+                    </span>
+
+                    {/* The two halves, and the only two things that get width.
+                        The labels replace the table header the columns used to
+                        need: they travel with the row instead of scrolling
+                        away from it. */}
+                    <span className={styles.analysis}>
+                      <span className={styles.block}>
+                        <span className={styles.blockLabel}>Why</span>
+                        <span className={styles.cause}>{row.summary}</span>
+                      </span>
+                      <span className={styles.block}>
+                        <span className={styles.blockLabel}>What to do</span>
+                        <Plan row={row} />
+                      </span>
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
           )}
         </>
       )}

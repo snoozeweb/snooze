@@ -305,15 +305,27 @@ function searchSnoozeComment(searchText: string): string {
   return `Snoozed from search "${searchText}"`;
 }
 
+/** "This condition filters nothing", in either of the two shapes above. */
+function isEmptyCondition(dsl: ParsedCondition | Condition): boolean {
+  const op = (dsl as ParsedCondition).op;
+  if (op !== undefined) return op === "" || op === "ALWAYS_TRUE";
+  return (dsl as Condition).type === "ALWAYS_TRUE";
+}
+
 function buildQueryParam(
   tab: TabId,
-  dsl: ParsedCondition | null,
+  dsl: ParsedCondition | Condition | null,
   envCondition: Condition | null,
 ): string | undefined {
   const parts: Condition[] = [];
   const tabCondition = tabById(tab).condition;
   if (tabCondition) parts.push(tabCondition);
-  if (dsl && dsl.op !== "" && dsl.op !== "ALWAYS_TRUE") {
+  // Two shapes arrive here and both are forwarded verbatim: the backend's own
+  // wire form (`op`/`children`) from the SearchBar's server parse, and the
+  // frontend `Condition` (`type`/`args`) from the URL seed — Go's
+  // UnmarshalJSON normalises either into the canonical form. "Nothing to
+  // filter by" is spelled differently in each, hence both guards.
+  if (dsl !== null && !isEmptyCondition(dsl)) {
     parts.push(dsl as unknown as Condition);
   }
   if (envCondition) parts.push(envCondition);
@@ -397,6 +409,11 @@ export function AlertsPage() {
     if (search.search !== lastSeededRef.current) {
       lastSeededRef.current = search.search;
       setSearchText(search.search ?? "");
+      // The condition rides along, for the same reason it is seeded at mount:
+      // a back/forward step or a second deep link clicked while this page is
+      // mounted must filter on the new query immediately, not one server parse
+      // later — long enough for a deep-linked drawer to be closed as stale.
+      setSearchCondition(searchOnlyCondition(search.search ?? ""));
     }
   }, [search.search]);
 
@@ -417,7 +434,22 @@ export function AlertsPage() {
     }
   }, [config?.default_filter, search.search]);
 
-  const [searchCondition, setSearchCondition] = useState<ParsedCondition | null>(null);
+  // The condition the list is actually filtered by. The SearchBar owns the
+  // authoritative parse (a debounced POST /condition/parse), but a deep link
+  // arrives with its query already in the URL, and waiting a round-trip for it
+  // meant the FIRST fetch ran unfiltered — page 1 of the newest alerts, which
+  // is exactly where a deep-linked `?record=` uid is not. DataTable then
+  // auto-closed the drawer as a stale link and pushed a `?record=`-less URL
+  // over it: the double navigation that made a dashboard Analyses row open on
+  // no inspector and left a back button that went nowhere useful.
+  //
+  // So seed it synchronously from `?search=` with the local parser — the same
+  // DSL, the same AST the backend normalises — and let the SearchBar's answer
+  // replace it when it lands. `parseText` failing just means no seed: the
+  // unfiltered first fetch is the old behaviour, not a new failure mode.
+  const [searchCondition, setSearchCondition] = useState<ParsedCondition | Condition | null>(() =>
+    searchOnlyCondition(search.search ?? ""),
+  );
   const activeTab: TabId = search.tab ?? "alerts";
 
   const selectedEnvs = useMemo<string[]>(
@@ -467,17 +499,23 @@ export function AlertsPage() {
   );
 
   const updateSearch = useCallback(
-    (next: Partial<AlertsSearch>) => {
+    (next: Partial<AlertsSearch>, opts?: { replace?: boolean }) => {
       // TanStack Router's navigate types are locked to the registered route tree at
       // build time. Casting through unknown avoids the "unsafe call" lint issue while
       // still satisfying the type checker when the route is fully registered.
       type NavigateFn = (opts: {
         to: string;
         search: (prev: AlertsSearch | undefined) => AlertsSearch;
+        replace?: boolean;
       }) => Promise<void>;
       void (navigate as unknown as NavigateFn)({
         to: "/web/alerts",
         search: (prev: AlertsSearch | undefined) => ({ ...(prev ?? {}), ...next }),
+        // `replace` is for the page correcting ITSELF — stripping a parameter
+        // that cannot apply, closing a drawer whose row was never here. Those
+        // are not places an operator asked to be, so Back must skip them
+        // rather than land on a URL this page will immediately correct again.
+        ...(opts?.replace ? { replace: true } : {}),
       });
     },
     [navigate],
@@ -495,7 +533,7 @@ export function AlertsPage() {
   // to the Analysis tab. Strip it as soon as it is on its own.
   useEffect(() => {
     if (search.record === undefined && search.analysis !== undefined) {
-      updateSearch({ analysis: undefined } as unknown as Partial<AlertsSearch>);
+      updateSearch({ analysis: undefined } as unknown as Partial<AlertsSearch>, { replace: true });
     }
   }, [search.record, search.analysis, updateSearch]);
 
@@ -524,6 +562,25 @@ export function AlertsPage() {
       ...(effectiveIntervalMs !== undefined ? { refetchInterval: effectiveIntervalMs } : {}),
     },
   );
+
+  // Did the open `?record=` ever name a row on this page? DataTable closes a
+  // deep-linked key that never resolved (a stale link, another filter's uid),
+  // and that close comes back through the same `onDetailsKeyChange(null)` an
+  // operator's own close does. The difference is whether the drawer was ever
+  // really open: a close of something that never opened is a correction, and
+  // corrections replace rather than push — otherwise the URL the operator
+  // arrived on stays one Back away, gets corrected again, and the button stops
+  // going anywhere.
+  const recordResolvedRef = useRef(false);
+  useEffect(() => {
+    if (record === undefined) {
+      recordResolvedRef.current = false;
+      return;
+    }
+    if ((list.data?.data ?? []).some((r) => recordKey(r) === record)) {
+      recordResolvedRef.current = true;
+    }
+  }, [record, list.data]);
 
   // Audio cue: play once per poll tick that grows the alert count.
   // Guard order:
@@ -1533,10 +1590,16 @@ export function AlertsPage() {
   // the reader at that point, not to the link that started them off.
   const applyDetailsKey = useCallback(
     (k: string | null) =>
-      updateSearch({
-        record: k ?? undefined,
-        ...(k === null ? { analysis: undefined } : {}),
-      } as unknown as Partial<AlertsSearch>),
+      updateSearch(
+        {
+          record: k ?? undefined,
+          ...(k === null ? { analysis: undefined } : {}),
+        } as unknown as Partial<AlertsSearch>,
+        // A close of a drawer that never resolved to a row is the table
+        // correcting a stale deep link, not the operator closing anything —
+        // see `recordResolvedRef`.
+        k === null && !recordResolvedRef.current ? { replace: true } : undefined,
+      ),
     [updateSearch],
   );
   // A retarget swaps the inspector's subject under whatever is open in it. The

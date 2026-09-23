@@ -22,6 +22,20 @@
   background: transparent;
 }
 
+/* A side panel is open — a row inspector or an editor; each publishes its own
+   width as `--open-panel-width` while it is mounted (Drawer.tsx). A side panel
+   is not a modal: the shell gives it the room it occupies instead of letting it
+   cover the page underneath. That is what makes the controls it used to hide —
+   the pager, the tabs, the search bar — clickable at all, and it lets a table's
+   own container queries shed low-priority columns for the width that is left.
+   Below the drawer's fullscreen breakpoint (768px) there is no room to yield,
+   so nothing moves. */
+@media (min-width: 768.01px) {
+  html[data-side-panel="open"] .main {
+    margin-right: var(--open-panel-width, 0px);
+  }
+}
+
 /* Mobile shell only: give the scrolling main bottom breathing room so its
    last content isn't visually crowded against the fixed bottom-tab bar. The
    bar is a flex sibling (not overlapping), so this is polish, not occlusion

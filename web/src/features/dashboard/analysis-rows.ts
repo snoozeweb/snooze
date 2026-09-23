@@ -10,11 +10,11 @@
 // Everything below is defensive on purpose. `agentic` is a protected subtree
 // the generic Record schema does not declare (records are dynamic and the
 // subtree is only ever written through its own route), so it arrives as an
-// untyped extra field. It is parsed leniently rather than strictly: the panel's
-// headline prints the server's `meta.total`, so a record dropped here would be
-// counted and then not shown — "3 analysed" over "No analyses yet". Anything
-// carrying an `agentic` subtree becomes a row; the parts that are missing
-// degrade to an em-dash, an absent badge and a zero step count.
+// untyped extra field. It is parsed leniently rather than strictly: the panel
+// lists what the server counted, so a record dropped here would be counted by
+// the Analysed tile and then missing from the list under it. Anything carrying
+// an `agentic` subtree becomes a row; the parts that are missing degrade to an
+// em-dash cause, an em-dash plan and an absent badge.
 import type { Condition } from "@/lib/condition/types";
 import { encodeText } from "@/lib/condition/text";
 import { CONFIDENCE_LEVELS, isConfidence, type Confidence } from "@/features/alerts/analysis/enums";
@@ -22,7 +22,7 @@ import type { Record_ } from "@/features/alerts/types";
 import { analysisEpoch } from "@/features/alerts/analysis/time";
 
 /**
- * The alerts this view is about, as one population expressed three ways.
+ * The alerts this view is about, as one population expressed two ways.
  *
  * `OPEN_CLAUSES` is the alerts page's ACTIVE_ALERTS preset minus two of its
  * clauses:
@@ -38,12 +38,12 @@ import { analysisEpoch } from "@/features/alerts/analysis/time";
  * What is left is "not finished with": not closed, not shelved, and not
  * permanently shelved through the legacy negative TTL.
  *
- * The numerator (`ANALYSED_OPEN_ALERTS`), the denominator (`OPEN_ALERTS`) and
- * the "what is left to explain" link (`UNANALYSED_OPEN_SEARCH`) are all built
- * from this one array, because they are read against each other. Measuring the
- * denominator with a different predicate is how "7 analysed of 6 open" — the
- * ordinary end state, since ACTIVE_ALERTS drops the acked and snoozed rows the
- * numerator deliberately keeps — used to be printed as a ratio.
+ * The list (`ANALYSED_OPEN_ALERTS`) and the tile's denominator (`OPEN_ALERTS`)
+ * are both built from this one array, because they are read against each
+ * other. Measuring the denominator with a different predicate is how
+ * "7 analysed of 6 open" — the ordinary end state, since ACTIVE_ALERTS drops
+ * the acked and snoozed rows the numerator deliberately keeps — used to be
+ * printed as a ratio.
  */
 const OPEN_CLAUSES: Condition[] = [
   { type: "NOT", arg: { type: "EQUALS", field: "state", value: "close" } },
@@ -70,24 +70,6 @@ export const ANALYSED_OPEN_ALERTS: Condition = {
 };
 
 /**
- * The alerts-page search text for "open alerts nobody has explained yet" — the
- * complement of the list, over the same population, so the link under the
- * denominator lands on exactly the rows the view does not show.
- *
- * The search DSL can express all of it: EXISTS is postfix (`agentic?`, or the
- * equivalent `agentic EXISTS`), NOT is a prefix operator, and `ttl < 0` is a
- * plain numeric comparison — see `lib/condition/text.ts`. It is produced by the
- * encoder rather than typed out as a string so the spelling can never drift
- * from the parser that has to read it back (`analysis-rows.test.ts` round-trips
- * it). No lifecycle tab is needed on the far side: the text carries the whole
- * population itself.
- */
-export const UNANALYSED_OPEN_SEARCH = encodeText({
-  type: "AND",
-  args: [{ type: "NOT", arg: { type: "EXISTS", field: "agentic" } }, ...OPEN_CLAUSES],
-});
-
-/**
  * The search text that pins the alerts table to one record.
  *
  * A row's deep link carries `?record=<uid>`, but the alerts page fetches one
@@ -100,6 +82,24 @@ export function uidSearch(uid: string): string {
   return encodeText({ type: "EQUALS", field: "uid", value: uid });
 }
 
+/** One remediation step, as the panel shows it beside the cause. */
+export type PlanStep = {
+  /** What to do. The one part a step is useless without. */
+  action: string;
+  /** The exact command, when the step is one. Empty for "open an MR"-shaped steps. */
+  command: string;
+  /** `low` | `medium` | `high`, or "" when the subtree named something else. */
+  risk: RiskLevel | "";
+};
+
+/** The risk levels a step's badge knows how to paint. */
+export const RISK_LEVELS = ["low", "medium", "high"] as const;
+export type RiskLevel = (typeof RISK_LEVELS)[number];
+
+function isRisk(value: unknown): value is RiskLevel {
+  return typeof value === "string" && (RISK_LEVELS as readonly string[]).includes(value);
+}
+
 /** The row shape the panel renders — one analysed alert, already parsed. */
 export type AnalysedRow = {
   /** Record uid; the deep link's whole point, so a row without one is dropped. */
@@ -107,7 +107,15 @@ export type AnalysedRow = {
   /** Raw severity label, for the leading dot. */
   severity: string;
   host: string;
-  /** `labels.alertname`, falling back to the record's process. */
+  /**
+   * The alert's own message — what actually fired, in the words the source
+   * sent. It leads the row over `labels.alertname`, which is the rule's
+   * identifier: "NodeFilesystemAlmostOutOfSpace" names a rule, "/var at 94%"
+   * names the problem.
+   */
+  message: string;
+  /** `labels.alertname`, falling back to the record's process. The fallback
+   *  when a record carries no message of its own. */
   alertname: string;
   /** `root_cause.summary` — the one-line cause, or "—" when there isn't one. */
   summary: string;
@@ -115,6 +123,12 @@ export type AnalysedRow = {
   confidence: Confidence | undefined;
   /** How many steps the remediation plan carries. */
   steps: number;
+  /**
+   * Those steps, parsed. The panel shows the plan beside the cause, so the
+   * count alone is no longer enough — but it is kept, because the count is what
+   * a plan whose `steps` is malformed can still report honestly.
+   */
+  plan: PlanStep[];
   automatable: boolean;
   /** `analysis.at` as epoch seconds, for TimeCell. */
   analysedAt: number | undefined;
@@ -179,6 +193,21 @@ export function toAnalysedRow(record: Record_): AnalysedRow | undefined {
   const plan = asObject(agentic["remediation_plan"]);
   const planSteps = plan?.["steps"];
   const steps = Array.isArray(planSteps) ? planSteps.length : 0;
+  // Same leniency as everything else here: a step that is a bare string (a
+  // hand-written subtree) becomes its own action, and one that names no action
+  // at all still occupies its position in the plan rather than silently
+  // shortening it — the count beside it is the array's length.
+  const planRows: PlanStep[] = Array.isArray(planSteps)
+    ? planSteps.map((raw) => {
+        const step = asObject(raw);
+        const riskRaw = step?.["risk"];
+        return {
+          action: asString(step?.["action"]) || asString(raw),
+          command: asString(step?.["command"]),
+          risk: isRisk(riskRaw) ? riskRaw : "",
+        };
+      })
+    : [];
   const analysis = asObject(agentic["analysis"]);
 
   // `labels` is an ingest-side map (Prometheus/AlertManager and friends put the
@@ -186,15 +215,18 @@ export function toAnalysedRow(record: Record_): AnalysedRow | undefined {
   // the same "what fired" slot.
   const labels = asObject(record["labels"]);
   const alertname = asString(labels?.["alertname"]) || asString(record.process);
+  const message = asString(record.message);
 
   return {
     uid,
     severity: asString(record.severity),
     host: asString(record.host),
+    message,
     alertname,
     summary: summary || EM_DASH,
     confidence,
     steps,
+    plan: planRows,
     automatable: plan?.["automatable"] === true,
     analysedAt: analysedAtEpoch(analysis?.["at"]),
     by: asString(analysis?.["by"]),

@@ -1907,9 +1907,13 @@ describe("AlertsPage — silencing verbs", () => {
     await user.click(screen.getAllByRole("button", { name: /view details/i })[0]!);
     const drawerClose = await screen.findByRole("button", { name: /^close panel$/i });
     expect(drawerClose).toBeInTheDocument();
-    const closeAlert = screen.getByRole("button", { name: /^close alert$/i });
+    // Scoped to the drawer: the panel is non-modal, so the table behind it
+    // stays in the accessibility tree — and the focused row's own inline
+    // "Close alert" quick action answers the same query.
+    const drawer = within(screen.getByRole("dialog"));
+    const closeAlert = drawer.getByRole("button", { name: /^close alert$/i });
     expect(closeAlert.className).not.toMatch(/danger/);
-    expect(screen.getByRole("button", { name: /^acknowledge$/i }).className).toMatch(/primary/);
+    expect(drawer.getByRole("button", { name: /^acknowledge$/i }).className).toMatch(/primary/);
   });
 });
 
@@ -2077,5 +2081,61 @@ describe("AlertsPage inspector guards", () => {
     await waitFor(() =>
       expect((router.state.location.search as { record?: string }).record).toBe("r2"),
     );
+  });
+});
+
+// The dashboard's Analyses rows deep-link an OLD alert (fresh analysis, stale
+// date_epoch) and pin the table to it with `?search=uid = "…"`. The page used
+// to fetch page 1 unfiltered while the SearchBar's server parse was still in
+// flight, so the drawer's uid wasn't on the page, DataTable closed it as a
+// stale link, and the close PUSHED a ?record=-less URL on top: the inspector
+// never opened and Back walked into a URL the page immediately corrected again.
+describe("AlertsPage deep links that carry their own filter", () => {
+  /** Serves `row` only to a request whose ?q= mentions its uid. */
+  function pinnedRow(uid: string, host: string) {
+    const target = { uid, host, severity: "critical", state: "open", date_epoch: 1 };
+    const newest = [
+      { uid: "r-new1", host: "srv-new1", severity: "info", state: "open", date_epoch: 999 },
+      { uid: "r-new2", host: "srv-new2", severity: "info", state: "open", date_epoch: 998 },
+    ];
+    const seen: string[] = [];
+    mswServer.use(
+      http.get("/api/v1/record", ({ request }) => {
+        const raw = new URL(request.url).searchParams.get("q") ?? "";
+        seen.push(raw);
+        const cond = raw === "" ? "" : atob(raw.replace(/-/g, "+").replace(/_/g, "/"));
+        const data = cond.includes(uid) ? [target] : newest;
+        return HttpResponse.json({
+          data,
+          meta: { count: data.length, limit: 50, offset: 0, total: data.length },
+        });
+      }),
+    );
+    return seen;
+  }
+
+  it("filters on the URL's query from the first fetch, so the deep-linked drawer opens", async () => {
+    pinnedRow("r-old", "srv-old");
+    const router = setup('/web/alerts?tab=all&record=r-old&analysis=true&search=uid %3D "r-old"');
+
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(await screen.findByText("srv-old")).toBeInTheDocument();
+    // And it stays open: nothing corrected the URL out from under it.
+    await waitFor(() =>
+      expect((router.state.location.search as { record?: string }).record).toBe("r-old"),
+    );
+  });
+
+  it("replaces rather than pushes when it closes a record that was never on the page", async () => {
+    pinnedRow("r-old", "srv-old");
+    // No ?search= to pin it: the uid genuinely is not in the page the table
+    // fetches, so the drawer must close — quietly, without a history entry.
+    const router = setup("/web/alerts?tab=all&record=r-old");
+    const before = router.history.length;
+
+    await waitFor(() =>
+      expect((router.state.location.search as { record?: string }).record).toBeUndefined(),
+    );
+    expect(router.history.length).toBe(before);
   });
 });

@@ -57,16 +57,21 @@
   restamping provenance with the signed-in user and `source: snooze-web`. The
   dashboard gained a second view, **Analyses**, reached from a segmented
   control beside the page title or from a new **Analysed** tile in the "Right
-  now" strip ("17 of 42 open"): the 50 most recently analysed open alerts in one
-  full-width list, with analysed-of-open counts (the "open" half links to the
-  alerts table filtered to `NOT agentic?`) and confidence / automatable filters.
+  now" strip ("17 of 42 open"): every analysed open alert in one full-width
+  list, newest analysis first. A row is a header bar over two blocks: the alert
+  on the left (severity rail, host, alert name), everything scalar set right on
+  the same line (confidence, step count, `automatable`, when and by whom), and
+  the whole width below given to **the root cause and the remediation plan side
+  by side**. The plan is one aligned grid — ordinal, action, risk — with each
+  command on its own mono line and a risk tag only above `low` (four steps,
+  then `+N more`). Confidence / automatable filters narrow it in
+  place. The ratio against the open backlog is the tile's; the list itself only
+  says something above it when it hits its 500-row ceiling.
   The view is a deep link (`/web/dashboard?view=analyses`), and any row there —
   or any other link — opens an alert straight onto its Analysis tab through
-  `/web/alerts?tab=all&record=<uid>&analysis=1`. "Open" here counts every
-  alert that is not closed, shelved or expired — acknowledged and snoozed
-  included — so the ratio cannot read "7 analysed of 6 open" after a triage
-  pass; the tile and the view are shown only to sessions that can read
-  records. Leaving the inspector's editor by prev/next, a tab switch, or a row
+  `/web/alerts?tab=all&record=<uid>&analysis=1`. The tile and the view are
+  shown only to sessions that can read records. Leaving the inspector's editor
+  by prev/next, a tab switch, or a row
   that paged out asks before discarding the draft, and a draft can no longer
   be saved onto the wrong alert.
 
@@ -173,6 +178,38 @@
   than the number of notifications prevented.
 
 ### Fixed
+
+- **Every drawer blocked the page it was opened from.** They were modal
+  dialogs: a fixed full-screen scrim at `--z-modal` covered the whole app, so
+  every control behind one was inert — clicking "next page" with the alert
+  inspector open did nothing at all, the click landing on the scrim rather than
+  the pager, and the browser's back gesture was swallowed with it. The same was
+  true of every editor (snoozes, rules, users, notifications, …).
+
+  Drawers are now genuine **side panels**, across the app: non-modal, no scrim,
+  and the shell reserves the open panel's width (`--open-panel-width`, published
+  by the panel itself) instead of letting it cover the page, so the pager, the
+  lifecycle tabs, the search bar and the sort headers all keep working while a
+  panel is open — and a table sheds low-priority columns for the width that is
+  left rather than hiding under the panel. Working in the list no longer closes
+  the panel, which also means a stray click can never skip an editor's
+  unsaved-changes guard; Escape, ✕ and Cancel still close, and a row click still
+  retargets the inspector. Toasts step aside for an open panel rather than
+  landing on its footer buttons.
+
+- **A deep link carrying both `?search=` and `?record=` opened on no
+  inspector, and left a Back button that went nowhere.** The alerts page only
+  filtered its list once the SearchBar's debounced `POST /condition/parse`
+  answered, so the *first* fetch ran unfiltered — page 1 of the newest alerts,
+  which is exactly where the linked uid is not when the link points at an old
+  alert (every row of the dashboard's Analyses view, and any
+  `?search=hash = …` link from a Teams/chat card). The table then closed the
+  drawer as a stale deep link and *pushed* a `?record=`-less URL over the one
+  the operator arrived on: the inspector never opened, and Back returned to a
+  URL the page immediately corrected again. The page now seeds its filter
+  synchronously from the URL with the same DSL parser (re-seeding on
+  back/forward), and a close of a drawer that never resolved to a row
+  **replaces** rather than pushes, so self-corrections stay out of history.
 
 - **A snooze filter had no effect on an alert already inside its aggregate's
   throttle window.** `aggregaterule` answers a throttled duplicate — and a

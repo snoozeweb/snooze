@@ -14,7 +14,6 @@ import type { Record_ } from "@/features/alerts/types";
 import {
   ANALYSED_OPEN_ALERTS,
   OPEN_ALERTS,
-  UNANALYSED_OPEN_SEARCH,
   matchesFilters,
   toAnalysedRow,
   uidSearch,
@@ -28,20 +27,11 @@ const OPEN_CLAUSES = [
 ];
 
 describe("one population", () => {
-  it("counts the denominator over the numerator's predicate minus the analysis clause", () => {
+  it("measures the list and the tile's denominator over the same clauses", () => {
     expect(OPEN_ALERTS).toEqual({ type: "AND", args: OPEN_CLAUSES });
     expect(ANALYSED_OPEN_ALERTS).toEqual({
       type: "AND",
       args: [{ type: "EXISTS", field: "agentic" }, ...OPEN_CLAUSES],
-    });
-  });
-
-  it("links the open half at the same population minus the analysed rows", () => {
-    const parsed = parseText(UNANALYSED_OPEN_SEARCH);
-    expect(parsed.ok).toBe(true);
-    expect(parsed.ok && parsed.value).toEqual({
-      type: "AND",
-      args: [{ type: "NOT", arg: { type: "EXISTS", field: "agentic" } }, ...OPEN_CLAUSES],
     });
   });
 });
@@ -88,6 +78,34 @@ describe("toAnalysedRow — a counted record is a visible record", () => {
       automatable: true,
       by: "agent-bot",
     });
+  });
+
+  it("parses each step the panel prints beside the cause", () => {
+    const row = toAnalysedRow({
+      uid: "r-plan",
+      host: "srv-a",
+      agentic: {
+        remediation_plan: {
+          steps: [
+            { action: "Run maintenance", command: "kopia maintenance run", risk: "high" },
+            { action: "Open an MR", risk: "sideways" },
+            "written by hand, as a string",
+            {},
+          ],
+        },
+      },
+    } as unknown as Record_);
+    expect(row?.steps).toBe(4);
+    expect(row?.plan).toEqual([
+      { action: "Run maintenance", command: "kopia maintenance run", risk: "high" },
+      // A level this app cannot paint is dropped rather than printed raw — the
+      // step still lists.
+      { action: "Open an MR", command: "", risk: "" },
+      { action: "written by hand, as a string", command: "", risk: "" },
+      // A step that names nothing still holds its position: the plan's order is
+      // its meaning, and the count beside it is the array's length.
+      { action: "", command: "", risk: "" },
+    ]);
   });
 
   it("keeps a record whose confidence is missing or outside the three levels", () => {

@@ -355,12 +355,24 @@ export function EditorDrawer<
 
   return (
     <Drawer
+      // A side panel, like the row inspector: the list behind it stays live so
+      // an operator can page, search and sort while a record is open. As a
+      // modal it put a full-screen scrim over all of that, and every control
+      // behind it was inert.
+      modal={false}
       open
       onOpenChange={(o) => {
         if (!o) requestClose();
       }}
     >
-      <DrawerContent>
+      <DrawerContent
+        nonModal
+        // Touching the list is not "cancel". Closing stays deliberate — ✕,
+        // Cancel or Escape — so the dirty-form guard is never bypassed by a
+        // stray click on the page behind.
+        onPointerDownOutside={(e) => e.preventDefault()}
+        onInteractOutside={(e) => e.preventDefault()}
+      >
         <DrawerTitle onClose={requestClose} toolbar={toolbarNode}>
           {titleNode}
         </DrawerTitle>

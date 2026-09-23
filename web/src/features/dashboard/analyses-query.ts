@@ -21,8 +21,16 @@ import { Records } from "@/features/alerts/api";
 import type { Record_ } from "@/features/alerts/types";
 import { ANALYSED_OPEN_ALERTS, OPEN_ALERTS } from "./analysis-rows";
 
-/** How many rows the view fetches. Beyond this its hint says what is hidden. */
-export const ANALYSES_ROW_CAP = 50;
+/**
+ * How many rows the view fetches.
+ *
+ * The view lists every analysed alert — it is a work queue, not a top-N — so
+ * this is a safety ceiling rather than a page size: high enough that a real
+ * backlog fits under it whole, finite so a runaway analyser cannot ask the
+ * browser to lay out ten thousand two-column rows. The view says so out loud on
+ * the only occasion it bites (`analysed` above `rows.length`).
+ */
+export const ANALYSES_ROW_CAP = 500;
 
 /** The dashboard's poll cadence — every other live panel repaints on it. */
 const REFRESH_MS = 30_000;
