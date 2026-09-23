@@ -134,6 +134,11 @@ This rule will be triggered only if this condition is matched. Leave it blank to
 [Time Constraint](./timeconstraints.md)  
 Time constraint during this snooze filter will be active. See [Time Constraints](./timeconstraints.md)
 
+A filter whose condition or time constraint the server cannot parse is refused
+when you save it (HTTP `422` from the API) rather than stored and silently
+ignored. When writing filters through the API or a script, send datetimes as
+RFC3339 with a timezone — `2026-09-21T19:01:42Z`, not `2026-09-21T19:01:42`.
+
 Discard  
 Discard alerts matching this snooze filter.
 

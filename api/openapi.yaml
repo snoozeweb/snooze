@@ -925,6 +925,13 @@ paths:
         projected at read time from the whole `time_constraints` group (the same
         predicate the pipeline suppresses on — datetime, daily-time and weekday
         families AND'd, in `time_constraints.tz` when set); neither is stored.
+
+        Create / replace / patch answer `422 validation_error` when the body's
+        `condition` or `time_constraints` cannot be parsed by the pipeline —
+        e.g. a datetime such as `2026-09-21T19:01:42` with seconds but no
+        timezone. Such a filter would otherwise be stored and then skipped at
+        every reload, silencing nothing. Send datetimes as RFC3339 with a
+        timezone (`2026-09-21T19:01:42Z`).
       parameters:
         - {$ref: '#/components/parameters/QueryQ'}
         - {$ref: '#/components/parameters/Offset'}

@@ -253,6 +253,16 @@
   which also covers a cluster peer re-stamping a name just after its filter was
   deleted. The live filter set is read from the database, never a node's cache.
 
+- **A snooze filter the pipeline could not parse was accepted and then
+  silently ignored.** The API stored any `condition` / `time_constraints`
+  (201), and the pipeline dropped the filter at every reload with only a
+  "skipping invalid rule" warning, so it silenced nothing. On 2026-09-21 the
+  `upgrade-prod` release filter for K8S ovh carried `"2026-09-21T19:01:42"` —
+  seconds but no timezone, a form the datetime parser rejects — and never took
+  effect for the whole release. Create / replace / patch on `/api/v1/snooze`
+  now answer `422 validation_error` with the parser's message, using the same
+  parsers the reload applies, so the API and the pipeline cannot disagree.
+
 - **A `discard` snooze filter left phantom lifecycle comments.** When a filter
   dropped an occurrence of an existing aggregate, `aggregaterule` had already
   written its "Auto re-opened" / "New escalation" comment, so the timeline

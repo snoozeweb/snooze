@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -1153,4 +1154,105 @@ func TestSnoozeFilter_CountsHitsButNotTheStat(t *testing.T) {
 	}
 	require.Zero(t, stats, "the filter pass must not double-count a held occurrence")
 	require.Equal(t, 1, hits)
+}
+
+// TestSnoozeTransformWrite_RejectsWhatThePipelineWouldSkip: a filter the
+// pipeline cannot parse is dropped at every reload ("skipping invalid rule")
+// and silences nothing, so accepting it at write time is a silent failure. On
+// 2026-09-21 the upgrade-prod release filter for K8S ovh was stored with a
+// timezone-less datetime ("2026-09-21T19:01:42"), answered 201, and never took
+// effect for the whole release. A write must be refused with the parser's own
+// error instead — using the same parsers the reload uses, so the two can never
+// disagree about what is valid.
+func TestSnoozeTransformWrite_RejectsWhatThePipelineWouldSkip(t *testing.T) {
+	t.Parallel()
+	p := &Plugin{}
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+
+	bad := map[string]map[string]any{
+		"timezone-less datetime (the upgrade-prod payload)": {
+			"name": "upgrade-prod: silence K8S ovh during release", "condition": []any{"=", "host", "K8S ovh"},
+			"time_constraints": map[string]any{"datetime": []any{map[string]any{
+				"from": "2026-09-21T19:01:42", "until": "2026-09-21T21:01:42",
+			}}},
+		},
+		"unparseable time of day": {
+			"name": "x", "time_constraints": map[string]any{"time": []any{map[string]any{"from": "25:99", "until": "06:00"}}},
+		},
+		"time_constraints of the wrong shape": {"name": "x", "time_constraints": "tonight"},
+		"condition with an unknown operator":  {"name": "x", "condition": []any{"FROBNICATE", "host", "h"}},
+		"condition of the wrong shape":        {"name": "x", "condition": 42},
+	}
+	for name, doc := range bad {
+		err := p.TransformWrite(ctx, doc)
+		require.Error(t, err, name)
+	}
+	err := p.TransformWrite(ctx, bad["timezone-less datetime (the upgrade-prod payload)"])
+	require.ErrorContains(t, err, "time_constraints")
+	require.ErrorContains(t, err, "2026-09-21T19:01:42")
+
+	good := map[string]map[string]any{
+		"RFC3339 UTC window": {
+			"name": "ok", "condition": []any{"=", "host", "K8S ovh"},
+			"time_constraints": map[string]any{"datetime": []any{map[string]any{
+				"from": "2026-09-21T19:01:42Z", "until": "2026-09-21T21:01:42Z",
+			}}},
+		},
+		"web object-form condition and recurring window": {
+			"name":      "ok",
+			"condition": map[string]any{"type": "EQUALS", "field": "host", "value": "vulne"},
+			"time_constraints": map[string]any{
+				"time": []any{map[string]any{"from": "14:41:00+01:00", "until": "18:00:00+01:00"}},
+			},
+		},
+		"no condition, no constraints (always on)": {"name": "ok"},
+		"explicit null / empty constraints":        {"name": "ok", "condition": nil, "time_constraints": map[string]any{}},
+		"PATCH toggling enabled only":              {"enabled": false},
+	}
+	for name, doc := range good {
+		require.NoError(t, p.TransformWrite(ctx, doc), name)
+	}
+}
+
+// TestSnoozeCRUD_InvalidFilterIs422: the refusal reaches the operator through
+// the generic CRUD surface on every write verb, and nothing is stored.
+func TestSnoozeCRUD_InvalidFilterIs422(t *testing.T) {
+	t.Parallel()
+	h := newStubHost(t)
+	uid := writeRule(t, h, db.Document{"name": "existing", "condition": []any{"=", "host", "h1"}})
+	p := newPlugin(t, h, nil)
+	r := chi.NewRouter()
+	plugins.MountCRUD(r, h, p)
+
+	send := func(method, path, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		ctx := auth.WithClaims(req.Context(), snoozetypes.Claims{
+			Subject: "test", Method: "local", Roles: []string{"admin"}, Permissions: []string{"rw_all"},
+		})
+		req = req.WithContext(auth.WithTenant(ctx, snoozetypes.DefaultTenant))
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		return rec
+	}
+	badTC := `"time_constraints":{"datetime":[{"from":"2026-09-21T19:01:42","until":"2026-09-21T21:01:42"}]}`
+
+	rec := send(http.MethodPost, "/api/v1/snooze", `{"name":"release",`+badTC+`}`)
+	require.Equal(t, http.StatusUnprocessableEntity, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), "2026-09-21T19:01:42")
+
+	rec = send(http.MethodPut, "/api/v1/snooze/"+uid, `{"name":"existing",`+badTC+`}`)
+	require.Equal(t, http.StatusUnprocessableEntity, rec.Code, rec.Body.String())
+	rec = send(http.MethodPatch, "/api/v1/snooze/"+uid, `{`+badTC+`}`)
+	require.Equal(t, http.StatusUnprocessableEntity, rec.Code, rec.Body.String())
+
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+	docs, _, err := h.driver.Search(ctx, collectionName, condition.Cond{}, db.Page{})
+	require.NoError(t, err)
+	require.Len(t, docs, 1, "the invalid create must not be stored")
+	require.NotContains(t, docs[0], "time_constraints", "nor may the invalid edits land")
+
+	rec = send(http.MethodPost, "/api/v1/snooze",
+		`{"name":"release","time_constraints":{"datetime":[{"from":"2026-09-21T19:01:42Z","until":"2026-09-21T21:01:42Z"}]}}`)
+	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 }

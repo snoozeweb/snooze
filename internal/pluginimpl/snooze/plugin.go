@@ -89,6 +89,7 @@ var (
 	_ plugins.Filter           = (*Plugin)(nil)
 	_ plugins.DeleteHook       = (*Plugin)(nil)
 	_ plugins.UpdateHook       = (*Plugin)(nil)
+	_ plugins.WriteTransformer = (*Plugin)(nil)
 )
 
 func factory(meta plugins.Metadata) (plugins.Plugin, error) {
@@ -504,6 +505,31 @@ func bumpHits(ctx context.Context, host plugins.Host, r rule) error {
 	}
 	_, err := host.DB().IncMany(ctx, collectionName, "hits", condition.Equals("uid", r.UID), 1)
 	return err
+}
+
+// TransformWrite implements plugins.WriteTransformer as a validator: it
+// refuses (422) a create, replace or patch whose condition or time
+// constraints the pipeline could not parse. It never rewrites the document.
+//
+// A filter the pipeline cannot parse is dropped at every reload with a
+// "skipping invalid rule" warning and silences nothing, so accepting it is a
+// silent failure: on 2026-09-21 the upgrade-prod release filter for K8S ovh
+// was stored with a timezone-less datetime, answered 201, and never took
+// effect for the whole release. The checks are the ones docToRule applies at
+// reload, so the API and the pipeline cannot disagree about what is valid. A
+// PATCH that does not mention a field leaves it unchecked — it is unchanged.
+func (p *Plugin) TransformWrite(_ context.Context, doc map[string]any) error {
+	if raw, present := doc["condition"]; present {
+		if _, err := parseCondition(raw); err != nil {
+			return fmt.Errorf("condition: %w", err)
+		}
+	}
+	if raw, present := doc["time_constraints"]; present && raw != nil {
+		if _, err := parseTimeConstraints(raw); err != nil {
+			return fmt.Errorf("time_constraints: %w (send datetimes as RFC3339 with a timezone, e.g. 2026-09-21T19:01:42Z)", err)
+		}
+	}
+	return nil
 }
 
 // docToRule maps a raw snooze document into a parsed rule. Unknown or
