@@ -34,9 +34,7 @@ describe("describeActionError", () => {
   it("names the verb and subject, folding the cause into one sentence", () => {
     const err = new ApiError(500, "internal", "internal server error");
     const { summary, secondary } = describeActionError("acknowledge", "srv-prod-db-01", err);
-    expect(summary).toBe(
-      "Couldn't acknowledge srv-prod-db-01 — the server ran into a problem.",
-    );
+    expect(summary).toBe("Couldn't acknowledge srv-prod-db-01 — the server ran into a problem.");
     expect(secondary).toBe("internal server error");
   });
 });

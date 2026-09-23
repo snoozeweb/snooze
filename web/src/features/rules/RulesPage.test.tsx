@@ -250,9 +250,7 @@ describe("RulesPage", () => {
     );
     setup();
     // Indentation is a conditional gate, not just visual grouping — say so.
-    expect(
-      screen.getByText(/child rules only run if their parent matched/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/child rules only run if their parent matched/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /learn more/i })).toHaveAttribute(
       "href",
       "https://snoozeweb.github.io/snooze/general/rules",

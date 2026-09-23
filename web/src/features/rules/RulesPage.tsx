@@ -39,8 +39,7 @@ type RulesSearch = {
 // time-based Snoozes) from being confused. Factored into a map so the captions
 // have a single home (REFACTOR step).
 const TAB_HELP: Record<RulesTab, string> = {
-  rules:
-    "Transform a matching alert, then continue. Child rules only run if their parent matched.",
+  rules: "Transform a matching alert, then continue. Child rules only run if their parent matched.",
   aggregates: "Collapse duplicate alerts into one.",
   reject:
     "Drop a matching alert at ingest and return 422 to the sender (runs before Rules). For time-bounded silencing, use Snoozes.",

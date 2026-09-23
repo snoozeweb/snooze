@@ -39,8 +39,6 @@ describe("Badge", () => {
     // badge holds AA in light as well as dark).
     expect(el.className).not.toMatch(/critical/);
     expect(el.style.color).toBe("rgb(240, 73, 73)");
-    expect(el.style.background).toBe(
-      "color-mix(in srgb, #f04949 var(--badge-tint), transparent)",
-    );
+    expect(el.style.background).toBe("color-mix(in srgb, #f04949 var(--badge-tint), transparent)");
   });
 });

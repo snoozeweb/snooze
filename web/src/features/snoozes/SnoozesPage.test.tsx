@@ -156,17 +156,16 @@ describe("SnoozesPage", () => {
     // redirect to Upcoming (the first non-empty tab) instead.
     await waitFor(() => expect(screen.getByText("Next quarter freeze")).toBeInTheDocument());
     expect(screen.queryByText("Last quarter freeze")).not.toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /upcoming/i })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+    expect(screen.getByRole("tab", { name: /upcoming/i })).toHaveAttribute("aria-selected", "true");
   });
 
   it("stays on an explicitly-requested empty tab (deep link wins)", async () => {
     mswServer.use(
       http.get("/api/v1/snooze", () =>
         HttpResponse.json({
-          data: [{ uid: "s2", name: "Last quarter freeze", enabled: true, window_status: "expired" }],
+          data: [
+            { uid: "s2", name: "Last quarter freeze", enabled: true, window_status: "expired" },
+          ],
           meta: { count: 1, limit: 1000, offset: 0, total: 1 },
         }),
       ),
