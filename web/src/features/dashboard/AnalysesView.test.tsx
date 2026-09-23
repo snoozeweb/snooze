@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { act, render, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
@@ -120,13 +120,13 @@ function alertsValidateSearch(raw: Record<string, unknown>): {
   tab?: string;
   search?: string;
   record?: string;
-  analysis?: boolean;
+  pane?: string;
 } {
-  const out: { tab?: string; search?: string; record?: string; analysis?: boolean } = {};
+  const out: { tab?: string; search?: string; record?: string; pane?: string } = {};
   if (typeof raw["tab"] === "string") out.tab = raw["tab"];
   if (typeof raw["search"] === "string") out.search = raw["search"];
   if (typeof raw["record"] === "string") out.record = raw["record"];
-  if (typeof raw["analysis"] === "boolean") out.analysis = raw["analysis"];
+  if (typeof raw["pane"] === "string") out.pane = raw["pane"];
   return out;
 }
 
@@ -531,6 +531,20 @@ describe("AnalysesView", () => {
       expect(router.state.location.search).not.toHaveProperty("sort");
     });
 
+    it("makes a re-sort a history step, so Back restores the previous order", async () => {
+      mockRecords([CRIT_OPEN, WARN_NEW, CRIT_ACKED]);
+      const user = userEvent.setup();
+      const { router } = setup();
+      await rows();
+
+      await user.click(screen.getByRole("radio", { name: "Newest analysis" }));
+      expect(router.state.location.search).toMatchObject({ sort: "recent" });
+
+      act(() => router.history.back());
+      await waitFor(() => expect(router.state.location.search).not.toHaveProperty("sort"));
+      expect(order(screen.getAllByRole("article"))).toEqual(["srv-open", "srv-acked", "srv-warn"]);
+    });
+
     it("opens on the sort a shared link carries", async () => {
       mockRecords([CRIT_OPEN, WARN_NEW, CRIT_ACKED]);
       setup("/web/dashboard?view=analyses&sort=recent");
@@ -674,7 +688,7 @@ describe("AnalysesView", () => {
       await user.keyboard("{Enter}");
       expect(await screen.findByText("alerts page")).toBeInTheDocument();
       expect(router.state.location.pathname).toBe("/web/alerts");
-      expect(router.state.location.search).toMatchObject({ record: "r-disk", analysis: true });
+      expect(router.state.location.search).toMatchObject({ record: "r-disk", pane: "analysis" });
     });
   });
 
@@ -755,7 +769,7 @@ describe("AnalysesView", () => {
         // and the drawer closes itself when the uid isn't on the page it lands on.
         expect(href).toContain("tab=all");
         expect(href).toContain("record=r-disk");
-        expect(href).toContain("analysis=true");
+        expect(href).toContain("pane=analysis");
         // The whole analysed set fits on one alerts page, so the table shows
         // all of it and the drawer's prev/next walks the analysed alerts.
         expect(href).toContain('search=agentic? AND (NOT state = "close")');

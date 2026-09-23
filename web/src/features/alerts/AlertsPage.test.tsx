@@ -4,6 +4,7 @@ import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { toastStore } from "@/shared/ui/toast/useToast";
 import {
+  createBrowserHistory,
   createMemoryHistory,
   createRootRoute,
   createRoute,
@@ -17,15 +18,19 @@ import { mswServer } from "@/tests/msw/server";
 import { LiveAnnouncerProvider } from "@/shared/a11y/LiveAnnouncer";
 import { decodeConditionQ } from "@/lib/condition/decode";
 import { authStore } from "@/lib/auth/store";
+import { validateAlertsSearch } from "@/app/alertsSearch";
 import { AlertsPage } from "./AlertsPage";
 import { SILENCE_DESCRIPTIONS } from "./silencingGuide";
 
-function setup(pathname = "/web/alerts", { withSnoozesStub = false } = {}) {
+function setup(pathname = "/web/alerts", { withSnoozesStub = false, browserHistory = false } = {}) {
   const root = createRootRoute({ component: () => <Outlet /> });
   const alerts = createRoute({
     getParentRoute: () => root,
     path: "/web/alerts",
     component: AlertsPage,
+    // The production validator, so the page sees what it sees live —
+    // including the legacy `analysis=1` read as `pane=analysis`.
+    validateSearch: validateAlertsSearch,
   });
   // Only the "Snooze this alert" navigation test needs a real destination
   // route to land on — every other test leaves the tree minimal.
@@ -40,7 +45,12 @@ function setup(pathname = "/web/alerts", { withSnoozesStub = false } = {}) {
   /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
   const router = createRouter({
     routeTree: tree,
-    history: createMemoryHistory({ initialEntries: [pathname] }),
+    // Memory history never consults a blocker on Back/Forward — only the
+    // browser's popstate path does — so the draft guard's Back test runs on
+    // jsdom's real window.history.
+    history: browserHistory
+      ? (window.history.replaceState(null, "", pathname), createBrowserHistory())
+      : createMemoryHistory({ initialEntries: [pathname] }),
   } as any);
   /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -2029,15 +2039,51 @@ describe("AlertsPage inspector guards", () => {
     );
   }
 
-  it("drops a dangling ?analysis= that has no ?record= to ride with", async () => {
+  it("drops a dangling ?pane= that has no ?record= to ride with", async () => {
     // Left behind by a closed inspector, it would send the next plain row
-    // click to the Analysis tab instead of the Timeline.
+    // click to that tab instead of the Timeline.
     twoRows();
-    const router = setup("/web/alerts?analysis=1");
+    const router = setup("/web/alerts?pane=analysis");
     await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
     await waitFor(() =>
-      expect((router.state.location.search as { analysis?: unknown }).analysis).toBeUndefined(),
+      expect((router.state.location.search as { pane?: unknown }).pane).toBeUndefined(),
     );
+  });
+
+  it("writes the inspector tab to the URL as a history step", async () => {
+    const user = userEvent.setup();
+    twoRows();
+    const router = setup("/web/alerts?record=r1");
+
+    const drawer = await screen.findByRole("dialog");
+    await user.click(within(drawer).getByRole("tab", { name: /^Record$/ }));
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({ record: "r1", pane: "record" }),
+    );
+    expect(within(drawer).getByRole("tab", { name: /^Record$/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+
+    // Back walks the tabs before it closes anything.
+    act(() => router.history.back());
+    await waitFor(() => expect(router.state.location.search).not.toHaveProperty("pane"));
+    expect(router.state.location.search).toMatchObject({ record: "r1" });
+    expect(within(drawer).getByRole("tab", { name: /^Timeline$/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
+
+  it("drops the pane with the drawer, so the next row opens on Timeline", async () => {
+    const user = userEvent.setup();
+    twoRows();
+    const router = setup("/web/alerts?record=r1&pane=record");
+
+    const drawer = await screen.findByRole("dialog");
+    await user.click(within(drawer).getByRole("button", { name: /^close panel$/i }));
+    await waitFor(() => expect(router.state.location.search).not.toHaveProperty("record"));
+    expect(router.state.location.search).not.toHaveProperty("pane");
   });
 
   it("asks before prev/next retargets the drawer away from an open analysis editor", async () => {
@@ -2081,6 +2127,90 @@ describe("AlertsPage inspector guards", () => {
     await waitFor(() =>
       expect((router.state.location.search as { record?: string }).record).toBe("r2"),
     );
+  });
+});
+
+describe("AlertsPage analysis draft guard", () => {
+  function loginAsEditor() {
+    const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+    const body = btoa(
+      JSON.stringify({
+        sub: "tester",
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        permissions: ["ro_record", "rw_record", "rw_protected"],
+      }),
+    );
+    authStore.getState().login(`${header}.${body}.sig`);
+  }
+
+  function withAnalysis() {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "srv-1", severity: "critical", state: "open", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+      http.get("/api/v1/record/:uid/agentic", ({ params }) =>
+        HttpResponse.json({
+          uid: params["uid"] as string,
+          agentic: {
+            root_cause: { summary: "journald filled /var", confidence: "high" },
+            remediation_plan: { steps: [{ action: "Vacuum the journal", risk: "low" }] },
+          },
+        }),
+      ),
+    );
+  }
+
+  it("asks before Back leaves an open analysis editor, and stays on Keep editing", async () => {
+    // Every tab switch is now a history entry, so Back is one keypress from
+    // unmounting the editor with the draft in it.
+    const user = userEvent.setup();
+    loginAsEditor();
+    withAnalysis();
+    const router = setup("/web/alerts?record=r1", { browserHistory: true });
+
+    const drawer = await screen.findByRole("dialog");
+    await user.click(await within(drawer).findByRole("tab", { name: /^Analysis/ }));
+    await user.click(await within(drawer).findByRole("button", { name: "Edit" }));
+    expect(await screen.findByLabelText("Summary")).toBeInTheDocument();
+
+    act(() => router.history.back());
+    const confirm = await screen.findByRole("dialog", { name: "Discard this analysis draft?" });
+    await user.click(within(confirm).getByRole("button", { name: "Keep editing" }));
+    expect(router.state.location.search).toMatchObject({ record: "r1", pane: "analysis" });
+    expect(screen.getByLabelText("Summary")).toBeInTheDocument();
+
+    act(() => router.history.back());
+    await user.click(
+      within(await screen.findByRole("dialog", { name: "Discard this analysis draft?" })).getByRole(
+        "button",
+        { name: "Discard draft" },
+      ),
+    );
+    await waitFor(() => expect(router.state.location.search).not.toHaveProperty("pane"));
+  });
+
+  it("asks once, not twice, when a tab click leaves the editor", async () => {
+    const user = userEvent.setup();
+    loginAsEditor();
+    withAnalysis();
+    const router = setup("/web/alerts?record=r1&pane=analysis");
+
+    const drawer = await screen.findByRole("dialog");
+    await user.click(await within(drawer).findByRole("button", { name: "Edit" }));
+    expect(await screen.findByLabelText("Summary")).toBeInTheDocument();
+
+    await user.click(within(drawer).getByRole("tab", { name: /^Record$/ }));
+    await user.click(
+      within(await screen.findByRole("dialog", { name: "Discard this analysis draft?" })).getByRole(
+        "button",
+        { name: "Discard draft" },
+      ),
+    );
+    await waitFor(() => expect(router.state.location.search).toMatchObject({ pane: "record" }));
+    expect(screen.queryByRole("dialog", { name: "Discard this analysis draft?" })).toBeNull();
   });
 });
 

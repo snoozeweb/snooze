@@ -252,7 +252,7 @@ export const AnalysisRow = memo(function AnalysisRow({
   const linkSearch = {
     tab: "all",
     record: uid,
-    analysis: true,
+    pane: "analysis",
     search: openAlertSearch(uid, analysedTotal),
   } as const;
 

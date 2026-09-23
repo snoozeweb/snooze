@@ -103,8 +103,8 @@ export function AnalysesView() {
           void _previous;
           return next === "recent" ? { ...rest, sort: "recent" } : rest;
         },
-        // A re-sort is not a place to go Back to.
-        replace: true,
+        // Pushed, not replaced: the order is in the URL, so it is a state the
+        // operator can land on, and Back has to undo it like any other.
       });
     },
     [navigate],
@@ -189,7 +189,7 @@ export function AnalysesView() {
         search: {
           tab: "all",
           record: uid,
-          analysis: true,
+          pane: "analysis",
           search: openAlertSearch(uid, analysed),
         },
       });

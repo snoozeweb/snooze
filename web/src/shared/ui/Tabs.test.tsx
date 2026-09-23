@@ -4,6 +4,29 @@ import { afterEach, describe, expect, it } from "vitest";
 import { TabList, TabPanel, TabTrigger, Tabs } from "./Tabs";
 
 describe("Tabs", () => {
+  it("reports one click once, even while the controlled value lags behind", async () => {
+    // Radix fires onValueChange on mouse-down and again on the focus that
+    // follows. A URL-backed strip whose value has not caught up yet turned
+    // that second call into a second, identical history entry.
+    const user = userEvent.setup();
+    const seen: string[] = [];
+    render(
+      <Tabs value="rules" onValueChange={(v) => seen.push(v)}>
+        <TabList>
+          <TabTrigger value="rules">Rules</TabTrigger>
+          <TabTrigger value="aggregates">Aggregates</TabTrigger>
+        </TabList>
+      </Tabs>,
+    );
+    await user.click(screen.getByRole("tab", { name: "Aggregates" }));
+    expect(seen).toEqual(["aggregates"]);
+
+    // The value never moved (a host refused the switch): clicking again later
+    // is a new request and gets through.
+    await user.click(screen.getByRole("tab", { name: "Aggregates" }));
+    expect(seen).toEqual(["aggregates", "aggregates"]);
+  });
+
   it("renders the default tab's panel and switches on click", async () => {
     const user = userEvent.setup();
     render(

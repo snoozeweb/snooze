@@ -44,6 +44,28 @@ function useScrollEdges() {
   return ref;
 }
 
+/**
+ * Radix reports one click on a trigger twice: on mouse-down, and again on the
+ * focus that mouse-down moves onto the trigger. Uncontrolled, the second call
+ * is a no-op. Controlled from the URL, it is not — the route has not caught up
+ * with the first navigation yet, so the second one pushes an identical history
+ * entry and Back appears to do nothing. Both calls land in the same task, so
+ * a value repeated before the task ends is dropped; a later click on the same
+ * tab (after a switch was refused, say) still gets through.
+ */
+function useOnceOnValueChange(onValueChange: ((v: string) => void) | undefined) {
+  const lastInTask = useRef<string | null>(null);
+  if (onValueChange === undefined) return undefined;
+  return (v: string) => {
+    if (lastInTask.current === v) return;
+    lastInTask.current = v;
+    setTimeout(() => {
+      lastInTask.current = null;
+    }, 0);
+    onValueChange(v);
+  };
+}
+
 export function Tabs({
   defaultValue,
   value,
@@ -55,11 +77,12 @@ export function Tabs({
   onValueChange?: (v: string) => void;
   children: ReactNode;
 }) {
+  const handleValueChange = useOnceOnValueChange(onValueChange);
   return (
     <RT.Root
       {...(defaultValue !== undefined ? { defaultValue } : {})}
       {...(value !== undefined ? { value } : {})}
-      {...(onValueChange !== undefined ? { onValueChange } : {})}
+      {...(handleValueChange !== undefined ? { onValueChange: handleValueChange } : {})}
     >
       {children}
     </RT.Root>

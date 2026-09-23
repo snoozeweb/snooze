@@ -28,6 +28,7 @@ import { LoginCallback } from "@/features/auth/LoginCallback";
 import { setUnauthorizedHandler } from "@/lib/api/client";
 import { ensureFreshToken, startSessionRefresh } from "@/lib/auth/session";
 import { loginRedirectSearch } from "@/lib/auth/return-to";
+import { validateAlertsSearch, type AlertsSearchParams } from "./alertsSearch";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -552,81 +553,6 @@ const tenantRoutingRoute = createRoute({
     return out as TenantRoutingSearchParams;
   },
 });
-
-type AlertsSearchParams = {
-  state?: string;
-  severity?: string;
-  environment?: string;
-  search?: string;
-  page?: number;
-  orderby?: string;
-  asc?: boolean;
-  uid?: string;
-  // Lifecycle tab id and comma-separated environment UIDs. AlertsPage drives
-  // its filter state off these (and the dashboard drill-downs deep-link to
-  // them), so validateSearch must preserve them — otherwise they'd be
-  // stripped on every navigation through this route.
-  tab?: string;
-  env?: string;
-  // Open detail-drawer record key. AlertsPage syncs the modal detail drawer's
-  // open alert here so it's shareable / deep-linkable.
-  record?: string;
-  // Rides with `record`: open the inspector on the Analysis tab rather than
-  // Timeline. Written by the dashboard's Analyses panel, whose subject is the
-  // analysis rather than the alert.
-  analysis?: boolean;
-};
-
-/**
- * Exported for its own test: this is the one validator with real rules in it
- * (two spellings of a boolean, a key that is rejected when empty), and a route
- * definition is not reachable from a test.
- */
-export function validateAlertsSearch(raw: Record<string, unknown>): AlertsSearchParams {
-  {
-    const out: Record<string, unknown> = {};
-    const s = (k: string) => (typeof raw[k] === "string" ? raw[k] : undefined);
-    const n = (k: string) => {
-      const v = raw[k];
-      if (typeof v === "number") return v;
-      if (typeof v === "string" && /^\d+$/.test(v)) return Number(v);
-      return undefined;
-    };
-    const b = (k: string) => {
-      const v = raw[k];
-      if (typeof v === "boolean") return v;
-      if (v === "true") return true;
-      if (v === "false") return false;
-      return undefined;
-    };
-    const setIf = (k: string, v: unknown) => {
-      if (v !== undefined) out[k] = v;
-    };
-    setIf("state", s("state"));
-    setIf("severity", s("severity"));
-    setIf("environment", s("environment"));
-    setIf("search", s("search"));
-    setIf("page", n("page"));
-    setIf("orderby", s("orderby"));
-    setIf("asc", b("asc"));
-    setIf("uid", s("uid"));
-    setIf("tab", s("tab"));
-    setIf("env", s("env"));
-    // An empty `?record=` is not "open nothing", it's a key that matches no
-    // row — the same reason the notifications route refuses an empty
-    // `?details=`. Reject it the way an absent param is rejected.
-    const recordKey = s("record");
-    if (recordKey !== undefined && recordKey !== "") out["record"] = recordKey;
-    // Only the truthy spellings survive. `analysis=false` IS the default open,
-    // so keeping it round-trips as litter in every link the page builds from
-    // then on. A deep link here is as likely to be typed as clicked, hence the
-    // `1` forms beside `b()`'s `true` (AlertsPage reads the same set).
-    if (b("analysis") === true || raw["analysis"] === 1 || raw["analysis"] === "1") {
-      out["analysis"] = true;
-    }
-    return out as AlertsSearchParams;
-  }
-}
 
 const alertsRoute = createRoute({
   getParentRoute: () => webLayoutRoute,

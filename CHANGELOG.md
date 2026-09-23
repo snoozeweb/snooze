@@ -69,7 +69,7 @@
   says something above it when it hits its 500-row ceiling.
   The view is a deep link (`/web/dashboard?view=analyses`), and any row there —
   or any other link — opens an alert straight onto its Analysis tab through
-  `/web/alerts?tab=all&record=<uid>&analysis=1`. The tile and the view are
+  `/web/alerts?tab=all&record=<uid>&pane=analysis`. The tile and the view are
   shown only to sessions that can read records. Leaving the inspector's editor
   by prev/next, a tab switch, or a row
   that paged out asks before discarding the draft, and a draft can no longer
@@ -220,6 +220,15 @@
 
 ### Fixed
 
+- **Back skipped URL changes.** Switching the dashboard view from the
+  Overview and re-sorting the Analyses view replaced the history entry, so
+  Back left the dashboard instead of undoing them. Every tab strip driven by
+  the URL (Rules, Snoozes, Users, Notifications…) pushed two identical entries
+  per click, so the first Back seemed to do nothing. Both now push exactly one
+  entry. The alert inspector's tab is now in the URL as `?pane=` (`flow`,
+  `analysis`, `deliveries`, `record`), so Back walks the tabs and a copied link
+  reopens on the same one; the older `?analysis=1` still works. Back, a
+  sidebar link or a close with an unsaved analysis draft now asks first.
 - **Every drawer blocked the page it was opened from.** They were modal
   dialogs: a fixed full-screen scrim at `--z-modal` covered the whole app, so
   every control behind one was inert — clicking "next page" with the alert

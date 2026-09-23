@@ -199,7 +199,9 @@ title: **Overview** and **Analyses**. The switch shows the analysed count. The
 "Right now" tile strip also counts analysed alerts, on an **Analysed** tile
 ("17 of 42 open") that opens the view when clicked.
 
-The view rides in the URL, so `/web/dashboard?view=analyses` is a deep link.
+The view and the list's order ride in the URL, so
+`/web/dashboard?view=analyses&sort=recent` is a deep link and Back undoes a
+view switch or a re-sort.
 Both surfaces read the record collection, so they are offered only to an
 identity holding `ro_record` (or `rw_record`). A stats-only role gets the
 Overview, with no switch and no tile.
@@ -232,6 +234,13 @@ Enter opens the alert, and Space or E expands. **Open alert** lands on the
 alert with its inspector on the Analysis tab, filtered to the analysed alerts,
 so the inspector's previous/next walks the queue. With more analysed alerts
 than one alerts page holds, it pins the table to that one alert instead.
+
+The inspector's tab is in the URL too, as `pane` (`flow`, `analysis`,
+`deliveries` or `record`; Timeline when absent), so
+`/web/alerts?record=<uid>&pane=analysis` opens an alert on its analysis and
+Back steps through the tabs you visited. The older `analysis=1` link still
+works. Back, a sidebar link or closing the inspector with an unsaved analysis
+draft asks before it discards the draft.
 
 ## Protected fields
 

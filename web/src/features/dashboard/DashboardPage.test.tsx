@@ -444,6 +444,22 @@ describe("DashboardPage", () => {
       await waitFor(() => expect(router.state.location.search).toMatchObject({ view: "analyses" }));
     });
 
+    it("makes a view switch started on the Overview a Back step too", async () => {
+      // It used to replace the entry, so Back from the Analyses view left the
+      // dashboard instead of returning to the Overview.
+      mockAnalyses();
+      const user = userEvent.setup();
+      const { router } = setup();
+
+      const viewSwitch = screen.getByRole("group", { name: "Dashboard view" });
+      await user.click(within(viewSwitch).getByRole("button", { name: /^Analyses/ }));
+      await screen.findByText("Orphaned blobs filled /var");
+
+      act(() => router.history.back());
+      await waitFor(() => expect(router.state.location.search).not.toHaveProperty("view"));
+      expect(router.state.location.pathname).toBe("/web/dashboard");
+    });
+
     it("counts the analysed alerts on a Right-now tile that opens the view", async () => {
       mockAnalyses();
       const user = userEvent.setup();

@@ -42,6 +42,17 @@ export type AlertRowDetailProps = {
    */
   defaultTab?: AlertDetailTab;
   /**
+   * The tab on screen, when the host owns it (the alerts page keeps it in the
+   * URL as `?pane=`, so Back walks the tabs and a link reopens on the same
+   * one). Leave it unset for an inspector that keeps its own tab.
+   */
+  tab?: AlertDetailTab | undefined;
+  /**
+   * Asked for a tab switch once any unsaved analysis draft has been dealt
+   * with. Required for `tab` to change at all.
+   */
+  onTabChange?: ((tab: AlertDetailTab) => void) | undefined;
+  /**
    * Told when the Analysis editor opens or closes (and `false` on unmount).
    * The host owns the affordances that would destroy it from outside —
    * prev/next on the drawer, a row click in the grid — and can only guard them
@@ -86,6 +97,8 @@ function stripPrivateKeys(row: Record<string, unknown>): Record<string, unknown>
 export function AlertRowDetail({
   row,
   defaultTab = "timeline",
+  tab: controlledTab,
+  onTabChange,
   onEditingChange,
 }: AlertRowDetailProps) {
   const cleaned = stripPrivateKeys(row as unknown as Record<string, unknown>);
@@ -152,7 +165,12 @@ export function AlertRowDetail({
   // own: a value whose trigger does not exist (a deep link to Analysis on a
   // uid-less row) selects NOTHING — five tab stops and no panel — and a tab
   // switch silently unmounts an open editor with an unsaved draft in it.
-  const [tab, setTab] = useState<AlertDetailTab>(defaultTab);
+  const [ownTab, setOwnTab] = useState<AlertDetailTab>(defaultTab);
+  const tab = controlledTab ?? ownTab;
+  const setTab = (next: AlertDetailTab) => {
+    if (onTabChange) onTabChange(next);
+    else setOwnTab(next);
+  };
   const [editing, setEditing] = useState(false);
   const [pendingTab, setPendingTab] = useState<AlertDetailTab | null>(null);
   const hasTrigger = (t: AlertDetailTab) =>
@@ -319,7 +337,13 @@ export function AlertRowDetail({
           if (!open) setPendingTab(null);
         }}
         onDiscard={() => {
-          if (pendingTab !== null) setTab(pendingTab);
+          if (pendingTab !== null) {
+            // Said before the switch, so a host guarding navigation away
+            // from the editor does not ask a second time for the draft the
+            // operator just discarded.
+            handleEditingChange(false);
+            setTab(pendingTab);
+          }
           setPendingTab(null);
         }}
         description="Leaving the Analysis tab closes the editor. Anything you have written here is not saved."

@@ -305,7 +305,7 @@ test.describe("alert agentic analysis", () => {
 
     const drawer = page.getByRole("dialog", { name: host });
     await expect(drawer).toBeVisible();
-    // ?analysis=1 opens the inspector straight onto the tab.
+    // The legacy ?analysis=1 still opens the inspector straight onto the tab.
     const tab = drawer.getByRole("tab", { name: "Analysis" });
     await expect(tab).toHaveAttribute("aria-selected", "true");
     // Seeded through the API by a tool, so the byline says a model wrote it.
@@ -371,7 +371,7 @@ test.describe("alert agentic analysis", () => {
     // The row's whole point is to be opened, on the tab it is about.
     await row.getByRole("link", { name: "Open alert" }).click({ force: true });
     await expect(page).toHaveURL(new RegExp(`record=${uid}`));
-    await expect(page).toHaveURL(/analysis=/);
+    await expect(page).toHaveURL(/pane=analysis/);
     const drawer = page.getByRole("dialog", { name: host });
     await expect(drawer).toBeVisible();
     await expect(drawer.getByRole("tab", { name: "Analysis" })).toHaveAttribute(

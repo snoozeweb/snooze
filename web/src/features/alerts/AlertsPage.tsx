@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useBlocker, useNavigate, useSearch } from "@tanstack/react-router";
 import { DataTable, type RowAction } from "@/shared/ui/DataTable";
 import type { ContextMenuItem } from "@/shared/ui/DataTableContextMenu";
 import { EmptyState } from "@/shared/ui/EmptyState";
@@ -35,7 +35,8 @@ import {
   useBulkStateRecord,
   encodeUidsAsQ,
 } from "./api";
-import { AlertRowDetail, DiscardAnalysisDraftDialog } from "./AlertRowDetail";
+import type { AlertPane } from "@/app/alertsSearch";
+import { AlertRowDetail, DiscardAnalysisDraftDialog, type AlertDetailTab } from "./AlertRowDetail";
 import { AlertFlowChart } from "./AlertFlowChart";
 import { ActiveFilters } from "./ActiveFilters";
 import { AlertsFilters, type AlertFilters } from "./Filters";
@@ -180,12 +181,13 @@ type AlertsSearch = AlertFilters & {
    *  drawer through the URL so an open alert is shareable / deep-linkable. */
   record?: string;
   /**
-   * Open the inspector on the Analysis tab instead of Timeline. Set by deep
-   * links whose subject is the analysis rather than the alert — the dashboard's
-   * Analyses panel is the one producer. Meaningless without `record`, and
-   * dropped together with it when the drawer closes.
+   * The inspector tab on screen; absent is Timeline. Pushed on every tab
+   * switch, so Back walks the tabs before it closes the drawer, and a shared
+   * link reopens on the tab it was copied from. Meaningless without
+   * `record`, and dropped together with it when the drawer closes. The router
+   * also reads the legacy `analysis=1` into `pane=analysis`.
    */
-  analysis?: boolean | "1";
+  pane?: AlertPane;
   /**
    * SearchBar DSL text. Seeds local state on mount and re-seeds on external
    * URL changes (browser nav, deep-links such as the host hyperlink in Teams
@@ -195,19 +197,6 @@ type AlertsSearch = AlertFilters & {
    */
   search?: string;
 };
-
-/**
- * Whether `?analysis=` asks for the Analysis tab.
- *
- * It takes `unknown` because search params arrive from a URL a human or
- * another product can type: the router hands back `true` for the `analysis=true`
- * the dashboard's Link writes, but `1` or `"1"` for a hand-written one, and all
- * three mean the same thing. Anything else (including an explicit `false`) is
- * the default Timeline open.
- */
-function wantsAnalysisTab(value: unknown): boolean {
-  return value === true || value === "1" || value === 1 || value === "true";
-}
 
 // Note: the SearchBar's text is NOT written to the URL on every keystroke.
 // TanStack Router's navigate() is async — that one-render lag let React snap
@@ -333,6 +322,21 @@ function buildQueryParam(
   const combined: Condition =
     parts.length === 1 ? (parts[0] as Condition) : { type: "AND", args: parts };
   return encodeConditionQ(combined);
+}
+
+/**
+ * Whether a navigation takes the inspector off an open Analysis editor: to
+ * another page, another alert (or none), or another tab. The editor only
+ * exists on `pane=analysis`, so any other destination unmounts it.
+ */
+function leavesAnalysisEditor(
+  current: { pathname: string; search: unknown },
+  next: { pathname: string; search: unknown },
+): boolean {
+  if (current.pathname !== next.pathname) return true;
+  const from = current.search as AlertsSearch;
+  const to = next.search as AlertsSearch;
+  return to.record !== from.record || to.pane !== "analysis";
 }
 
 export function AlertsPage() {
@@ -524,23 +528,48 @@ export function AlertsPage() {
   // Open detail record (drives the modal detail drawer, synced to the URL as
   // ?record=). Undefined = no drawer open.
   const record = search.record;
-  // ?analysis= rides along with ?record= and only picks the tab the inspector
-  // opens on.
-  const openOnAnalysis = wantsAnalysisTab(search.analysis);
-  // `analysis` describes how an inspector OPENS, so it is meaningless on its
-  // own. Left in the URL without a `record` — a hand-edited link, or a close
-  // that raced the navigation — it silently retargets the next plain row click
-  // to the Analysis tab. Strip it as soon as it is on its own.
+  // ?pane= rides along with ?record= and names the inspector tab.
+  const pane: AlertDetailTab = search.pane ?? "timeline";
+  // `pane` describes the open inspector, so it is meaningless on its own. Left
+  // in the URL without a `record` — a hand-edited link, or a close that raced
+  // the navigation — it silently retargets the next plain row click to that
+  // tab. Strip it as soon as it is on its own.
   useEffect(() => {
-    if (search.record === undefined && search.analysis !== undefined) {
-      updateSearch({ analysis: undefined } as unknown as Partial<AlertsSearch>, { replace: true });
+    if (search.record === undefined && search.pane !== undefined) {
+      updateSearch({ pane: undefined } as unknown as Partial<AlertsSearch>, { replace: true });
     }
-  }, [search.record, search.analysis, updateSearch]);
+  }, [search.record, search.pane, updateSearch]);
+  const handlePaneChange = useCallback(
+    (next: AlertDetailTab) =>
+      updateSearch({
+        pane: next === "timeline" ? undefined : next,
+      } as unknown as Partial<AlertsSearch>),
+    [updateSearch],
+  );
 
   // Whether the inspector currently has an analysis editor open, and the
   // retarget waiting on the answer. AlertRowDetail reports the first; the
   // second is the key prev/next asked for and did not get.
-  const [detailEditing, setDetailEditing] = useState(false);
+  const [detailEditing, setDetailEditingState] = useState(false);
+  // The same fact, readable synchronously: the navigation guard below runs
+  // inside the navigate() a discard triggers, before React has re-rendered
+  // with the state update the discard made.
+  const detailEditingRef = useRef(false);
+  const setDetailEditing = useCallback((editing: boolean) => {
+    detailEditingRef.current = editing;
+    setDetailEditingState(editing);
+  }, []);
+  // Back/Forward, a sidebar link, a close: anything that navigates the open
+  // editor away. The in-page moves (another row, prev/next, a tab) ask before
+  // they navigate and clear the flag on discard, so this only ever catches
+  // what they cannot — the browser's own buttons above all, now that every
+  // tab switch is a history entry.
+  const draftBlocker = useBlocker({
+    shouldBlockFn: ({ current, next }) =>
+      detailEditingRef.current && leavesAnalysisEditor(current, next),
+    enableBeforeUnload: () => detailEditingRef.current,
+    withResolver: true,
+  });
   const [pendingDetailsKey, setPendingDetailsKey] = useState<string | null>(null);
 
   // Pause auto-refresh while the detail drawer is open — refetching swaps the
@@ -1558,16 +1587,16 @@ export function AlertsPage() {
   const columns = useMemo(() => columnsForConfig(config?.columns), [config?.columns]);
   const rowKey = useCallback((r: Record_) => recordKey(r), []);
   const rowAccent = useCallback((r: Record_) => severityToken(r.severity ?? ""), []);
-  // The default (Timeline) is passed as the absent prop rather than spelled
-  // out, so the ordinary open keeps rendering exactly what it rendered before.
   const renderDetails = useCallback(
-    (row: Record_) =>
-      openOnAnalysis ? (
-        <AlertRowDetail row={row} defaultTab="analysis" onEditingChange={setDetailEditing} />
-      ) : (
-        <AlertRowDetail row={row} onEditingChange={setDetailEditing} />
-      ),
-    [openOnAnalysis],
+    (row: Record_) => (
+      <AlertRowDetail
+        row={row}
+        tab={pane}
+        onTabChange={handlePaneChange}
+        onEditingChange={setDetailEditing}
+      />
+    ),
+    [pane, handlePaneChange, setDetailEditing],
   );
   // The Flow trace — the one view that answers "why did this fire, and what
   // did it wake up?" — was three interactions deep behind the drawer's Flow
@@ -1597,7 +1626,7 @@ export function AlertsPage() {
       updateSearch(
         {
           record: k ?? undefined,
-          ...(k === null ? { analysis: undefined } : {}),
+          ...(k === null ? { pane: undefined } : {}),
         } as unknown as Partial<AlertsSearch>,
         // A close of a drawer that never resolved to a row is the table
         // correcting a stale deep link, not the operator closing anything —
@@ -1918,6 +1947,17 @@ export function AlertsPage() {
           if (next !== null) applyDetailsKey(next);
         }}
         description="Moving to another alert closes the editor. Anything you have written here is not saved."
+      />
+      <DiscardAnalysisDraftDialog
+        open={draftBlocker.status === "blocked"}
+        onOpenChange={(open) => {
+          if (!open) draftBlocker.reset?.();
+        }}
+        onDiscard={() => {
+          setDetailEditing(false);
+          draftBlocker.proceed?.();
+        }}
+        description="Leaving closes the analysis editor. Anything you have written here is not saved."
       />
       {dialog ? (
         <ActionDialog

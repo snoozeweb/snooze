@@ -89,14 +89,11 @@ export function DashboardPage() {
   const view: DashboardView =
     search.view === "analyses" && canReadRecords ? "analyses" : "overview";
 
-  // Whether the view arrived in the URL. A switch away from a view somebody
-  // deep-linked into is a step worth keeping: replacing it makes Back leave
-  // the dashboard altogether. A switch the operator started here is not.
-  const enteredWithView = useRef(search.view !== undefined).current;
-
   // Switching views rewrites one param and keeps the rest: the window the
   // operator picked is still in the URL when they come back to the Overview,
-  // even though the picker is off screen meanwhile.
+  // even though the picker is off screen meanwhile. Every switch is pushed —
+  // a view is a place the URL can name, so Back returns to the previous one
+  // rather than leaving the dashboard.
   const setView = useCallback(
     (next: DashboardView) => {
       void (navigate as unknown as NavigateFn)({
@@ -109,10 +106,9 @@ export function DashboardPage() {
           void _previous;
           return next === "analyses" ? { ...rest, view: "analyses" } : rest;
         },
-        replace: !enteredWithView,
       });
     },
-    [navigate, enteredWithView],
+    [navigate],
   );
 
   // Derive the picker value from the URL. No `range` param → today's default
@@ -146,7 +142,15 @@ export function DashboardPage() {
           : { range: next.range };
       void (navigate as unknown as NavigateFn)({
         to: "/web/dashboard",
-        search: () => nextSearch,
+        // Only the window is rewritten: the Analyses order rides along, so
+        // picking a range does not reset it behind the operator's back.
+        search: (prev) => {
+          const { range: _r, from: _f, to: _t, ...rest } = prev ?? {};
+          void _r;
+          void _f;
+          void _t;
+          return { ...rest, ...nextSearch };
+        },
       });
     },
     [navigate],
