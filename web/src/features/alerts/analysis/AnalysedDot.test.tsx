@@ -44,6 +44,12 @@ describe("AnalysedDot", () => {
     );
     rerender(<AnalysedDot record={analysed("high", "self_resolved")} />);
     expect(screen.getByRole("img", { name: /high confidence/ })).toHaveAttribute("data-tone", "ok");
+    // A fix somebody applied reads "done", in a hue apart from "recovered".
+    rerender(<AnalysedDot record={analysed("high", "resolved")} />);
+    expect(screen.getByRole("img", { name: /high confidence/ })).toHaveAttribute(
+      "data-tone",
+      "done",
+    );
     rerender(<AnalysedDot record={analysed("high", "monitoring")} />);
     expect(screen.getByRole("img", { name: /high confidence/ })).toHaveAttribute(
       "data-tone",
@@ -64,7 +70,7 @@ describe("AnalysedDot", () => {
     ).toBeInTheDocument();
   });
 
-  it("ignores a verdict outside the three known values", () => {
+  it("ignores a verdict outside the known values", () => {
     render(<AnalysedDot record={analysed("high", "panic")} />);
     const dot = screen.getByRole("img", { name: "Analysed · high confidence" });
     expect(dot).toHaveAttribute("data-tone", "neutral");

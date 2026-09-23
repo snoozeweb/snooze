@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"sort"
 
@@ -28,7 +30,7 @@ func newRecordAgenticCmd() *cobra.Command {
 		Long: "Manage the protected `agentic` subtree on an alert: the AI-authored\n" +
 			"root cause and remediation plan. Writing requires the rw_protected permission.",
 	}
-	cmd.AddCommand(newAgenticGetCmd(), newAgenticSetCmd(), newAgenticClearCmd())
+	cmd.AddCommand(newAgenticGetCmd(), newAgenticSetCmd(), newAgenticStatusCmd(), newAgenticClearCmd())
 	return cmd
 }
 
@@ -106,6 +108,78 @@ func newAgenticSetCmd() *cobra.Command {
 		"Tool tag recorded in analysis.source (ignored when the payload sets its own)")
 	c.Flags().StringVarP(&file, "file", "f", "",
 		"Read the JSON payload from a file, or - for stdin")
+	return c
+}
+
+// newAgenticStatusCmd implements `snooze record agentic status <uid> <status>`:
+// change only the plan's verdict (remediation_plan.status) and keep the rest of
+// the stored analysis. The endpoint replaces the whole subtree, so this is a
+// read-modify-write: fetch, drop the server-stamped `analysis` provenance (a
+// client may not send it), set the status, validate locally, PUT. The server
+// re-stamps the provenance, so the analysis then reads as written by the
+// caller, now — which is who changed the verdict and when.
+func newAgenticStatusCmd() *cobra.Command {
+	var source string
+	c := &cobra.Command{
+		Use:   "status <uid> <status>",
+		Short: "Set the plan's verdict: action_required, monitoring, self_resolved or resolved",
+		Long: "Change remediation_plan.status on the stored analysis, keeping everything\n" +
+			"else. Write `resolved` once a fix has been applied. Requires rw_protected.",
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			uid, status := args[0], args[1]
+			rt := runtimeFrom(cmd.Context())
+			cl, err := rt.buildClient()
+			if err != nil {
+				return err
+			}
+			var cur agenticEnvelope
+			if err := cl.Get(cmd.Context(), agenticPath(uid), &cur); err != nil {
+				if apiErr, ok := snoozeclient.IsAPIError(err); ok && apiErr.Status == http.StatusNotFound {
+					return fmt.Errorf("%s has no agentic analysis to update (%s)", uid, apiErr.Message)
+				}
+				return renderAgenticError(cmd, err)
+			}
+			if len(cur.Agentic) == 0 {
+				return fmt.Errorf("%s has no agentic analysis to update", uid)
+			}
+			doc := cur.Agentic
+			delete(doc, "analysis")
+			plan, _ := doc["remediation_plan"].(map[string]any)
+			if plan == nil {
+				return fmt.Errorf("%s: the stored analysis has no remediation_plan", uid)
+			}
+			previous, _ := plan["status"].(string)
+			plan["status"] = status
+			raw, err := json.Marshal(doc)
+			if err != nil {
+				return err
+			}
+			req, err := snoozetypes.DecodeAgenticRequest(raw)
+			if err != nil {
+				var verrs snoozetypes.ValidationErrors
+				if errors.As(err, &verrs) {
+					printFieldErrors(cmd, verrs.Details())
+					return errors.New("the updated analysis failed schema validation")
+				}
+				return fmt.Errorf("decode stored analysis: %w", err)
+			}
+			req.Source = source
+			var resp agenticEnvelope
+			if err := cl.Put(cmd.Context(), agenticPath(uid), req, &resp); err != nil {
+				return renderAgenticError(cmd, err)
+			}
+			if rt.flags != nil && rt.flags.JSON {
+				return renderAny(cmd, rt, resp.Agentic)
+			}
+			if previous == "" {
+				previous = "(none)"
+			}
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Verdict on %s: %s -> %s\n", uid, previous, status)
+			return nil
+		},
+	}
+	c.Flags().StringVar(&source, "source", "snooze-cli", "Tool tag recorded in analysis.source")
 	return c
 }
 

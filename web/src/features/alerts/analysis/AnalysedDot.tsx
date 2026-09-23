@@ -7,7 +7,8 @@
 // one pixel from the severity badge, and a confidence painted green / amber /
 // red there read as a second severity (a low-confidence cause was a red dot
 // beside a red Critical). The verdict is a state the operator acts on — amber
-// "act on it", green "recovered on its own", neutral otherwise — and the full
+// "act on it", green "recovered on its own", sage "somebody fixed it" (the
+// closed-state hue), neutral otherwise — and the full
 // sentence, confidence included, lives in `title`/`aria-label`, so the meaning
 // survives both a screen reader and a colour-blind reader.
 import type { Record_ } from "../types";
@@ -19,11 +20,12 @@ export type AnalysedDotProps = {
   record: Record_;
 };
 
-type DotTone = "ok" | "warning" | "neutral";
+type DotTone = "ok" | "done" | "warning" | "neutral";
 
 const TONES: Record<PlanStatus, DotTone> = {
   action_required: "warning",
   self_resolved: "ok",
+  resolved: "done",
   monitoring: "neutral",
 };
 

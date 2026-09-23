@@ -3011,10 +3011,12 @@ components:
       properties:
         status:
           type: string
-          enum: [action_required, self_resolved, monitoring]
+          enum: [action_required, self_resolved, monitoring, resolved]
           description: >
-            The verdict for on-call: act now, it already recovered (safe to
-            close), or keep watching. Optional.
+            The verdict for on-call: act now, it already recovered on its own
+            (safe to close), keep watching, or a fix was applied (`resolved` —
+            written by whoever applied it, typically after acting on an
+            `action_required` plan). Optional.
         steps:
           type: array
           minItems: 1

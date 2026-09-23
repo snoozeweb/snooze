@@ -15,9 +15,10 @@ import (
 
 // newRecordCmd builds the `snooze record …` subtree: `post <json>` to ingest
 // an alert, `list` to fetch recent records, `show <uid>` to inspect one
-// record, `ack` / `close` to drive state transitions and `assign` / `release`
-// to change ownership via the comment endpoint, `owners` to count alerts per
-// owner, and `bulk` for the query-wide variants.
+// record, `ack` / `close` / `reopen` / `escalate` to drive state transitions,
+// `assign` / `release` to change ownership and `comment` to add a note (all
+// via the comment endpoint), `comments` to read the timeline, `owners` to count
+// alerts per owner, and `bulk` for the query-wide variants.
 func newRecordCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "record",
@@ -29,6 +30,10 @@ func newRecordCmd() *cobra.Command {
 		newRecordShowCmd(),
 		newRecordAckCmd(),
 		newRecordCloseCmd(),
+		newRecordReopenCmd(),
+		newRecordEscalateCmd(),
+		newRecordCommentCmd(),
+		newRecordCommentsCmd(),
 		newRecordAssignCmd(),
 		newRecordReleaseCmd(),
 		newRecordOwnersCmd(),
@@ -63,26 +68,58 @@ func newRecordPostCmd() *cobra.Command {
 	}
 }
 
-// newRecordListCmd implements `snooze record list [--limit N]`.
+// newRecordListCmd implements `snooze record list [filters] [--limit N]`.
+// Without a filter it lists the most recent alerts; the filter flags build one
+// server-side condition (see recordListFilter), so "what is firing on host X"
+// is a flag, not a hand-written condition.
 func newRecordListCmd() *cobra.Command {
-	var limit int
+	var (
+		limit  int
+		filter recordListFilter
+	)
 	c := &cobra.Command{
 		Use:   "list",
-		Short: "List recent alerts",
+		Short: "List recent alerts (filter by state, host, severity, owner)",
+		Long: "List alerts, newest first. Filters AND together:\n" +
+			"  --active              what the web Alerts tab shows: not acknowledged,\n" +
+			"                        closed, shelved or snoozed\n" +
+			"  --state s[,s…]        open (never touched or re-opened), ack, esc, close, shelved\n" +
+			"  --host / --severity   exact match\n" +
+			"  --owner me|none|login owned by you, by nobody, or by <login>\n" +
+			"  -c '<json>'           any extra condition, same syntax as `snooze query`",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			rt := runtimeFrom(cmd.Context())
 			cl, err := rt.buildClient()
 			if err != nil {
 				return err
 			}
-			docs, err := listCollection(cmd.Context(), cl, "record", limit)
+			cond, err := filter.build(rt, cl)
 			if err != nil {
 				return err
 			}
-			return renderList(cmd, rt, "record", docs)
+			q := ""
+			if !cond.IsZero() {
+				raw, err := json.Marshal(cond)
+				if err != nil {
+					return err
+				}
+				q = string(raw)
+			}
+			path, err := buildQueryPath("record", q, limit, 0, "date_epoch", "false")
+			if err != nil {
+				return err
+			}
+			var resp struct {
+				Data []map[string]any `json:"data"`
+			}
+			if err := cl.Get(cmd.Context(), path, &resp); err != nil {
+				return err
+			}
+			return renderList(cmd, rt, "record", resp.Data)
 		},
 	}
 	c.Flags().IntVarP(&limit, "limit", "n", 50, "Maximum number of records to return")
+	filter.register(c)
 	return c
 }
 
@@ -157,6 +194,9 @@ func postRecordTransition(cmd *cobra.Command, uid, ctype, message, defaultMsg st
 var recordCommentVerbs = map[string]string{
 	"ack":     "Acked",
 	"close":   "Closed",
+	"open":    "Re-opened",
+	"esc":     "Re-escalated",
+	"comment": "Commented on",
 	"assign":  "Assigned",
 	"release": "Released",
 }

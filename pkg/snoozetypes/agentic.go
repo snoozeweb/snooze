@@ -45,10 +45,14 @@ const (
 
 // Plan verdicts accepted on RemediationPlan.Status: what the alert needs from
 // on-call right now, stated once instead of being inferred from step 1's prose.
+// `self_resolved` recovered on its own; `resolved` means somebody — a human or
+// an agent — applied the fix, and is what a resolver writes after acting on an
+// `action_required` plan.
 const (
 	PlanActionRequired = "action_required"
 	PlanSelfResolved   = "self_resolved"
 	PlanMonitoring     = "monitoring"
+	PlanResolved       = "resolved"
 )
 
 // Step timings accepted on Step.When: `now` is on-call work on this alert,
@@ -84,7 +88,7 @@ const (
 const (
 	confidenceEnum = "high|medium|low"
 	riskEnum       = "low|medium|high"
-	planStatusEnum = "action_required|self_resolved|monitoring"
+	planStatusEnum = "action_required|self_resolved|monitoring|resolved"
 	stepWhenEnum   = "now|follow_up"
 )
 
@@ -130,7 +134,8 @@ type RootCause struct {
 
 // RemediationPlan is the "what to do about it" half of the analysis.
 type RemediationPlan struct {
-	// Status is the verdict: action_required | self_resolved | monitoring.
+	// Status is the verdict: action_required | self_resolved | monitoring |
+	// resolved.
 	// Optional; absent means the plan does not say.
 	Status string `json:"status,omitempty"`
 	// Steps are the ordered fix actions. At least one is required.
@@ -293,7 +298,7 @@ func validateRootCause(rc *RootCause) ValidationErrors {
 func validateRemediationPlan(rp *RemediationPlan) ValidationErrors {
 	var errs ValidationErrors
 	switch rp.Status {
-	case "", PlanActionRequired, PlanSelfResolved, PlanMonitoring:
+	case "", PlanActionRequired, PlanSelfResolved, PlanMonitoring, PlanResolved:
 	default:
 		errs = append(errs, FieldError{"remediation_plan.status", "must be one of " + planStatusEnum})
 	}

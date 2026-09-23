@@ -214,6 +214,21 @@ snooze record bulk state ack -c '["=","host","db-1"]'
 `snooze record list` shows an `owner` column. The `bulk` commands refuse to run
 without a target: pass a condition (`-c`) or, explicitly, `--all`.
 
+`snooze record list` filters without a hand-written condition, newest first:
+
+```bash
+snooze record list --active                  # what the Alerts tab shows
+snooze record list --owner me --state ack    # what I am working on
+snooze record list --active --owner none     # what nobody is working on
+snooze record list --host db-1 --severity critical -c '["CONTAINS","message","disk"]'
+```
+
+`--state` takes `open` (never touched or re-opened), `ack`, `esc`, `close`,
+`shelved`; `--owner` takes `me`, `none` or a login. The rest of the lifecycle is
+there too: `snooze record reopen <uid>`, `snooze record escalate <uid>`,
+`snooze record comment <uid> -m "…"` (a note, no state change) and
+`snooze record comments <uid>` (the timeline, oldest first).
+
 Alerts created before ownership existed get an owner from their history with a
 one-shot migration: run `snooze-server migrate owners` once after upgrading
 (it is safe to re-run). Acknowledged alerts become owned by their

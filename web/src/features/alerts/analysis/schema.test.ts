@@ -254,13 +254,19 @@ describe("validateAnalysisForm", () => {
 
   it("closes the plan status enum, and lets it be absent", () => {
     const form = validForm();
-    for (const status of ["", "action_required", "self_resolved", "monitoring"] as const) {
+    for (const status of [
+      "",
+      "action_required",
+      "self_resolved",
+      "monitoring",
+      "resolved",
+    ] as const) {
       form.remediation_plan.status = status;
       expect(validateAnalysisForm(form)).toEqual({});
     }
-    form.remediation_plan.status = "resolved" as never;
+    form.remediation_plan.status = "fixed" as never;
     expect(validateAnalysisForm(form)).toEqual({
-      "remediation_plan.status": "must be one of action_required|self_resolved|monitoring",
+      "remediation_plan.status": "must be one of action_required|self_resolved|monitoring|resolved",
     });
   });
 
@@ -391,7 +397,7 @@ describe("analysisToForm", () => {
     const form = analysisToForm({
       root_cause: { summary: "boom", confidence: "certain" as never },
       remediation_plan: {
-        status: "resolved" as never,
+        status: "fixed" as never,
         steps: [{ action: "do", risk: "extreme" as never, when: "later" as never }],
       },
     });

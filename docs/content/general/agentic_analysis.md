@@ -70,7 +70,7 @@ can branch on.
 | `root_cause.evidence` | no | Up to 10 short observations, ≤ 500 characters each. |
 | `root_cause.caveats` | no | Up to 5 limits of the investigation (what could not be checked, what is inferred), ≤ 300 characters each. |
 | `root_cause.confidence` | yes | `high` \| `medium` \| `low`. |
-| `remediation_plan.status` | no | The verdict: `action_required` \| `self_resolved` \| `monitoring`. |
+| `remediation_plan.status` | no | The verdict: `action_required` \| `self_resolved` \| `monitoring` \| `resolved`. `self_resolved` means the alert recovered on its own; `resolved` means somebody (a person or an agent) applied a fix. |
 | `remediation_plan.steps` | yes | 1–20 steps, each `{action, command?, risk, when?}` (`action` ≤ 500, `command` ≤ 1000, `when` = `now` \| `follow_up`). |
 | `remediation_plan.rollback` | no | Up to 20 steps, same shape. |
 | `remediation_plan.automatable` | no | True only when the steps are safe to run unattended. |
@@ -93,6 +93,7 @@ re-investigated from scratch by the next agent that walks past it.
 ```bash
 snooze record agentic get   <uid>
 snooze record agentic set   <uid> '<json>'      # or --file analysis.json, --file -
+snooze record agentic status <uid> resolved       # change only the verdict
 snooze record agentic clear <uid>
 ```
 
@@ -142,7 +143,13 @@ only then **why** (detail and evidence).
   its first sentence (or clipped at a word, with the rest continuing below),
   so the headline never becomes a paragraph set in display type.
 - **Verdict.** `status` renders as a chip before the headline: *Action
-  required*, *Monitoring* or *Self-resolved*, each with an icon.
+  required*, *Monitoring*, *Self-resolved* or *Resolved*, each with an icon.
+  *Resolved* takes the quieter closed-state colour rather than
+  *Self-resolved*'s green, so "somebody fixed it" and "it recovered on its
+  own" stay apart at a glance. It is usually written by whoever applied the
+  fix, after acting on an *Action required* plan — the snooze skill, or by
+  hand with `snooze record agentic status <uid> resolved`. Either way the
+  alert still needs closing once it stays green.
 - **Confidence** is a neutral three-segment meter plus the word (`▮▮▮ High
   confidence`). It deliberately takes no severity colour, so it cannot read as
   a second severity beside the alert's own.

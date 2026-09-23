@@ -629,6 +629,7 @@ describe("AnalysesView", () => {
 
       mockRecords([
         analysedRecord({ uid: "r-act", host: "srv-act", summary: "a", status: "action_required" }),
+        analysedRecord({ uid: "r-fix", host: "srv-fix", summary: "f", status: "resolved" }),
         OOM,
       ]);
       const user = userEvent.setup();
@@ -637,6 +638,9 @@ describe("AnalysesView", () => {
       const verdict = screen.getByRole("radiogroup", { name: "Verdict" });
       await user.click(within(verdict).getByRole("radio", { name: "Action required" }));
       expect(order(screen.getAllByRole("article"))).toEqual(["srv-act"]);
+      // A fix somebody applied is its own verdict, not folded into "Self-resolved".
+      await user.click(within(verdict).getByRole("radio", { name: "Resolved" }));
+      expect(order(screen.getAllByRole("article"))).toEqual(["srv-fix"]);
     });
   });
 

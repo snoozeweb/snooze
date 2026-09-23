@@ -4590,11 +4590,11 @@ export interface components {
         /** @description What to do about the alert. */
         AgenticRemediationPlan: {
             /**
-             * @description The verdict for on-call: act now, it already recovered (safe to close), or keep watching. Optional.
+             * @description The verdict for on-call: act now, it already recovered on its own (safe to close), keep watching, or a fix was applied (`resolved` — written by whoever applied it, typically after acting on an `action_required` plan). Optional.
              *
              * @enum {string}
              */
-            status?: "action_required" | "self_resolved" | "monitoring";
+            status?: "action_required" | "self_resolved" | "monitoring" | "resolved";
             steps: components["schemas"]["AgenticStep"][];
             /** @description Ordered undo for the steps. */
             rollback?: components["schemas"]["AgenticStep"][];

@@ -327,6 +327,17 @@ func TestDecodeAgenticRequestAcceptsVerdictFields(t *testing.T) {
 	require.NotEmpty(t, req.RootCause.Detail)
 }
 
+func TestValidateAcceptsEveryPlanStatus(t *testing.T) {
+	for _, status := range []string{"", PlanActionRequired, PlanSelfResolved, PlanMonitoring, PlanResolved} {
+		req := AgenticRequest{
+			RootCause:       RootCause{Summary: "s", Confidence: ConfidenceHigh},
+			RemediationPlan: RemediationPlan{Status: status, Steps: []Step{{Action: "a", Risk: RiskLow}}},
+		}
+		require.Empty(t, req.Validate(), "status %q", status)
+	}
+	require.Equal(t, "resolved", PlanResolved)
+}
+
 func TestValidateVerdictFields(t *testing.T) {
 	caveats := make([]string, MaxCaveats+1)
 	for i := range caveats {
@@ -347,7 +358,7 @@ func TestValidateVerdictFields(t *testing.T) {
 	details := req.Validate().Details()
 	require.Equal(t, "must be at most 2000 characters", details["root_cause.detail"])
 	require.Equal(t, "must hold at most 5 items", details["root_cause.caveats"])
-	require.Equal(t, "must be one of action_required|self_resolved|monitoring", details["remediation_plan.status"])
+	require.Equal(t, "must be one of action_required|self_resolved|monitoring|resolved", details["remediation_plan.status"])
 	require.Equal(t, "must be one of now|follow_up", details["remediation_plan.steps[0].when"])
 	require.NotContains(t, details, "remediation_plan.rollback[0].when")
 

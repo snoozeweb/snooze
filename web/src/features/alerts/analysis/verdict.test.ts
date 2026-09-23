@@ -3,6 +3,8 @@ import {
   analysisIsStale,
   authorOf,
   groupSteps,
+  PLAN_STATUSES,
+  planStatusHint,
   planStatusLabel,
   readCaveats,
   splitSummary,
@@ -101,6 +103,17 @@ describe("plan status", () => {
     expect(planStatusLabel("self_resolved")).toBe("Self-resolved");
     expect(planStatusLabel("action_required")).toBe("Action required");
     expect(planStatusLabel("monitoring")).toBe("Monitoring");
+    expect(isPlanStatus("resolved")).toBe(true);
+    expect(planStatusLabel("resolved")).toBe("Resolved");
+  });
+
+  it("keeps severity order: a fix already applied is the least urgent", () => {
+    expect(PLAN_STATUSES).toEqual(["action_required", "monitoring", "self_resolved", "resolved"]);
+  });
+
+  it("tells a fix apart from a recovery", () => {
+    expect(planStatusHint("resolved")).not.toBe(planStatusHint("self_resolved"));
+    expect(planStatusHint("resolved")).toMatch(/fix was applied/i);
   });
 });
 

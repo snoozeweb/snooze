@@ -22,3 +22,6 @@
 .chip[data-status="self_resolved"] {
   --verdict: var(--severity-ok);
 }
+.chip[data-status="resolved"] {
+  --verdict: var(--state-closed);
+}

@@ -62,6 +62,7 @@ const PLAN_STATUS_VALUES: readonly PlanStatus[] = [
   "action_required",
   "self_resolved",
   "monitoring",
+  "resolved",
 ];
 const STEP_WHEN_VALUES: readonly StepWhen[] = ["now", "follow_up"];
 const PLAN_STATUS_ENUM = PLAN_STATUS_VALUES.join("|");

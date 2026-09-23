@@ -33,6 +33,21 @@
   and `GET /api/v1/people`, a directory of the tenant's enabled users readable
   by any signed-in user. CLI: `snooze people` and
   `snooze avatar set|get|remove`.
+- **`resolved` analysis verdict.** `remediation_plan.status` accepts a fourth
+  value, `resolved`: a fix was applied (by a person or an agent), as opposed
+  to `self_resolved`, which recovered on its own. It is what a resolver writes
+  after acting on an `action_required` plan (e.g.
+  `snooze record agentic status <uid> resolved`). The web UI shows it as a
+  *Resolved* chip and dot in the closed-state colour, and the dashboard's
+  Verdict filter gains the option. `snooze record agentic status <uid>
+  <status>` changes just the verdict of a stored analysis (read, modify, write
+  back; needs `rw_protected`).
+- **`snooze` CLI triage commands.** `record list` gains filters — `--active`
+  (the web Alerts tab), `--state`, `--host`, `--severity`,
+  `--owner me|none|<login>`, `-c` — and always lists newest first;
+  `record comments <uid>` prints the timeline, `record comment <uid> -m`
+  adds a note, and `record reopen` / `record escalate` complete the
+  lifecycle.
 
 - **Agentic analysis on alerts, and the protected-field concept behind it.**
   An alert can now carry a machine-authored `agentic` subtree — `root_cause`

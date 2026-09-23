@@ -185,8 +185,8 @@ func catalog() []tool {
 				"remediation_plan": objSchema(map[string]any{
 					"status": map[string]any{
 						"type":        "string",
-						"enum":        []any{"action_required", "self_resolved", "monitoring"},
-						"description": "The verdict for on-call: act now, it already recovered (safe to close), or watch it.",
+						"enum":        []any{"action_required", "self_resolved", "monitoring", "resolved"},
+						"description": "The verdict for on-call: act now, it already recovered on its own (safe to close), watch it, or a fix was applied (`resolved` — written by whoever applied it).",
 					},
 					"steps": map[string]any{
 						"type":        "array",

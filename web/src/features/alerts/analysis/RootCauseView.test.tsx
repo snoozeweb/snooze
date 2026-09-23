@@ -79,6 +79,13 @@ describe("RootCauseView", () => {
     expect(screen.getByText("Self-resolved")).toBeInTheDocument();
   });
 
+  it("marks an applied fix apart from a recovery", () => {
+    render(<RootCauseView rootCause={rootCause()} status="resolved" />);
+    const chip = screen.getByText("Resolved");
+    expect(chip).toHaveAttribute("data-status", "resolved");
+    expect(chip).toHaveAttribute("title", expect.stringMatching(/fix was applied/i));
+  });
+
   it("leaves the evidence to its own section", () => {
     render(
       <RootCauseView rootCause={rootCause({ evidence: ["journalctl: 4.2G under /var/log"] })} />,

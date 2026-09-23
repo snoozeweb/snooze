@@ -1,8 +1,8 @@
 /* An 8px token-sized disc (--space-2) that sits beside the severity badge and
    the trend arrow in the alerts table. `flex-shrink: 0` keeps it a circle when
    the cell's flex layout runs out of room. Neutral by default — "analysed,
-   nothing more to say" — and a state hue only for the two verdicts that ask
-   something of the operator (see AnalysedDot.tsx). */
+   nothing more to say" — and a state hue only for the verdicts that ask
+   something of the operator: act, or close (see AnalysedDot.tsx). */
 .dot {
   display: inline-block;
   flex-shrink: 0;
@@ -13,6 +13,9 @@
 }
 .dot[data-tone="ok"] {
   background: var(--severity-ok);
+}
+.dot[data-tone="done"] {
+  background: var(--state-closed);
 }
 .dot[data-tone="warning"] {
   background: var(--severity-warning);

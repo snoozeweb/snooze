@@ -15,8 +15,17 @@
 import { analysisEpoch } from "./time";
 import { ANALYSIS_SOURCE } from "./schema";
 
-/** Accepted values of `remediation_plan.status`, in severity order. */
-export const PLAN_STATUSES = ["action_required", "monitoring", "self_resolved"] as const;
+/**
+ * Accepted values of `remediation_plan.status`, in severity order. `resolved`
+ * (somebody applied the fix) comes last: it is what a resolver writes after
+ * acting on an `action_required` plan, so there is nothing left to do but close.
+ */
+export const PLAN_STATUSES = [
+  "action_required",
+  "monitoring",
+  "self_resolved",
+  "resolved",
+] as const;
 export type PlanStatus = (typeof PLAN_STATUSES)[number];
 
 /** Accepted values of a step's `when`. */
@@ -27,6 +36,7 @@ const PLAN_STATUS_LABELS: Record<PlanStatus, string> = {
   action_required: "Action required",
   monitoring: "Monitoring",
   self_resolved: "Self-resolved",
+  resolved: "Resolved",
 };
 
 /** What each verdict asks of the person reading it, in their words. */
@@ -34,6 +44,7 @@ const PLAN_STATUS_HINTS: Record<PlanStatus, string> = {
   action_required: "On-call needs to act on this alert",
   monitoring: "Nothing to run yet — keep watching",
   self_resolved: "Recovered on its own — safe to close once confirmed",
+  resolved: "A fix was applied — close the alert once it stays green",
 };
 
 const STEP_WHEN_LABELS: Record<StepWhen, string> = {

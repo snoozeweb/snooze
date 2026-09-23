@@ -211,7 +211,7 @@ describe("AnalysisEditor", () => {
                 "root_cause.detail": "must be at most 2000 characters",
                 "root_cause.caveats[0]": "must be at most 300 characters",
                 "remediation_plan.status":
-                  "must be one of action_required|self_resolved|monitoring",
+                  "must be one of action_required|self_resolved|monitoring|resolved",
                 "remediation_plan.steps[0].when": "must be one of now|follow_up",
               },
             },
@@ -229,7 +229,7 @@ describe("AnalysisEditor", () => {
     expect(await screen.findByText("Detail must be at most 2000 characters.")).toBeInTheDocument();
     expect(screen.getByText("Caveat 1 must be at most 300 characters.")).toBeInTheDocument();
     expect(
-      screen.getByText("Status must be one of action_required|self_resolved|monitoring."),
+      screen.getByText("Status must be one of action_required|self_resolved|monitoring|resolved."),
     ).toBeInTheDocument();
     expect(screen.getByText("When must be one of now|follow_up.")).toBeInTheDocument();
     // Every path landed on a field, so nothing is bannered as unplaceable.
