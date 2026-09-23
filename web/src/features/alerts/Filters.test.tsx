@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { TooltipProvider } from "@/shared/ui/Tooltip";
 import { AlertsFilters, type AlertFilters } from "./Filters";
 
 // The harness stays controlled: parent owns the value, threads onChange
@@ -17,13 +18,15 @@ function harness(initial: AlertFilters = {}) {
     const [value, setValue] = useState<AlertFilters>(initial);
     return (
       <QueryClientProvider client={client}>
-        <AlertsFilters
-          value={value}
-          onChange={(next) => {
-            setValue(next);
-            onChange(next);
-          }}
-        />
+        <TooltipProvider>
+          <AlertsFilters
+            value={value}
+            onChange={(next) => {
+              setValue(next);
+              onChange(next);
+            }}
+          />
+        </TooltipProvider>
       </QueryClientProvider>
     );
   }
@@ -32,19 +35,17 @@ function harness(initial: AlertFilters = {}) {
 }
 
 describe("AlertsFilters", () => {
-  it("renders the seven lifecycle tabs", () => {
+  it("renders the six lifecycle tabs in order", () => {
     harness();
-    for (const label of [
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual([
       "Alerts",
-      "Snoozed",
       "Acknowledged",
-      "Re-escalated",
+      "Snoozed",
       "Closed",
       "Shelved",
       "All",
-    ]) {
-      expect(screen.getByRole("tab", { name: label })).toBeInTheDocument();
-    }
+    ]);
+    expect(screen.queryByRole("tab", { name: "Re-escalated" })).toBeNull();
     // The SearchBar lives on the DataTable, not inside Filters, so it
     // intentionally does NOT render here.
     expect(screen.queryByRole("textbox", { name: "Search" })).toBeNull();

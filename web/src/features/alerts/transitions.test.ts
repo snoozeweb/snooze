@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  canAssign,
+  canRelease,
   canTransition,
   describeBulkSkips,
   eligibleForBulkState,
@@ -200,5 +202,20 @@ describe("describeBulkSkips", () => {
 
   it("names an already re-escalated row blocking a bulk Re-escalate — canonical noun, not bare 'escalated'", () => {
     expect(describeBulkSkips([makeRow("esc")], "esc")).toBe("already re-escalated");
+  });
+});
+
+describe("ownership gates", () => {
+  it("offers Assign on anything but a closed alert", () => {
+    for (const state of ["", "open", "ack", "esc", "shelved"] as const) {
+      expect(canAssign({ state })).toBe(true);
+    }
+    expect(canAssign({ state: "close" })).toBe(false);
+  });
+  it("offers Release only when someone owns the alert — a ghost is not an owner", () => {
+    expect(canRelease({ owner: "alice" })).toBe(true);
+    expect(canRelease({ owner: "" })).toBe(false);
+    expect(canRelease({})).toBe(false);
+    expect(canRelease({ owner: "", previous_owner: "alice" })).toBe(false);
   });
 });

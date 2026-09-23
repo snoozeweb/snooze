@@ -709,3 +709,307 @@ func (f *failingProcessor) Reload(context.Context) error                 { retur
 func (f *failingProcessor) Process(context.Context, snoozetypes.Record) (plugins.Result, error) {
 	return plugins.Result{}, errors.New("boom")
 }
+
+// --- ownership ---
+
+// ownerCtx is guardCtx carrying the JWT claims of an authenticated operator,
+// which is where owner_method comes from.
+func ownerCtx(subject, method string) context.Context {
+	return auth.WithClaims(guardCtx(), snoozetypes.Claims{Subject: subject, Method: method})
+}
+
+// seedOwned stamps an owner onto an existing record.
+func seedOwned(t *testing.T, host *testHost, uid, owner, method string) {
+	t.Helper()
+	require.NoError(t, host.DB().UpdateOne(guardCtx(), "record", uid, db.Document{
+		"owner": owner, "owner_method": method, "owner_since": int64(10),
+	}, false))
+}
+
+// seedUser writes a user document into the default tenant.
+func seedUser(t *testing.T, host *testHost, name, method string, enabled bool) {
+	t.Helper()
+	_, err := host.DB().Write(guardCtx(), "user",
+		[]db.Document{{"name": name, "method": method, "enabled": enabled}}, db.WriteOptions{})
+	require.NoError(t, err)
+}
+
+// An ack takes ownership for the caller. The method comes from the JWT claims,
+// not the comment's `method`, which a chat-ops bridge overrides with the
+// channel name.
+func TestAfterCreate_AckTakesOwnership(t *testing.T) {
+	host := newTestHost(t)
+	now := time.Unix(4_000_000, 0).UTC()
+	p := &Plugin{clock: func() time.Time { return now }}
+	require.NoError(t, p.PostInit(guardCtx(), host))
+
+	uid := seedRecord(t, host, "")
+	require.NoError(t, host.DB().UpdateOne(guardCtx(), "record", uid,
+		db.Document{"previous_owner": "bob", "previous_owner_method": "local"}, false))
+
+	ctx := ownerCtx("alice", "ldap")
+	doc := map[string]any{"record_uid": uid, "type": "ack", "message": "mine", "method": "teams"}
+	require.NoError(t, p.TransformWrite(ctx, doc))
+	require.NoError(t, p.AfterCreate(ctx, []map[string]any{doc}))
+
+	rec := recordDoc(t, host, uid)
+	require.Equal(t, "alice", rec["owner"])
+	require.Equal(t, "ldap", rec["owner_method"], "owner_method is the caller's auth method, not the channel")
+	require.Equal(t, now.Unix(), asInt64(t, rec["owner_since"]))
+	require.Equal(t, "", rec["previous_owner"], "taking ownership resets the ghost")
+	require.Equal(t, "", rec["previous_owner_method"])
+	require.Equal(t, "alice", rec["acked_by"], "acked_by is unchanged (D7)")
+}
+
+func TestAfterCreate_CloseTakesOwnership(t *testing.T) {
+	host := newTestHost(t)
+	p := &Plugin{clock: func() time.Time { return time.Unix(4_000_100, 0).UTC() }}
+	require.NoError(t, p.PostInit(guardCtx(), host))
+
+	uid := seedRecord(t, host, "esc")
+	seedOwned(t, host, uid, "bob", "local")
+
+	ctx := ownerCtx("alice", "local")
+	doc := map[string]any{"record_uid": uid, "type": "close", "message": "fixed"}
+	require.NoError(t, p.TransformWrite(ctx, doc))
+	require.NoError(t, p.AfterCreate(ctx, []map[string]any{doc}))
+
+	rec := recordDoc(t, host, uid)
+	require.Equal(t, "alice", rec["owner"], "whoever closes the alert owns it")
+	require.Equal(t, "", rec["previous_owner"])
+}
+
+// A user-less ack (an auto-comment bypassing TransformWrite) takes nothing,
+// exactly like acked_by.
+func TestAfterCreate_UserlessAckTakesNothing(t *testing.T) {
+	host := newTestHost(t)
+	p := &Plugin{}
+	require.NoError(t, p.PostInit(guardCtx(), host))
+
+	uid := seedRecord(t, host, "")
+	doc := map[string]any{"record_uid": uid, "type": "ack", "message": "auto"}
+	require.NoError(t, p.AfterCreate(guardCtx(), []map[string]any{doc}))
+
+	_, has := recordDoc(t, host, uid)["owner"]
+	require.False(t, has)
+}
+
+func TestAfterCreate_OpenAndEscClearOwnership(t *testing.T) {
+	for _, ctype := range []string{"open", "esc"} {
+		t.Run(ctype, func(t *testing.T) {
+			host := newTestHost(t)
+			p := &Plugin{clock: func() time.Time { return time.Unix(4_000_200, 0).UTC() }}
+			require.NoError(t, p.PostInit(guardCtx(), host))
+
+			uid := seedRecord(t, host, "ack")
+			seedOwned(t, host, uid, "alice", "ldap")
+
+			ctx := ownerCtx("bob", "local")
+			doc := map[string]any{"record_uid": uid, "type": ctype, "message": "x"}
+			require.NoError(t, p.TransformWrite(ctx, doc))
+			require.NoError(t, p.AfterCreate(ctx, []map[string]any{doc}))
+
+			rec := recordDoc(t, host, uid)
+			require.Equal(t, "", rec["owner"], "cleared with an explicit empty, never unset")
+			require.Equal(t, "", rec["owner_method"])
+			require.Equal(t, int64(0), asInt64(t, rec["owner_since"]))
+			require.Equal(t, "alice", rec["previous_owner"])
+			require.Equal(t, "ldap", rec["previous_owner_method"])
+		})
+	}
+}
+
+// Free comments and the shelve pair leave ownership alone.
+func TestAfterCreate_OwnershipUnchangedByOtherTypes(t *testing.T) {
+	for _, ctype := range []string{"comment", "shelve", "unshelve"} {
+		t.Run(ctype, func(t *testing.T) {
+			host := newTestHost(t)
+			p := &Plugin{}
+			require.NoError(t, p.PostInit(guardCtx(), host))
+
+			uid := seedRecord(t, host, "ack")
+			seedOwned(t, host, uid, "alice", "ldap")
+
+			ctx := ownerCtx("bob", "local")
+			doc := map[string]any{"record_uid": uid, "type": ctype, "message": "x"}
+			require.NoError(t, p.TransformWrite(ctx, doc))
+			require.NoError(t, p.AfterCreate(ctx, []map[string]any{doc}))
+
+			require.Equal(t, "alice", recordDoc(t, host, uid)["owner"])
+		})
+	}
+}
+
+func TestValidate_AssignRequiresAssignee(t *testing.T) {
+	p := &Plugin{}
+	require.Error(t, p.Validate(map[string]any{"record_uid": "r1", "type": "assign"}))
+	require.Error(t, p.Validate(map[string]any{"record_uid": "r1", "type": "assign", "assignee": ""}))
+	require.NoError(t, p.Validate(map[string]any{"record_uid": "r1", "type": "assign", "assignee": "bob"}))
+	require.NoError(t, p.Validate(map[string]any{"record_uid": "r1", "type": "release"}))
+}
+
+func TestGuardWrite_Assign(t *testing.T) {
+	host := newTestHost(t)
+	p := &Plugin{}
+	require.NoError(t, p.PostInit(guardCtx(), host))
+	seedUser(t, host, "bob", "local", true)
+	seedUser(t, host, "carol", "local", false)
+	seedUser(t, host, "dave", "local", true)
+	seedUser(t, host, "dave", "ldap", true)
+
+	open := seedRecord(t, host, "open")
+	closed := seedRecord(t, host, "close")
+
+	t.Run("fills the method of a unique login", func(t *testing.T) {
+		doc := map[string]any{"record_uid": open, "type": "assign", "assignee": "bob"}
+		require.NoError(t, p.GuardWrite(guardCtx(), "", doc, false))
+		require.Equal(t, "local", doc["assignee_method"])
+	})
+	t.Run("explicit method disambiguates", func(t *testing.T) {
+		doc := map[string]any{"record_uid": open, "type": "assign", "assignee": "dave", "assignee_method": "ldap"}
+		require.NoError(t, p.GuardWrite(guardCtx(), "", doc, false))
+		require.Equal(t, "ldap", doc["assignee_method"])
+	})
+	for name, doc := range map[string]map[string]any{
+		"closed record":  {"record_uid": closed, "type": "assign", "assignee": "bob"},
+		"unknown user":   {"record_uid": open, "type": "assign", "assignee": "nobody"},
+		"disabled user":  {"record_uid": open, "type": "assign", "assignee": "carol"},
+		"wrong method":   {"record_uid": open, "type": "assign", "assignee": "bob", "assignee_method": "oidc"},
+		"ambiguous user": {"record_uid": open, "type": "assign", "assignee": "dave"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.Error(t, p.GuardWrite(guardCtx(), "", doc, false))
+		})
+	}
+	t.Run("closed record is an invalid transition", func(t *testing.T) {
+		doc := map[string]any{"record_uid": closed, "type": "assign", "assignee": "bob"}
+		require.True(t, errors.Is(p.GuardWrite(guardCtx(), "", doc, false), ErrInvalidTransition))
+	})
+}
+
+// A user in another tenant is not a valid assignee.
+func TestGuardWrite_AssignIsTenantScoped(t *testing.T) {
+	host := newTestHost(t)
+	p := &Plugin{}
+	require.NoError(t, p.PostInit(guardCtx(), host))
+	_, err := host.DB().Write(auth.WithTenant(context.Background(), "other"), "user",
+		[]db.Document{{"name": "eve", "method": "local", "enabled": true}}, db.WriteOptions{})
+	require.NoError(t, err)
+
+	uid := seedRecord(t, host, "open")
+	doc := map[string]any{"record_uid": uid, "type": "assign", "assignee": "eve"}
+	require.Error(t, p.GuardWrite(guardCtx(), "", doc, false))
+}
+
+func TestGuardWrite_Release(t *testing.T) {
+	host := newTestHost(t)
+	p := &Plugin{}
+	require.NoError(t, p.PostInit(guardCtx(), host))
+
+	unowned := seedRecord(t, host, "ack")
+	owned := seedRecord(t, host, "ack")
+	seedOwned(t, host, owned, "alice", "local")
+
+	require.Error(t, p.GuardWrite(guardCtx(), "",
+		map[string]any{"record_uid": unowned, "type": "release"}, false),
+		"nothing to release on an unowned record")
+	require.NoError(t, p.GuardWrite(guardCtx(), "",
+		map[string]any{"record_uid": owned, "type": "release"}, false))
+}
+
+func TestAfterCreate_AssignTakesForAssignee(t *testing.T) {
+	host := newTestHost(t)
+	notif := &recordingProcessor{}
+	host.notif = notif
+	now := time.Unix(4_000_300, 0).UTC()
+	p := &Plugin{clock: func() time.Time { return now }}
+	require.NoError(t, p.PostInit(guardCtx(), host))
+
+	uid := seedRecord(t, host, "ack")
+	seedAckedBy(t, host, uid, "alice")
+	seedOwned(t, host, uid, "alice", "local")
+
+	ctx := ownerCtx("alice", "local")
+	doc := map[string]any{"record_uid": uid, "type": "assign", "assignee": "bob", "assignee_method": "ldap"}
+	require.NoError(t, p.TransformWrite(ctx, doc))
+	require.NoError(t, p.AfterCreate(ctx, []map[string]any{doc}))
+
+	rec := recordDoc(t, host, uid)
+	require.Equal(t, "ack", rec["state"], "assign is not a state transition")
+	require.Equal(t, "bob", rec["owner"])
+	require.Equal(t, "ldap", rec["owner_method"])
+	require.Equal(t, now.Unix(), asInt64(t, rec["owner_since"]))
+	require.Equal(t, "", rec["previous_owner"])
+	require.Equal(t, "alice", rec["acked_by"], "acked_by is unchanged (D7)")
+	require.Equal(t, int64(1), asInt64(t, rec["comment_count"]))
+	require.Empty(t, notif.Records(), "assign does not notify")
+}
+
+// Releasing an acknowledged record returns it to open on the same clock as a
+// manual open: ack expiry lifted, escalation re-armed, acked_by removed.
+func TestAfterCreate_ReleaseOfAckedReopens(t *testing.T) {
+	host := newTestHost(t)
+	host.cfg = config.Default()
+	host.cfg.Housekeeper.EscalateAfter = schema.Duration(30 * time.Minute)
+	notif := &recordingProcessor{}
+	host.notif = notif
+	now := time.Unix(4_000_400, 0).UTC()
+	p := &Plugin{clock: func() time.Time { return now }}
+	require.NoError(t, p.PostInit(guardCtx(), host))
+
+	uid := seedRecord(t, host, "ack")
+	require.NoError(t, host.DB().UpdateOne(guardCtx(), "record", uid,
+		db.Document{"ack_until": int64(99999)}, false))
+	seedAckedBy(t, host, uid, "alice")
+	seedOwned(t, host, uid, "alice", "local")
+
+	ctx := ownerCtx("alice", "local")
+	doc := map[string]any{"record_uid": uid, "type": "release", "message": "not mine"}
+	require.NoError(t, p.TransformWrite(ctx, doc))
+	require.NoError(t, p.AfterCreate(ctx, []map[string]any{doc}))
+
+	rec := recordDoc(t, host, uid)
+	require.Equal(t, "open", rec["state"])
+	require.Equal(t, int64(0), asInt64(t, rec["ack_until"]))
+	require.Equal(t, now.Add(30*time.Minute).Unix(), asInt64(t, rec["escalate_at"]))
+	require.Equal(t, "", rec["owner"])
+	require.Equal(t, "alice", rec["previous_owner"])
+	require.Equal(t, "local", rec["previous_owner_method"])
+	_, has := rec["acked_by"]
+	require.False(t, has, "releasing an ack unsets acked_by like a manual open")
+	require.Empty(t, notif.Records(), "release does not notify")
+}
+
+func TestAfterCreate_ReleaseOfEscKeepsState(t *testing.T) {
+	host := newTestHost(t)
+	p := &Plugin{clock: func() time.Time { return time.Unix(4_000_500, 0).UTC() }}
+	require.NoError(t, p.PostInit(guardCtx(), host))
+
+	uid := seedRecord(t, host, "esc")
+	require.NoError(t, host.DB().UpdateOne(guardCtx(), "record", uid,
+		db.Document{"escalate_at": int64(12345)}, false))
+	seedAckedBy(t, host, uid, "alice")
+	seedOwned(t, host, uid, "bob", "local")
+
+	doc := map[string]any{"record_uid": uid, "type": "release"}
+	require.NoError(t, p.AfterCreate(ownerCtx("bob", "local"), []map[string]any{doc}))
+
+	rec := recordDoc(t, host, uid)
+	require.Equal(t, "esc", rec["state"])
+	require.Equal(t, int64(12345), asInt64(t, rec["escalate_at"]), "no state change, no timer change")
+	require.Equal(t, "alice", rec["acked_by"])
+	require.Equal(t, "", rec["owner"])
+	require.Equal(t, "bob", rec["previous_owner"])
+}
+
+// The ownership types are not state transitions: ValidateTransition ignores
+// them and they stay out of the validity table.
+func TestOwnershipActionsAreNotTransitions(t *testing.T) {
+	for _, a := range []string{"assign", "release"} {
+		require.False(t, stateChangingActions[a])
+		require.True(t, ownershipActions[a])
+		for state := range allowedTransitions {
+			require.NoError(t, ValidateTransition(state, a))
+		}
+	}
+}

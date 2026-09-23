@@ -102,6 +102,9 @@ func (d *noopDrv) CleanupNotification(context.Context) (int, error)             
 func (d *noopDrv) ComputeStats(context.Context, string, time.Time, time.Time, string) ([]db.StatsBucket, error) {
 	return nil, nil
 }
+func (d *noopDrv) CountBy(context.Context, string, condition.Cond, string) (map[string]int, error) {
+	return map[string]int{}, nil
+}
 func (d *noopDrv) Watcher() syncer.Bus { return nil }
 func (d *noopDrv) Close() error        { return nil }
 

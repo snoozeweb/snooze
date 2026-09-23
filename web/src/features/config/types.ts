@@ -36,7 +36,17 @@ export type ConsoleConfig = {
 export const CONSOLE_FALLBACK: ConsoleConfig = {
   // Mirrors internal/api/routes_config.go `defaultColumns` — message-first,
   // with `process`/`source` defined in columns.tsx but off the default layout.
-  columns: ["severity", "message", "hits", "state", "date_epoch", "host", "environment", "ttl"],
+  columns: [
+    "severity",
+    "message",
+    "hits",
+    "state",
+    "owner",
+    "date_epoch",
+    "host",
+    "environment",
+    "ttl",
+  ],
   default_filter: "",
   sort_by: "-date_epoch",
   refresh_interval: 5,

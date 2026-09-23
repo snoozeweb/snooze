@@ -2,6 +2,38 @@
 
 ### Added
 
+- **Alert ownership.** Every alert can now have an owner, so you can see at a
+  glance who is working on what. Acknowledging or closing an alert makes you
+  its owner (from the UI, chat commands, the MCP server or `bulk_state`), and
+  two new actions, **Assign to…** and **Release**, hand an alert to someone
+  else or give it back (releasing an acknowledged alert returns it to `open`).
+  Re-opening or re-escalating an alert clears the owner, and so does every
+  automatic comeback: a closed alert received again, an aggregate-rule
+  re-escalation, an expired acknowledgement or the escalation timeout. The last
+  owner then stays visible as a faded avatar. An automatic close on an OK
+  severity keeps the owner. The alert list gains an **Owner** column (in the
+  default layout, after State) and a row of avatars next to the tabs that
+  filters by owner — you first, then everyone who owns something in the
+  current tab, then *Unowned*; it combines with the tabs and is kept in the
+  URL (`?owner=`). The owner is stored as plain record fields (`owner`,
+  `owner_method`, `owner_since`, `previous_owner`, `previous_owner_method`),
+  usable in queries and notification conditions. New endpoints:
+  `POST /api/v1/record/bulk_owner` and `GET /api/v1/record/owners`; comments
+  gain the `assign` and `release` types. The `snooze` CLI gains
+  `record assign` / `release` / `owners`, `record bulk state|assign|release`
+  (which require `-c <condition>` or an explicit `--all`) and an `owner`
+  column in `record list`. Run `snooze-server migrate owners`
+  once after upgrading to derive owners for existing alerts from their
+  acknowledgements and closes.
+- **Profile pictures.** Users can upload a profile picture from their Profile
+  page (cropped and resized in the browser, re-encoded to PNG by the server);
+  users without one get coloured initials. Pictures show in the Owner column,
+  the owner filter, the alert timeline and the sidebar. New endpoints:
+  `PUT`/`DELETE /api/v1/user/me/avatar`, `GET /api/v1/avatar/{method}/{name}`,
+  and `GET /api/v1/people`, a directory of the tenant's enabled users readable
+  by any signed-in user. CLI: `snooze people` and
+  `snooze avatar set|get|remove`.
+
 - **Agentic analysis on alerts, and the protected-field concept behind it.**
   An alert can now carry a machine-authored `agentic` subtree — `root_cause`
   (summary, scope, evidence, `confidence: high|medium|low`),
@@ -131,6 +163,12 @@
   synchronously and is never affected by a slow or failed build.
 
 ### Changed
+
+- **Alert tabs reordered; the Re-escalated tab is gone.** The tabs are now
+  Alerts, Acknowledged, Snoozed, Closed, Shelved, All. Re-escalated and
+  re-opened alerts were already listed under Alerts (or Snoozed), so the
+  separate tab only duplicated them; they keep their re-escalation marking in
+  the row, and an old `?tab=esc` link opens Alerts.
 
 - **Agentic analyses now lead with a verdict, on both the dashboard and the
   alert inspector.** The contract gains four optional fields:

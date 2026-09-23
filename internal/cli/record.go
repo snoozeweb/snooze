@@ -15,8 +15,9 @@ import (
 
 // newRecordCmd builds the `snooze record …` subtree: `post <json>` to ingest
 // an alert, `list` to fetch recent records, `show <uid>` to inspect one
-// record, and `ack` / `close` to drive state transitions via the comment
-// endpoint.
+// record, `ack` / `close` to drive state transitions and `assign` / `release`
+// to change ownership via the comment endpoint, `owners` to count alerts per
+// owner, and `bulk` for the query-wide variants.
 func newRecordCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "record",
@@ -28,6 +29,10 @@ func newRecordCmd() *cobra.Command {
 		newRecordShowCmd(),
 		newRecordAckCmd(),
 		newRecordCloseCmd(),
+		newRecordAssignCmd(),
+		newRecordReleaseCmd(),
+		newRecordOwnersCmd(),
+		newRecordBulkCmd(),
 		newRecordAgenticCmd(),
 	)
 	return cmd
@@ -144,6 +149,21 @@ func newRecordCloseCmd() *cobra.Command {
 // re-fetch the record so the operator-facing confirmation line includes the
 // host and message snippet — matching the old Python skill's output shape.
 func postRecordTransition(cmd *cobra.Command, uid, ctype, message, defaultMsg string) error {
+	return postRecordComment(cmd, uid, ctype, message, defaultMsg, nil)
+}
+
+// recordCommentVerbs is the past-tense verb of the confirmation line, per
+// comment type.
+var recordCommentVerbs = map[string]string{
+	"ack":     "Acked",
+	"close":   "Closed",
+	"assign":  "Assigned",
+	"release": "Released",
+}
+
+// postRecordComment is postRecordTransition with extra comment fields (the
+// assign comment's assignee). extra never overrides the fields set here.
+func postRecordComment(cmd *cobra.Command, uid, ctype, message, defaultMsg string, extra map[string]any) error {
 	if uid == "" {
 		return errors.New("record uid is required")
 	}
@@ -162,13 +182,15 @@ func postRecordTransition(cmd *cobra.Command, uid, ctype, message, defaultMsg st
 			method = rt.flags.Method
 		}
 	}
-	body := map[string]any{
-		"type":       ctype,
-		"record_uid": uid,
-		"name":       name,
-		"method":     method,
-		"message":    message,
+	body := map[string]any{}
+	for k, v := range extra {
+		body[k] = v
 	}
+	body["type"] = ctype
+	body["record_uid"] = uid
+	body["name"] = name
+	body["method"] = method
+	body["message"] = message
 	var resp any
 	if err := cl.Post(cmd.Context(), "/api/v1/comment", body, &resp); err != nil {
 		return err
@@ -184,11 +206,15 @@ func postRecordTransition(cmd *cobra.Command, uid, ctype, message, defaultMsg st
 			}
 		}
 	}
-	verb := "Acked"
-	if ctype == "close" {
-		verb = "Closed"
+	verb := recordCommentVerbs[ctype]
+	if verb == "" {
+		verb = "Updated"
 	}
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s %s (%s: %s)\n", verb, uid, host, recMsg)
+	line := fmt.Sprintf("%s %s (%s: %s)", verb, uid, host, recMsg)
+	if owner := ownerOf(rec); owner != "" {
+		line += " — owner " + owner
+	}
+	_, _ = fmt.Fprintln(cmd.OutOrStdout(), line)
 	return nil
 }
 

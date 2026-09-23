@@ -139,3 +139,19 @@ export function isActionAllowed(state: AlertState | string, action: GateableActi
   const allowed = (row as Record<string, boolean>)[action];
   return allowed === undefined ? true : allowed; // unknown action → fail-open
 }
+
+// ── Ownership (assign / release) ──────────────────────────────────────────────
+// Not state transitions — the backend keeps them out of allowedTransitions —
+// but gated all the same, by the comment plugin's GuardWrite: assigning a
+// closed alert and releasing an unowned one are both refused with a 403.
+
+/** Whether "Assign to…" is offered: anything that is not closed. */
+export function canAssign(row: Record_): boolean {
+  return (row.state ?? "") !== "close";
+}
+
+/** Whether "Release" is offered: only when somebody owns the alert. A row with
+ *  just a previous owner is already unowned — there is nothing to give back. */
+export function canRelease(row: Record_): boolean {
+  return (row.owner ?? "") !== "";
+}

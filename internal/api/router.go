@@ -187,6 +187,11 @@ func (rt *Router) Build() chi.Router {
 	//     handlers chi installs). -------------------------------------------
 	rt.mountBulk(r)
 
+	// --- per-owner record counts (mounted BEFORE plugin CRUD for the same
+	//     reason: the static `/record/owners` GET must win over the record
+	//     plugin's generic `/{uid}` handlers). -------------------------------
+	rt.mountOwners(r)
+
 	// --- protected agentic analysis (mounted BEFORE plugin CRUD for the same
 	//     reason: `/record/{uid}/agentic` must win over the record plugin's
 	//     generic `/{uid}` handlers). --------------------------------------
@@ -196,6 +201,11 @@ func (rt *Router) Build() chi.Router {
 	//     CRUD so /me/password wins over the generic /{uid} matcher chi
 	//     would otherwise route to). ----------------------------------------
 	rt.mountUser(r)
+
+	// --- people directory + profile pictures (/api/v1/people,
+	//     /api/v1/avatar/{method}/{name}; the /user/me/avatar writes are part
+	//     of mountUser above). ---------------------------------------------
+	rt.mountPeople(r)
 
 	// --- action test-send (mounted BEFORE plugin CRUD so the static
 	//     /api/v1/action/test segment wins over the action plugin's generic

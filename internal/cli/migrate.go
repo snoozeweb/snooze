@@ -32,6 +32,7 @@ func newMigrateCmd() *cobra.Command {
 	}
 	cmd.AddCommand(newMigrateMultitenancyCmd())
 	cmd.AddCommand(newMigrateForwardToActionCmd())
+	cmd.AddCommand(newMigrateOwnersCmd())
 	return cmd
 }
 
@@ -137,6 +138,59 @@ where the database DSN/credentials live:
 				return err
 			}
 			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "forward->action migration complete")
+			return nil
+		},
+	}
+}
+
+// newMigrateOwnersCmd returns the `snooze migrate owners` command.
+//
+// Like the other migrations it needs a direct database connection, which this
+// operator CLI (an HTTP client to a remote server) does not have. The real
+// entry point is `snooze-server migrate owners`, which loads the server
+// config, opens the configured driver, and calls migrate.RunOwnersMigration.
+// This command therefore redirects the operator there. Tests inject a runner
+// override via withMigrateRunner to exercise the success/error reporting.
+func newMigrateOwnersCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "owners",
+		Short: "Backfill alert ownership from acked_by and the comment timeline (one-shot, idempotent)",
+		Long: `Derives the alert-ownership fields (owner, owner_method, owner_since,
+previous_owner, previous_owner_method) for records that predate them, per
+tenant:
+
+  1. An acknowledged record with acked_by is owned by acked_by, since the
+     latest human ack comment (or the record's date).
+  2. An escalated record with acked_by keeps acked_by as its previous owner.
+  3. A closed record is owned by the author of its latest human close
+     comment, when there is one.
+
+Only records with no owner field are considered, so the migration is
+idempotent and never overwrites ownership set since by the running server.
+
+This operator CLI talks to the server over HTTP and has no direct database
+connection, so it cannot run the migration itself. Run it on the server host,
+where the database DSN/credentials live:
+
+    snooze-server migrate owners --config /etc/snooze/server-go`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ctx := cmd.Context()
+
+			// Tests inject a runner to exercise the success/error reporting
+			// without a live database. Production has no runner: the operator
+			// CLI has no DB connection, so we point them at the server command.
+			runner := migrateRunnerFrom(ctx)
+			if runner == nil {
+				return errors.New(
+					"this operator CLI has no direct database connection; " +
+						"run the migration on the server host instead: " +
+						"snooze-server migrate owners --config /etc/snooze/server-go")
+			}
+
+			if err := runner(ctx); err != nil {
+				return err
+			}
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "owners migration complete")
 			return nil
 		},
 	}

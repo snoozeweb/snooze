@@ -1,0 +1,91 @@
+/*
+ * A round face. Size comes from the --avatar-size-* tokens; the initials scale
+ * with it so one rule serves every size.
+ */
+.avatar {
+  --avatar-size: var(--avatar-size-md);
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: var(--avatar-size);
+  height: var(--avatar-size);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  background: var(--bg-elevated);
+  color: var(--avatar-fg);
+  font-family: var(--font-sans);
+  font-weight: var(--weight-semibold);
+  /* Two capitals fit a disc at ~42% of its diameter. */
+  font-size: calc(var(--avatar-size) * 0.42);
+  line-height: 1;
+  letter-spacing: 0;
+  user-select: none;
+  vertical-align: middle;
+}
+.avatar[data-size="sm"] {
+  --avatar-size: var(--avatar-size-sm);
+}
+.avatar[data-size="lg"] {
+  --avatar-size: var(--avatar-size-lg);
+}
+
+.avatar[data-tone="1"] {
+  background: var(--avatar-1);
+}
+.avatar[data-tone="2"] {
+  background: var(--avatar-2);
+}
+.avatar[data-tone="3"] {
+  background: var(--avatar-3);
+}
+.avatar[data-tone="4"] {
+  background: var(--avatar-4);
+}
+.avatar[data-tone="5"] {
+  background: var(--avatar-5);
+}
+.avatar[data-tone="6"] {
+  background: var(--avatar-6);
+}
+.avatar[data-tone="7"] {
+  background: var(--avatar-7);
+}
+.avatar[data-tone="8"] {
+  background: var(--avatar-8);
+}
+
+.img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.initials {
+  /* Optical centring: capitals sit high in the line box. */
+  transform: translateY(0.02em);
+}
+
+/*
+ * Previous owner: the same face, receded. The dashed ring says "was", not
+ * "is" — without it a faded disc just reads as a rendering glitch.
+ */
+.avatar[data-variant="ghost"] {
+  opacity: 0.55;
+  outline: 1px dashed var(--border-control);
+  outline-offset: 1px;
+  overflow: visible;
+}
+.avatar[data-variant="ghost"] .img {
+  border-radius: var(--radius-pill);
+  filter: grayscale(0.6);
+}
+
+/* An automated actor: a glyph on the neutral surface, never a colour slot. */
+.avatar[data-variant="bot"] {
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  box-shadow: inset 0 0 0 1px var(--border);
+}

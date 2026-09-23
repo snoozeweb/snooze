@@ -70,7 +70,13 @@ func (d *escalateFakeDriver) Search(ctx context.Context, collection string, cond
 		var out []db.Document
 		for _, r := range d.records[tid] {
 			if condition.Match(r, cond) {
-				out = append(out, r)
+				// A copy, like a real driver: a later UpdateOne must not
+				// rewrite the document the job already read.
+				cp := make(db.Document, len(r))
+				for k, v := range r {
+					cp[k] = v
+				}
+				out = append(out, cp)
 			}
 		}
 		return out, len(out), nil
@@ -444,4 +450,61 @@ func TestEscalateTimeoutJob_PreservesUntypedRecordFields(t *testing.T) {
 	require.Equal(t, int64(4), rec.Extra["duplicates"])
 	require.Equal(t, "warning", rec.Extra["previous_severity"])
 	require.Equal(t, 1, rec.EscalationCount)
+}
+
+// Both escalate-timeout passes drop the owner (the alert needs attention
+// again), keeping it as the previous-owner ghost, in the same patch as the
+// state change.
+func TestEscalateTimeoutJob_ClearsOwnership(t *testing.T) {
+	clk := newFakeClock(time.Unix(2_200_000, 0))
+	now := clk.Now().Unix()
+
+	drv := newEscalateFakeDriver()
+	drv.seedRecord("default", db.Document{
+		"uid": "r-ack", "state": "ack", "ack_until": now - 10,
+		"owner": "alice", "owner_method": "ldap", "owner_since": int64(5),
+	})
+	drv.seedRecord("default", db.Document{
+		"uid": "r-open", "state": "open", "escalate_at": now - 5,
+		"owner": "bob", "owner_method": "local", "owner_since": int64(6),
+	})
+	// Unowned with a ghost: a clear keeps the ghost.
+	drv.seedRecord("default", db.Document{
+		"uid": "r-ghost", "state": "open", "escalate_at": now - 5,
+		"owner": "", "previous_owner": "carol", "previous_owner_method": "oidc",
+	})
+
+	notified := map[string]snoozetypes.Record{}
+	notify := func(_ context.Context, rec snoozetypes.Record) error {
+		notified[rec.UID] = rec
+		return nil
+	}
+
+	// escalate > 0 so pass 1's reverted ack is not re-escalated in pass 2
+	// (its escalate_at is re-armed an hour out).
+	ij := EscalateTimeoutJob(drv, clk, fakeLifecycle{ack: time.Hour, escalate: time.Hour}, notify)
+	runJob(t, ij)
+
+	acked := drv.record("default", "r-ack")
+	require.Equal(t, "open", acked["state"])
+	require.Equal(t, "", acked["owner"])
+	require.Equal(t, "", acked["owner_method"])
+	require.Equal(t, int64(0), acked["owner_since"])
+	require.Equal(t, "alice", acked["previous_owner"])
+	require.Equal(t, "ldap", acked["previous_owner_method"])
+
+	open := drv.record("default", "r-open")
+	require.Equal(t, "esc", open["state"])
+	require.Equal(t, "", open["owner"])
+	require.Equal(t, "bob", open["previous_owner"])
+
+	ghost := drv.record("default", "r-ghost")
+	require.Equal(t, "carol", ghost["previous_owner"], "a second clear keeps the ghost")
+
+	// The notifiers see the cleared record, not the pre-sweep owner.
+	require.Len(t, notified, 2)
+	require.Equal(t, "", notified["r-open"].Extra["owner"])
+	require.Equal(t, "bob", notified["r-open"].Extra["previous_owner"])
+	require.Equal(t, "local", notified["r-open"].Extra["previous_owner_method"])
+	require.Equal(t, "carol", notified["r-ghost"].Extra["previous_owner"])
 }

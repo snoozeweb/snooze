@@ -295,6 +295,9 @@ func (f *lifecycleDB) CleanupNotification(context.Context) (int, error) { return
 func (f *lifecycleDB) ComputeStats(context.Context, string, time.Time, time.Time, string) ([]db.StatsBucket, error) {
 	return nil, nil
 }
+func (f *lifecycleDB) CountBy(context.Context, string, condition.Cond, string) (map[string]int, error) {
+	return map[string]int{}, nil
+}
 func (f *lifecycleDB) Watcher() syncer.Bus { return nil }
 func (f *lifecycleDB) Close() error        { return nil }
 
@@ -439,6 +442,26 @@ func TestTenantDelete_PurgesAndIsolates(t *testing.T) {
 	require.Equal(t, 1, ldb.count("user", "beta"), "beta user must survive")
 	require.Equal(t, 1, ldb.count(auth.RefreshCollection, "beta"), "beta refresh token must survive")
 	require.NotEmpty(t, filterByID(ldb, auth.TenantCollection, "beta"), "beta registry doc must survive")
+}
+
+// TestTenantDelete_PurgesAvatars covers the collections the API owns outright
+// (not listed in migrate.TenantScopedCollections): a deleted tenant's profile
+// pictures go with it, other tenants' stay.
+func TestTenantDelete_PurgesAvatars(t *testing.T) {
+	ldb := newLifecycleDB()
+	r := lifecycleRouter(t, ldb)
+	ldb.collections[auth.TenantCollection] = []db.Document{
+		{"id": "acme", "status": "active", "uid": "t-acme"},
+		{"id": "beta", "status": "active", "uid": "t-beta"},
+	}
+	for _, ten := range []string{"acme", "beta"} {
+		ldb.seedScoped(avatarCollection, ten, db.Document{"name": "alice", "method": "local", "data": "x"})
+	}
+
+	rec := doJSON(t, r, http.MethodDelete, "/api/v1/tenant/acme", "")
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, 0, ldb.count(avatarCollection, "acme"), "delete must purge acme's avatars")
+	require.Equal(t, 1, ldb.count(avatarCollection, "beta"), "beta's avatar must survive")
 }
 
 func filterByID(ldb *lifecycleDB, collection, id string) []db.Document {

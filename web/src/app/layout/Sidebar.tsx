@@ -1,6 +1,7 @@
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { Icon } from "@/shared/icons/Icon";
 import { Kbd } from "@/shared/ui/Kbd";
+import { Avatar } from "@/shared/ui/Avatar";
 import { Logo } from "@/shared/ui/Logo";
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@/shared/ui/Menu";
 import { GROUP_LABELS, type NavGroup } from "./nav-items";
@@ -78,9 +79,14 @@ export function Sidebar() {
               className={styles.footerUser}
               aria-label={`Account menu — signed in as ${username}`}
             >
-              <span className={styles.footerAvatar} aria-hidden="true">
-                {username.charAt(0).toUpperCase()}
-              </span>
+              {/* The signed-in user's own face — the same one their alerts
+                  show in the Owner column. The name sits beside it. */}
+              <Avatar
+                name={username}
+                method={typeof claims?.method === "string" ? claims.method : undefined}
+                className={styles.footerAvatar}
+                decorative
+              />
               <span className={styles.footerUsername}>{username}</span>
               <span className={styles.footerChevron} aria-hidden="true">
                 <Icon name="chevron-up" size={14} />

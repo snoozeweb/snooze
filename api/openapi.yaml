@@ -676,6 +676,117 @@ paths:
           description: Deleted.
         '404': {$ref: '#/components/responses/NotFound'}
 
+  /api/v1/user/me/avatar:
+    put:
+      tags: [auth]
+      summary: Upload my profile picture
+      description: |
+        Stores the caller's profile picture. The body carries a `data:` URL
+        (`data:image/png;base64,…` or `data:image/jpeg;base64,…`). The server
+        decodes it, rejects oversized or malformed input, and re-encodes it to
+        PNG (dropping any metadata) before storing. SVG is never accepted.
+        Limits: 512 KiB decoded input, at most 512×512 pixels, aspect ratio at
+        most 2:1, 128 KiB after re-encoding. Not permitted when the request is
+        authenticated with an API key.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [data]
+              properties:
+                data:
+                  type: string
+                  description: A `data:image/png` or `data:image/jpeg` base64 URL.
+      responses:
+        '200':
+          description: Stored.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [version]
+                properties:
+                  version:
+                    type: string
+                    description: Content hash; changes whenever the picture changes.
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '413':
+          description: Picture too large.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrEnvelope'}
+        '422':
+          description: Not a decodable PNG/JPEG data URL, or dimensions out of bounds.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrEnvelope'}
+    delete:
+      tags: [auth]
+      summary: Remove my profile picture
+      responses:
+        '204':
+          description: Removed (also returned when there was none).
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403':
+          description: The request is authenticated with an API key.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrEnvelope'}
+
+  /api/v1/avatar/{method}/{name}:
+    get:
+      tags: [auth]
+      summary: Get a user's profile picture
+      description: |
+        Returns the stored profile picture of the user `name` authenticated by
+        `method`, within the caller's tenant, as a data URL. Readable by any
+        authenticated user. Clients cache it by `(name, method, version)`,
+        taking `version` from `GET /api/v1/people`.
+      parameters:
+        - name: method
+          in: path
+          required: true
+          schema: {type: string}
+        - name: name
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: The picture.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Avatar'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  /api/v1/people:
+    get:
+      tags: [auth]
+      summary: Directory of the tenant's users
+      description: |
+        Lists the enabled users of the caller's tenant with just what the UI
+        needs to render and pick people (owner avatars, the owner filter, the
+        "Assign to…" picker). Readable by any authenticated user; carries no
+        roles, groups or secrets.
+      responses:
+        '200':
+          description: The directory, sorted by display name then login.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/Person'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+
   /api/v1/action/test:
     post:
       tags: [crud]
@@ -1187,6 +1298,109 @@ paths:
                   matched: {type: integer}
                   updated: {type: integer}
                   state: {type: string}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+
+  /api/v1/record/bulk_owner:
+    post:
+      tags: [crud]
+      summary: Bulk assign or release across a query
+      description: |
+        Applies an ownership action to every `record` matching `q`:
+        `assign` makes `assignee` the owner of every match (no state change;
+        closed records in the match are skipped), `release` clears the owner
+        of every owned match (moving it to `previous_owner`) and returns
+        acknowledged ones to `open`. Like `bulk_state`, no per-record comment
+        is written; `message` goes into the audit summary. Requires
+        `rw_record`. `assignee` must be an enabled user of the caller's tenant.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          required: false
+          description: base64url-encoded JSON condition; omit to match every record.
+          schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action:
+                  type: string
+                  enum: [assign, release]
+                assignee:
+                  type: string
+                  description: Login of the new owner. Required for `assign`.
+                assignee_method:
+                  type: string
+                  description: |
+                    Auth method of the assignee. Optional when the login is
+                    unambiguous in the tenant.
+                message:
+                  type: string
+                  description: Recorded once in the audit summary.
+      responses:
+        '200':
+          description: Bulk ownership counts.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [matched, updated, action]
+                properties:
+                  matched: {type: integer}
+                  updated: {type: integer}
+                  action: {type: string}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '422':
+          description: Unknown or disabled assignee, or ambiguous login without `assignee_method`.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrEnvelope'}
+
+  /api/v1/record/owners:
+    get:
+      tags: [crud]
+      summary: Count records per owner
+      description: |
+        Groups the records matching `q` by `owner`. Records with no owner
+        (absent or empty `owner`, including ones that only carry a
+        `previous_owner`) are counted in `unowned`, not in `data`. Requires
+        `ro_record`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          required: false
+          description: base64url-encoded JSON condition; omit to count every record.
+          schema: {type: string}
+      responses:
+        '200':
+          description: Per-owner counts, sorted by count descending then owner.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, unowned, total]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [owner, count]
+                      properties:
+                        owner: {type: string}
+                        count: {type: integer}
+                  unowned: {type: integer}
+                  total: {type: integer}
         '400': {$ref: '#/components/responses/BadRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
@@ -3238,6 +3452,29 @@ components:
           type: string
           description: |
             Login of the operator who escalated, on a `manual` escalation only.
+        owner:
+          type: string
+          description: |
+            Login of the user currently working on the alert. Taken by `ack`,
+            `close` and `assign`; cleared (written as `""`) by `open`, `esc`,
+            `release`, an ack expiry, the escalate-timeout sweep and the
+            aggregaterule's automatic re-open / re-escalation. An automatic
+            close on an OK severity keeps it. Absent or `""` means unowned.
+        owner_method:
+          type: string
+          description: Auth method of `owner` (`local`, `ldap`, `oidc`, …).
+        owner_since:
+          type: integer
+          format: int64
+          description: Epoch seconds the current owner took the alert; `0` when unowned.
+        previous_owner:
+          type: string
+          description: |
+            The owner before the last clear, shown as a faded avatar. Reset to
+            `""` whenever someone takes ownership again.
+        previous_owner_method:
+          type: string
+          description: Auth method of `previous_owner`.
         rules:
           type: array
           items: {type: string}
@@ -3310,6 +3547,13 @@ components:
         linked record: `ack`/`close`/`open`/`esc` set `state` directly,
         `shelve` sets `state=shelved` plus a `shelve_until` deadline, and
         `unshelve` returns the record to `open` and clears the deadline.
+
+        `ack` and `close` also make the caller the record's `owner`; `open`
+        and `esc` clear it. The two ownership types change ownership without
+        a state transition: `assign` makes `assignee` the owner (rejected on a
+        closed record or for an unknown/disabled user) and `release` clears the
+        owner (rejected on an unowned record) — releasing an acknowledged
+        record also returns it to `open`.
       required: [record_uid]
       additionalProperties: true
       properties:
@@ -3323,10 +3567,19 @@ components:
           description: uid of the record this comment is attached to.
         type:
           type: string
-          enum: [comment, ack, close, open, esc, shelve, unshelve]
+          enum: [comment, ack, close, open, esc, shelve, unshelve, assign, release]
           description: |
-            `comment` is a free-form note; every other value additionally
-            drives the linked record's state transition.
+            `comment` is a free-form note; `assign`/`release` change ownership
+            only (see above); every other value drives the linked record's
+            state transition.
+        assignee:
+          type: string
+          description: "Login of the new owner. Required on a `type: assign` comment (422 when missing)."
+        assignee_method:
+          type: string
+          description: |
+            Auth method of the assignee. Optional when the login is unambiguous
+            in the tenant; the server fills it in from the user directory.
         message:
           type: string
           description: Free-form note. Must not be empty when present.
@@ -3361,6 +3614,35 @@ components:
           type: integer
           format: int64
           description: Creation time in epoch seconds.
+
+    Person:
+      type: object
+      required: [name, method]
+      properties:
+        name:
+          type: string
+          description: Login.
+        method:
+          type: string
+          description: Auth method (`local`, `ldap`, `oidc`, …).
+        display_name:
+          type: string
+        avatar_version:
+          type: string
+          description: |
+            Content hash of the user's profile picture; empty or absent when
+            the user has none (render initials instead).
+
+    Avatar:
+      type: object
+      required: [name, method, version, data]
+      properties:
+        name: {type: string}
+        method: {type: string}
+        version: {type: string}
+        data:
+          type: string
+          description: '`data:image/png;base64,…` URL.'
 
     ListResponse:
       type: object

@@ -276,3 +276,23 @@ describe("Sidebar permission filtering", () => {
     expect(screen.getByText("Status")).toBeInTheDocument();
   });
 });
+
+describe("Sidebar footer avatar", () => {
+  afterEach(() => authStore.getState().logout({ revoke: false }));
+
+  it("shows the signed-in user's picture from the people directory", async () => {
+    const png = "data:image/png;base64,iVBORw0KGgo=";
+    mswServer.use(
+      http.get("/api/v1/people", () =>
+        HttpResponse.json({ data: [{ name: "x", method: "local", avatar_version: "v1" }] }),
+      ),
+      http.get("/api/v1/avatar/:method/:name", () =>
+        HttpResponse.json({ name: "x", method: "local", version: "v1", data: png }),
+      ),
+    );
+    loginWithClaims({ method: "local", permissions: [] });
+    setup();
+    const trigger = screen.getByRole("button", { name: /signed in as x/i });
+    await waitFor(() => expect(trigger.querySelector("img")).toHaveAttribute("src", png));
+  });
+});

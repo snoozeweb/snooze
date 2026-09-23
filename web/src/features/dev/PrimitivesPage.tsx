@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
+import { Avatar } from "@/shared/ui/Avatar";
 import { Badge } from "@/shared/ui/Badge";
 import { Button } from "@/shared/ui/Button";
 import { Card } from "@/shared/ui/Card";
@@ -194,6 +195,23 @@ export function PrimitivesPage() {
           <Button variant="danger" onClick={() => toast.error("Boom", { traceId: "abc123" })}>
             Toast error
           </Button>
+        </Row>
+      </Section>
+
+      <Section title="Avatar">
+        {/* Initials on every colour slot (the logins below hash to different
+            slots), then the three sizes and the ghost / bot variants. */}
+        <Row>
+          {["alice", "bob", "carol", "dave", "erin", "frank", "grace", "heidi"].map((n) => (
+            <Avatar key={n} name={n} />
+          ))}
+        </Row>
+        <Row>
+          <Avatar name="Alice Martin" size="sm" />
+          <Avatar name="Alice Martin" size="md" />
+          <Avatar name="Alice Martin" size="lg" />
+          <Avatar name="bob" variant="ghost" label="Previous owner: bob" />
+          <Avatar name="" variant="bot" />
         </Row>
       </Section>
 

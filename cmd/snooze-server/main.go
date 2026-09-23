@@ -119,6 +119,7 @@ Usage:
   snooze-server migrate multitenancy [--config <dir>]  Backfill tenant_id on an existing DB (one-shot)
   snooze-server migrate webhook-body [--config <dir>]  Rename webhook actions' payload→body (one-shot)
   snooze-server migrate forward-to-action [--config <dir>]  Convert forward destinations to snoozepeer actions (one-shot)
+  snooze-server migrate owners [--config <dir>]        Backfill alert ownership from acked_by and comments (one-shot)
   snooze-server root-token [--socket <path>]       Read the one-shot root token`)
 }
 
@@ -139,8 +140,10 @@ func runMigrate(args []string, stdout, stderr io.Writer) int {
 		return runMigrateWebhookBody(args[1:], stdout, stderr)
 	case "forward-to-action":
 		return runMigrateForwardToAction(args[1:], stdout, stderr)
+	case "owners":
+		return runMigrateOwners(args[1:], stdout, stderr)
 	default:
-		_, _ = fmt.Fprintf(stderr, "migrate: unknown migration %q (known: multitenancy, webhook-body, forward-to-action)\n", name)
+		_, _ = fmt.Fprintf(stderr, "migrate: unknown migration %q (known: multitenancy, webhook-body, forward-to-action, owners)\n", name)
 		return exitUsage
 	}
 }
@@ -284,6 +287,52 @@ func runMigrateForwardToAction(args []string, stdout, stderr io.Writer) int {
 		return exitErr
 	}
 	_, _ = fmt.Fprintln(stdout, "forward->action migration complete")
+	return exitOK
+}
+
+// runMigrateOwners opens the configured database driver and runs the
+// idempotent alert-ownership backfill (migrate.RunOwnersMigration): records
+// that predate ownership get their owner derived, per tenant, from acked_by
+// and the latest human ack/close comment. Only records with no `owner` key are
+// touched, so re-runs are no-ops for everything already handled and never
+// overwrite ownership the live server has stamped since. On a
+// pre-multitenancy database, run it after `migrate multitenancy`.
+func runMigrateOwners(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("migrate owners", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	configDir := fs.String("config", "/etc/snooze/server-go", "directory containing YAML config files")
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return exitOK
+		}
+		return exitUsage
+	}
+
+	// Honour SIGINT/SIGTERM so a long backfill can be interrupted cleanly.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	cfg, err := config.Load(*configDir)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "migrate: load config: %v\n", err)
+		return exitErr
+	}
+
+	logger := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	slog.SetDefault(logger)
+
+	drv, err := openDB(ctx, cfg.Core.Database, logger)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "migrate: open database: %v\n", err)
+		return exitErr
+	}
+	defer func() { _ = drv.Close() }()
+
+	if err := migrate.RunOwnersMigration(ctx, drv); err != nil {
+		_, _ = fmt.Fprintf(stderr, "migrate: %v\n", err)
+		return exitErr
+	}
+	_, _ = fmt.Fprintln(stdout, "owners migration complete")
 	return exitOK
 }
 

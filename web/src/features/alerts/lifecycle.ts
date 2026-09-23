@@ -20,3 +20,15 @@ export const STATE_NOUN: Record<AlertState, string> = {
 // isn't a key in AlertState/STATE_NOUN. Exported here anyway so every
 // surface that names it (tab, tile, chart legend) shares one literal.
 export const SNOOZED_NOUN = "Snoozed";
+
+// Ownership vocabulary — who is working on an alert, as opposed to what state
+// it is in. The Owner column, the owner filter, the row inspector, the action
+// menus and the timeline all name these the same way.
+export const OWNER_NOUN = "Owner";
+export const PREVIOUS_OWNER_NOUN = "Previous owner";
+// The owner filter's chip for alerts nobody has — including ones that only
+// carry a previous owner, which is the server's definition too.
+export const UNOWNED_NOUN = "Unowned";
+// Menu verbs. The ellipsis is load-bearing: Assign asks who before it acts.
+export const ASSIGN_VERB = "Assign to…";
+export const RELEASE_VERB = "Release";

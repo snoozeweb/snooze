@@ -163,6 +163,9 @@ func (m *memDriver) CleanupNotification(context.Context) (int, error) { return 0
 func (m *memDriver) ComputeStats(context.Context, string, time.Time, time.Time, string) ([]db.StatsBucket, error) {
 	return nil, nil
 }
+func (m *memDriver) CountBy(context.Context, string, condition.Cond, string) (map[string]int, error) {
+	return map[string]int{}, nil
+}
 func (m *memDriver) Watcher() syncer.Bus { return nil }
 func (m *memDriver) Close() error        { return nil }
 

@@ -127,6 +127,9 @@ func (d *captureDrv) CleanupNotification(context.Context) (int, error) { return 
 func (d *captureDrv) ComputeStats(context.Context, string, time.Time, time.Time, string) ([]db.StatsBucket, error) {
 	return nil, nil
 }
+func (d *captureDrv) CountBy(context.Context, string, condition.Cond, string) (map[string]int, error) {
+	return map[string]int{}, nil
+}
 func (d *captureDrv) Watcher() syncer.Bus { return nil }
 func (d *captureDrv) Close() error        { return nil }
 

@@ -25,8 +25,9 @@ type passwordChangeRequest struct {
 	Password        string `json:"password"`
 }
 
-// mountUser wires the authenticated /api/v1/user/me/* surface — currently just
-// the self-service password endpoint. The path lives under /api/v1/user so the
+// mountUser wires the authenticated /api/v1/user/me/* surface — the
+// self-service password, API-key and profile-picture endpoints (the avatar
+// handlers live in routes_avatar.go). The path lives under /api/v1/user so the
 // existing Auth middleware (which requires a Bearer token outside the public
 // allowlist) covers it without extra plumbing; the per-route check then enforces
 // that the caller has `any` permission and that the method is local.
@@ -36,6 +37,8 @@ func (rt *Router) mountUser(r chi.Router) {
 		sub.Get("/apikeys", rt.handleListMyAPIKeys)
 		sub.Post("/apikeys", rt.handleCreateMyAPIKey)
 		sub.Delete("/apikeys/{id}", rt.handleDeleteMyAPIKey)
+		sub.Put("/avatar", rt.handlePutMyAvatar)
+		sub.Delete("/avatar", rt.handleDeleteMyAvatar)
 	})
 }
 

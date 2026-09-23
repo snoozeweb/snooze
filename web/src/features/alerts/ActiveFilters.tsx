@@ -1,13 +1,13 @@
-// ActiveFilters — a dismissable chip strip summarising the tab + environment
-// constraints currently narrowing the alerts list. Rendered by AlertsPage only
-// when at least one of those is active. Each chip removes exactly one
+// ActiveFilters — a dismissable chip strip summarising the tab, owner and
+// environment constraints currently narrowing the alerts list. Rendered by
+// AlertsPage only when at least one of those is active. Each chip removes exactly one
 // constraint; the "Clear all" button wipes them (incl. any search) in a single
 // navigation.
 //
 // The DSL search text is deliberately NOT shown here: the SearchBar already
 // displays it verbatim and carries its own one-click ✕ clear, so a "Search:"
 // chip would just duplicate both. Tab + env, by contrast, are set elsewhere
-// (the tab strip and env bar) and earn a dismissable chip.
+// (the tab strip, owner strip and env bar) and earn a dismissable chip.
 import { Icon } from "@/shared/icons/Icon";
 import { Button } from "@/shared/ui/Button";
 import { tabById, type TabId } from "./tabs";
@@ -22,6 +22,12 @@ export type ActiveFiltersProps = {
   envName: (uid: string) => string;
   /** Remove a single environment from the selection. */
   onRemoveEnv: (uid: string) => void;
+  /** Selected owner tokens (`~none` = Unowned), in selection order. */
+  owners?: readonly string[];
+  /** Resolves an owner token to a display name. */
+  ownerName?: (token: string) => string;
+  /** Remove a single owner from the selection. */
+  onRemoveOwner?: (token: string) => void;
   /** Reset the lifecycle tab back to the default "alerts" tab. */
   onClearTab: () => void;
   /** Reset every filter at once (single updateSearch + local-state reset). */
@@ -50,6 +56,9 @@ export function ActiveFilters({
   envs,
   envName,
   onRemoveEnv,
+  owners = [],
+  ownerName = (t) => t,
+  onRemoveOwner,
   onClearTab,
   onClearAll,
 }: ActiveFiltersProps) {
@@ -58,6 +67,14 @@ export function ActiveFilters({
   return (
     <div className={styles.strip} role="group" aria-label="Active filters">
       {showTab ? <Chip label="Tab" value={tabById(tab).label} onRemove={onClearTab} /> : null}
+      {owners.map((token) => (
+        <Chip
+          key={`owner-${token}`}
+          label="Owner"
+          value={ownerName(token)}
+          onRemove={() => onRemoveOwner?.(token)}
+        />
+      ))}
       {envs.map((uid) => (
         <Chip key={uid} label="Env" value={envName(uid)} onRemove={() => onRemoveEnv(uid)} />
       ))}

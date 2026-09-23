@@ -66,3 +66,20 @@ describe("ActiveFilters", () => {
     expect(screen.getByText("Bravo")).toBeInTheDocument();
   });
 });
+
+describe("ActiveFilters — owners", () => {
+  it("renders one removable chip per selected owner, Unowned included", async () => {
+    const onRemoveOwner = vi.fn();
+    const user = userEvent.setup();
+    renderStrip({
+      tab: "alerts",
+      envs: [],
+      owners: ["alice", "~none"],
+      ownerName: (t) => (t === "~none" ? "Unowned" : "Alice Martin"),
+      onRemoveOwner,
+    });
+    expect(screen.getByText("Alice Martin")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Remove Owner filter: Unowned" }));
+    expect(onRemoveOwner).toHaveBeenCalledWith("~none");
+  });
+});

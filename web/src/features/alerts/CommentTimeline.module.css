@@ -18,6 +18,24 @@
   margin-top: 6px;
   justify-self: center;
 }
+/* The author's avatar, centred in the same 24px gutter the dot uses. */
+.gutter {
+  display: inline-flex;
+  justify-self: center;
+}
+/* "to <face> Name" under an assign entry. */
+.assignee {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.assigneeName {
+  color: var(--text-strong);
+  font-weight: var(--weight-medium);
+}
 .body {
   display: flex;
   flex-direction: column;

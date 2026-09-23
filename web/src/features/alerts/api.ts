@@ -1,4 +1,11 @@
-import { useMutation, useQueryClient, type UseMutationResult } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type UseMutationResult,
+  type UseQueryResult,
+} from "@tanstack/react-query";
 import { api, type ApiError } from "@/lib/api/client";
 import { defineResource } from "@/lib/api/resource";
 import type { Record_ } from "./types";
@@ -21,10 +28,15 @@ export function useActiveAlertCount(enabled: boolean) {
 
 export type CommentInput = {
   record_uid: string;
-  type: "ack" | "close" | "open" | "esc" | "comment" | "shelve" | "unshelve";
+  type: "ack" | "close" | "open" | "esc" | "comment" | "shelve" | "unshelve" | "assign" | "release";
   message?: string;
   /** seconds; only meaningful when type=="shelve". 0 → use server default. */
   duration?: number;
+  /** Login of the new owner; required when type=="assign". */
+  assignee?: string;
+  /** The assignee's auth method, when the picker knows it (always, from the
+   *  people directory) — saves the server a lookup and an ambiguity. */
+  assignee_method?: string;
 };
 
 export function useCommentRecord(): UseMutationResult<unknown, ApiError, CommentInput> {
@@ -37,6 +49,9 @@ export function useCommentRecord(): UseMutationResult<unknown, ApiError, Comment
       // record list/count for the new state, and any mounted comment timeline
       // for the new entry. Invalidating only one leaves the other stale — the
       // bug that let a timeline-composer ack silently desync the alert list.
+      // Ack/close/assign/release also move ownership; the owner filter's
+      // counts live under the same `record` prefix (see useRecordOwners), so
+      // this one call refreshes them too.
       void qc.invalidateQueries({ queryKey: Records.queryKey.all });
       void qc.invalidateQueries({ queryKey: Comments.queryKey.all });
     },
@@ -120,6 +135,83 @@ export function useBulkStateRecord(): UseMutationResult<
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: Records.queryKey.all });
     },
+  });
+}
+
+export type BulkOwnerInput = {
+  q?: string;
+  action: "assign" | "release";
+  /** Required for `assign`. */
+  assignee?: string;
+  assignee_method?: string;
+  message?: string;
+};
+
+export type BulkOwnerResponse = {
+  matched: number;
+  updated: number;
+  action: string;
+};
+
+/**
+ * useBulkOwnerRecord assigns or releases every record matching `q` in one
+ * call — the ownership twin of useBulkStateRecord, and like it, it writes no
+ * per-record comment (the message goes to the audit summary).
+ */
+export function useBulkOwnerRecord(): UseMutationResult<
+  BulkOwnerResponse,
+  ApiError,
+  BulkOwnerInput
+> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ q, action, assignee, assignee_method, message }) =>
+      api<BulkOwnerResponse>("POST", "/record/bulk_owner", {
+        ...(q ? { query: { q } } : {}),
+        body: {
+          action,
+          ...(assignee ? { assignee } : {}),
+          ...(assignee_method ? { assignee_method } : {}),
+          ...(message ? { message } : {}),
+        },
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: Records.queryKey.all });
+    },
+  });
+}
+
+export type OwnerCount = { owner: string; count: number };
+export type OwnerCounts = { data: OwnerCount[]; unowned: number; total: number };
+
+/**
+ * The owner filter's counts: how many records matching `q` each owner has,
+ * plus the unowned bucket. Keyed under the `record` prefix on purpose, so
+ * every mutation that invalidates the record lists (ack, close, assign,
+ * release, bulk_state, bulk_owner…) refreshes these counts with the same
+ * call instead of having to remember a second key.
+ */
+export function useRecordOwners(
+  q: string | undefined,
+  options?: { refetchInterval?: number; enabled?: boolean },
+): UseQueryResult<OwnerCounts, ApiError> {
+  return useQuery<OwnerCounts, ApiError>({
+    queryKey: [...Records.queryKey.all, "owners", q ?? ""],
+    queryFn: async ({ signal }) => {
+      const res = await api<Partial<OwnerCounts>>("GET", "/record/owners", {
+        ...(q ? { query: { q } } : {}),
+        signal,
+      });
+      return {
+        data: Array.isArray(res.data) ? res.data : [],
+        unowned: res.unowned ?? 0,
+        total: res.total ?? 0,
+      };
+    },
+    // Chips shouldn't blank out while a new tab's counts load.
+    placeholderData: keepPreviousData,
+    ...(options?.refetchInterval !== undefined ? { refetchInterval: options.refetchInterval } : {}),
+    enabled: options?.enabled ?? true,
   });
 }
 

@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"net/http"
 	"regexp"
+	"slices"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -494,7 +495,7 @@ func (rt *Router) handleTenantDelete(w http.ResponseWriter, r *http.Request) {
 	//    delete is fenced to this tenant only — never a naked global wipe.
 	tenantCond := condition.Equals("tenant_id", id)
 	purged := 0
-	for _, col := range migrate.TenantScopedCollections {
+	for _, col := range tenantPurgeCollections() {
 		n, derr := rt.DB.Delete(r.Context(), col, tenantCond, true)
 		if derr != nil {
 			WriteError(w, r, ErrInternal.WithCause(derr))
@@ -517,6 +518,24 @@ func (rt *Router) handleTenantDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	WriteJSON(w, http.StatusOK, map[string]any{"deleted": deleted, "purged": purged})
+}
+
+// apiScopedCollections are tenant-scoped collections that this package owns
+// outright (no plugin, no pre-tenancy data to backfill), so they are not in
+// migrate.TenantScopedCollections but must still go with a deleted tenant.
+var apiScopedCollections = []string{avatarCollection}
+
+// tenantPurgeCollections is every collection handleTenantDelete wipes for the
+// tenant: the canonical scoped list plus apiScopedCollections, deduplicated so
+// a later addition to the canonical list is not purged twice.
+func tenantPurgeCollections() []string {
+	out := append([]string(nil), migrate.TenantScopedCollections...)
+	for _, col := range apiScopedCollections {
+		if !slices.Contains(out, col) {
+			out = append(out, col)
+		}
+	}
+	return out
 }
 
 // handleTenantRotateLoginKey POST /api/v1/tenant/{id}/rotate-login-key

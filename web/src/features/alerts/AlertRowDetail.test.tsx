@@ -661,3 +661,47 @@ describe("AlertRowDetail", () => {
     expect(hits).toBe(1);
   });
 });
+
+describe("AlertRowDetail — ownership", () => {
+  beforeEach(() => loginWithPerms(["ro_record"]));
+  afterEach(() => authStore.getState().logout());
+
+  it("shows the owner beside the state", async () => {
+    stubComments();
+    mswServer.use(
+      http.get("/api/v1/people", () =>
+        HttpResponse.json({
+          data: [{ name: "alice", method: "local", display_name: "Alice Martin" }],
+        }),
+      ),
+    );
+    const { container } = renderDetail({
+      uid: "r1",
+      state: "ack",
+      owner: "alice",
+      owner_method: "local",
+      owner_since: Math.floor(Date.now() / 1000) - 120,
+    });
+    await waitFor(() => expect(screen.getByText("Alice Martin")).toBeInTheDocument());
+    expect(container.querySelector('[data-slot="owner"]')).toHaveTextContent(
+      /Owner Alice Martin · since 2m ago/,
+    );
+  });
+
+  it("shows the previous owner as a ghost once nobody owns it", async () => {
+    stubComments();
+    const { container } = renderDetail({
+      uid: "r1",
+      state: "esc",
+      owner: "",
+      previous_owner: "bob",
+    });
+    const line = await waitFor(() => {
+      const el = container.querySelector('[data-slot="previous-owner"]');
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    expect(line).toHaveTextContent("Unowned · previously bob");
+    expect(line.querySelector('[data-variant="ghost"]')).not.toBeNull();
+  });
+});

@@ -2,12 +2,11 @@ import { describe, expect, it } from "vitest";
 import { ALERT_TABS, tabById } from "./tabs";
 
 describe("alert tabs catalog", () => {
-  it("exposes the seven canonical tabs in display order", () => {
+  it("exposes the six canonical tabs in display order, Acknowledged right after Alerts", () => {
     expect(ALERT_TABS.map((t) => t.id)).toEqual([
       "alerts",
-      "snoozed",
       "ack",
-      "esc",
+      "snoozed",
       "closed",
       "shelved",
       "all",
@@ -58,14 +57,13 @@ describe("alert tabs catalog", () => {
     });
   });
 
-  it("Re-escalated tab is an OR of state=esc and state=open", () => {
-    expect(tabById("esc").condition).toEqual({
-      type: "OR",
-      args: [
-        { type: "EQUALS", field: "state", value: "esc" },
-        { type: "EQUALS", field: "state", value: "open" },
-      ],
-    });
+  it("has no Re-escalated tab; an old ?tab=esc link lands on Alerts", () => {
+    // Re-escalated and re-opened alerts are active again, so the default tab
+    // already shows them (its preset only excludes ack/close/snoozed/shelved).
+    expect(ALERT_TABS.some((t) => (t.id as string) === "esc")).toBe(false);
+    expect(tabById("esc").id).toBe("alerts");
+    const args = tabById("alerts").condition?.type === "AND" ? tabById("alerts").condition : null;
+    expect(JSON.stringify(args)).not.toContain('"esc"');
   });
 
   it("Shelved tab matches state==shelved (new-model) OR legacy ttl predicates", () => {

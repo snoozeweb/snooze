@@ -75,6 +75,20 @@ export const handlers = [
     ),
   ),
 
+  // The people directory and profile pictures, which every surface that shows
+  // a person reads (owner column, owner filter, timeline, sidebar). Nobody by
+  // default — initials everywhere, and no picture requests; a test about
+  // avatars or the owner filter overrides these.
+  http.get("/api/v1/people", () => HttpResponse.json({ data: [] })),
+  http.get("/api/v1/avatar/:method/:name", () =>
+    HttpResponse.json(
+      { error: { code: "not_found", message: "no profile picture" } },
+      { status: 404 },
+    ),
+  ),
+  // Per-owner counts for the alerts page's owner filter: nothing owned.
+  http.get("/api/v1/record/owners", () => HttpResponse.json({ data: [], unowned: 0, total: 0 })),
+
   // Catch-all list endpoint for resource-factory smoke tests.
   http.get("/api/v1/:plugin", ({ params }) => {
     return HttpResponse.json({

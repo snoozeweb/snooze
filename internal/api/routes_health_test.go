@@ -87,6 +87,9 @@ func (f *fakeDB) CleanupNotification(_ context.Context) (int, error) { return 0,
 func (f *fakeDB) ComputeStats(_ context.Context, _ string, _, _ time.Time, _ string) ([]db.StatsBucket, error) {
 	return nil, nil
 }
+func (f *fakeDB) CountBy(context.Context, string, condition.Cond, string) (map[string]int, error) {
+	return map[string]int{}, nil
+}
 func (f *fakeDB) Watcher() syncer.Bus { return nil }
 func (f *fakeDB) Close() error        { return nil }
 

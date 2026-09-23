@@ -155,6 +155,15 @@ type Driver interface {
 	Search(ctx context.Context, collection string, cond condition.Cond, page Page) (docs []Document, total int, err error)
 	GetOne(ctx context.Context, collection string, match Document) (Document, error) // returns (nil, ErrNotFound) on miss
 	Convert(ctx context.Context, cond condition.Cond, searchFields []string) (DriverQuery, error)
+	// CountBy groups the documents matching cond by the value of field (a
+	// dotted path) and returns one count per distinct value. A missing key, a
+	// JSON null and "" all land in the "" bucket. Meant for string-valued
+	// fields: other scalars are stringified backend-natively (a boolean reads
+	// "true" on Mongo/Postgres but "1" on SQLite). Tenant-scoped exactly like
+	// Search — a naked context on a scoped collection fails closed with
+	// ErrNoTenant — and a collection that does not exist yet yields an empty,
+	// non-nil map.
+	CountBy(ctx context.Context, collection string, cond condition.Cond, field string) (map[string]int, error)
 
 	// CRUD
 	Write(ctx context.Context, collection string, docs []Document, opts WriteOptions) (WriteResult, error)

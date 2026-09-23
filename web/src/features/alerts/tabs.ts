@@ -1,9 +1,13 @@
 // Alert lifecycle tabs.
 //
 // Each tab is a preset Condition that filters the record collection by
-// lifecycle state. The 7-tab set mirrors the Python 1.x web UI
-// (src/snooze/defaults/web/alert.yaml) — that layout has years of
-// operator feedback baked in and we want the new Go UI to feel the same.
+// lifecycle state. The set started as the Python 1.x web UI's seven tabs
+// (src/snooze/defaults/web/alert.yaml); two changes since, both from
+// ownership: Acknowledged moved up next to Alerts (the two halves of the
+// queue, "nobody has it" and "someone has it"), and Re-escalated went away —
+// a re-escalated or re-opened alert is simply active again, so it lives in
+// Alerts with its escalation marking, and "who is on what" is the owner
+// filter's job rather than a tab's.
 //
 // Tab presets AND-combine with the SearchBar's DSL condition in
 // AlertsPage. An empty `condition` (Alerts: null) means the tab adds no
@@ -14,9 +18,11 @@ import { SNOOZED_NOUN, STATE_NOUN } from "./lifecycle";
 
 /**
  * TabId is the URL-safe identifier persisted in `?tab=…`. Stable: do not
- * rename without a migration shim.
+ * rename without a migration shim. The retired `esc` (Re-escalated) is that
+ * shim's first customer: {@link tabById} reads it, like any unknown id, as
+ * the default tab, so an old bookmark still lands somewhere sensible.
  */
-export type TabId = "alerts" | "snoozed" | "ack" | "esc" | "closed" | "shelved" | "all";
+export type TabId = "alerts" | "snoozed" | "ack" | "closed" | "shelved" | "all";
 
 export type TabDef = {
   id: TabId;
@@ -54,19 +60,6 @@ export const ACTIVE_ALERTS: Condition = {
     { type: "NOT", arg: { type: "EXISTS", field: "snoozed" } },
     { type: "NOT", arg: { type: "EQUALS", field: "state", value: "shelved" } },
     { type: "NOT", arg: { type: "LT", field: "ttl", value: 0 } },
-  ],
-};
-
-/**
- * "Re-escalated" — records the operator pulled out of acknowledged/closed
- * back into the open queue (state=esc) plus everything currently flagged
- * open (state=open). The Python rule was: state IN ("esc","open").
- */
-const REESCALATED: Condition = {
-  type: "OR",
-  args: [
-    { type: "EQUALS", field: "state", value: "esc" },
-    { type: "EQUALS", field: "state", value: "open" },
   ],
 };
 
@@ -114,9 +107,8 @@ const SNOOZED: Condition = {
 
 export const ALERT_TABS: TabDef[] = [
   { id: "alerts", label: "Alerts", condition: ACTIVE_ALERTS },
-  { id: "snoozed", label: SNOOZED_NOUN, condition: SNOOZED },
   { id: "ack", label: STATE_NOUN.ack, condition: { type: "EQUALS", field: "state", value: "ack" } },
-  { id: "esc", label: STATE_NOUN.esc, condition: REESCALATED },
+  { id: "snoozed", label: SNOOZED_NOUN, condition: SNOOZED },
   {
     id: "closed",
     label: STATE_NOUN.close,
@@ -128,8 +120,8 @@ export const ALERT_TABS: TabDef[] = [
 
 /**
  * Look up a tab by id. Falls back to the default "alerts" tab when the
- * id is unknown — keeps URL deep-links robust against typos or future
- * renames.
+ * id is unknown — keeps URL deep-links robust against typos, future
+ * renames, and the retired `?tab=esc`.
  */
 export function tabById(id: string | undefined): TabDef {
   if (!id) return ALERT_TABS[0]!;

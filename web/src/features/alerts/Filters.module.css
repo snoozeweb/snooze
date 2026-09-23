@@ -2,6 +2,9 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  /* The query container the owner strip adapts to (OwnerFilter.module.css):
+     the bar is always full page width, so containing it costs nothing. */
+  container: alert-filters / inline-size;
 }
 
 /*
@@ -28,6 +31,22 @@
   margin-left: auto;
   display: flex;
   align-items: center;
+  padding-bottom: var(--space-1);
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--border-muted);
+}
+
+/*
+ * ownerSlot — the owner chips, right after the tabs they narrow and before
+ * the environment pills. Same keyline treatment as envSlot so the three
+ * groups read as one band; it shrinks (and its strip scrolls) before the
+ * tabs do.
+ */
+.ownerSlot {
+  display: flex;
+  align-items: center;
+  flex: 0 1 auto;
+  min-width: 0;
   padding-bottom: var(--space-1);
   padding-left: var(--space-3);
   border-left: 1px solid var(--border-muted);
@@ -91,7 +110,8 @@
     border-bottom: 1px solid var(--border);
     -webkit-overflow-scrolling: touch;
   }
-  .envSlot {
+  .envSlot,
+  .ownerSlot {
     margin-left: 0;
     padding-left: 0;
     padding-bottom: 0;

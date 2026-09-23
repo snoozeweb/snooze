@@ -65,6 +65,7 @@ func RunDriverSuite(t *testing.T, name string, factory Factory) {
 		{"CleanupNotification", testCleanupNotification},
 		{"ComputeStats", testComputeStats},
 		{"SourceActivity", testSourceActivity},
+		{"CountBy", testCountBy},
 		{"TenantMatchCollection", testTenantMatchCollection},
 		{"WriteStampsTenantID", testWriteStampsTenantID},
 		{"WriteUpsertTenantFenced", testWriteUpsertTenantFenced},
@@ -907,6 +908,7 @@ func RunTenantIsolationSuite(t *testing.T, name string, factory Factory) {
 		{"CleanupNotificationPerTenant", testCleanupNotificationPerTenant},
 		{"ComputeStatsPerTenant", testComputeStatsPerTenant},
 		{"SourceActivityPerTenant", testSourceActivityPerTenant},
+		{"CountByPerTenant", testCountByPerTenant},
 		{"ReadWriteNakedContextFailClosed", testReadWriteNakedContextFailClosed},
 		{"CleanupNakedContextFailClosed", testCleanupNakedContextFailClosed},
 	}
@@ -1698,4 +1700,92 @@ func testSourceActivityPerTenant(t *testing.T, drv db.Driver) {
 	}
 	require.Contains(t, gotB, "datadog", "beta must see its own source")
 	require.NotContains(t, gotB, "grafana", "beta must not see alpha's source")
+}
+
+// testCountBy exercises Driver.CountBy: one count per distinct value of field
+// over the rows matching cond. A missing key, an explicit JSON null and ""
+// all fold into the "" bucket, identically on every backend.
+func testCountBy(t *testing.T, drv db.Driver) {
+	mustWrite(t, drv, "record",
+		db.Document{"host": "h1", "state": "open", "owner": "alice"},
+		db.Document{"host": "h2", "state": "ack", "owner": "alice"},
+		db.Document{"host": "h3", "state": "open", "owner": "bob"},
+		db.Document{"host": "h4", "state": "open", "owner": ""},
+		db.Document{"host": "h5", "state": "open"},
+		db.Document{"host": "h6", "state": "close", "owner": nil},
+		db.Document{"host": "h7", "state": "close", "owner": "bob", "meta": map[string]any{"team": "ops"}},
+	)
+
+	t.Run("all_rows", func(t *testing.T) {
+		got, err := drv.CountBy(ctx(), "record", condition.Cond{}, "owner")
+		require.NoError(t, err)
+		require.Equal(t, map[string]int{"alice": 2, "bob": 2, "": 3}, got)
+	})
+
+	t.Run("cond_filters_rows", func(t *testing.T) {
+		got, err := drv.CountBy(ctx(), "record", condition.Equals("state", "open"), "owner")
+		require.NoError(t, err)
+		require.Equal(t, map[string]int{"alice": 1, "bob": 1, "": 2}, got)
+	})
+
+	t.Run("no_match_is_empty", func(t *testing.T) {
+		got, err := drv.CountBy(ctx(), "record", condition.Equals("state", "nope"), "owner")
+		require.NoError(t, err)
+		require.Empty(t, got)
+	})
+
+	t.Run("dotted_path", func(t *testing.T) {
+		got, err := drv.CountBy(ctx(), "record", condition.Cond{}, "meta.team")
+		require.NoError(t, err)
+		require.Equal(t, map[string]int{"ops": 1, "": 6}, got)
+	})
+
+	t.Run("missing_collection_is_empty", func(t *testing.T) {
+		got, err := drv.CountBy(ctx(), "nosuchcollection", condition.Cond{}, "owner")
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		require.Empty(t, got)
+	})
+
+	t.Run("empty_field_errors", func(t *testing.T) {
+		_, err := drv.CountBy(ctx(), "record", condition.Cond{}, "")
+		require.Error(t, err)
+	})
+}
+
+// testCountByPerTenant proves CountBy is tenant-fenced like Search: each tenant
+// counts only its own rows, platform scope counts both, and a naked context
+// fails closed with ErrNoTenant — even on a collection that does not exist yet.
+func testCountByPerTenant(t *testing.T, drv db.Driver) {
+	ctxA := snoozetypes.WithTenant(context.Background(), "alpha")
+	ctxB := snoozetypes.WithTenant(context.Background(), "beta")
+	ctxPlat := snoozetypes.WithPlatformScope(context.Background())
+
+	mustWriteCtx(ctxA, t, drv, "record",
+		db.Document{"host": "a1", "owner": "alice"},
+		db.Document{"host": "a2", "owner": "alice"},
+	)
+	mustWriteCtx(ctxB, t, drv, "record",
+		db.Document{"host": "b1", "owner": "alice"},
+		db.Document{"host": "b2", "owner": "bob"},
+		db.Document{"host": "b3"},
+	)
+
+	gotA, err := drv.CountBy(ctxA, "record", condition.Cond{}, "owner")
+	require.NoError(t, err)
+	require.Equal(t, map[string]int{"alice": 2}, gotA, "alpha must count only its own rows")
+
+	gotB, err := drv.CountBy(ctxB, "record", condition.Cond{}, "owner")
+	require.NoError(t, err)
+	require.Equal(t, map[string]int{"alice": 1, "bob": 1, "": 1}, gotB, "beta must count only its own rows")
+
+	gotPlat, err := drv.CountBy(ctxPlat, "record", condition.Cond{}, "owner")
+	require.NoError(t, err)
+	require.Equal(t, map[string]int{"alice": 3, "bob": 1, "": 1}, gotPlat)
+
+	naked := context.Background()
+	_, err = drv.CountBy(naked, "record", condition.Cond{}, "owner")
+	require.ErrorIs(t, err, snoozetypes.ErrNoTenant, "CountBy on naked ctx must fail closed, got: %v", err)
+	_, err = drv.CountBy(naked, "nosuchcollection", condition.Cond{}, "owner")
+	require.ErrorIs(t, err, snoozetypes.ErrNoTenant, "CountBy on naked ctx must fail closed before the existence check, got: %v", err)
 }

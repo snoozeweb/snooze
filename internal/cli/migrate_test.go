@@ -79,3 +79,39 @@ func TestMigrateCmd_Help(t *testing.T) {
 	require.NoError(t, root.Execute())
 	require.Contains(t, stdout.String(), "multitenancy")
 }
+
+func TestMigrateOwnersCmd_Success(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	called := false
+	rt := &runtime{
+		flags:  &globalFlags{Server: "http://example.invalid"},
+		out:    &stdout,
+		errOut: &stderr,
+	}
+	root := NewRootCmd(rt)
+	root.SetContext(withMigrateRunner(withRuntime(context.Background(), rt), func(_ context.Context) error {
+		called = true
+		return nil
+	}))
+	root.SetArgs([]string{"migrate", "owners"})
+	require.NoError(t, root.Execute())
+	require.True(t, called, "migration runner must be called")
+	require.Contains(t, stdout.String(), "owners migration complete")
+}
+
+// Like multitenancy, the production path redirects to the server binary,
+// which owns the database connection.
+func TestMigrateOwnersCmd_NoRunner_RedirectsToServer(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	rt := &runtime{
+		flags:  &globalFlags{Server: "http://example.invalid"},
+		out:    &stdout,
+		errOut: &stderr,
+	}
+	root := NewRootCmd(rt)
+	root.SetContext(withRuntime(context.Background(), rt))
+	root.SetArgs([]string{"migrate", "owners"})
+	err := root.Execute()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "snooze-server migrate owners")
+}

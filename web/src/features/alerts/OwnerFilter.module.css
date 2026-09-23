@@ -1,0 +1,151 @@
+/*
+ * The owner strip: one row of toggle chips (face + count). It never wraps —
+ * a second line of faces reads as a second filter — so a narrow container
+ * scrolls it sideways instead, and the "+N" popover holds the long tail.
+ */
+.strip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Same pill anatomy as the environment pills next door, so the two filter
+   groups read as one control surface. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+  padding: 2px var(--space-2) 2px 2px;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  font-feature-settings: var(--font-features-numeric);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    opacity var(--dur-fast) var(--ease-out);
+}
+.chip:hover {
+  color: var(--text-strong);
+  border-color: var(--border-control);
+}
+.chip:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+/* Text-only chips (Unowned, +N) get symmetric padding — there is no face
+   hugging the left edge. */
+.chip[data-kind="unowned"],
+.chip[data-kind="more"] {
+  padding: 2px var(--space-2);
+}
+/* The signed-in operator's chip stays put at zero, greyed: "you own nothing
+   here" is information, and a chip that came and went would move every face
+   after it. */
+.chip[data-empty="true"] {
+  opacity: 0.5;
+}
+.chip[data-empty="true"]:hover,
+.chip[data-empty="true"]:focus-visible {
+  opacity: 1;
+}
+.chip[data-state="active"] {
+  background: var(--accent-solid);
+  border-color: var(--accent);
+  color: var(--accent-solid-fg);
+  font-weight: var(--weight-semibold);
+  opacity: 1;
+}
+
+.count {
+  min-width: 1ch;
+  text-align: right;
+}
+.unownedLabel {
+  line-height: 1;
+}
+
+/* "+N" popover: a search box over the rest of the owners. */
+.popover {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: min(280px, calc(100vw - var(--space-6)));
+}
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.listItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-sm);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.listItem:hover {
+  background: var(--bg-hover);
+  color: var(--text-strong);
+}
+.listItem:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+.listItem[data-state="active"] {
+  background: var(--accent-bg);
+  color: var(--text-strong);
+  font-weight: var(--weight-medium);
+}
+.listName {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.noMatch {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+/* Touch: every chip reaches the minimum hit area. */
+@media (pointer: coarse) {
+  .chip {
+    min-height: var(--touch-target);
+    padding-inline: var(--space-3);
+  }
+  .listItem {
+    min-height: var(--touch-target);
+  }
+}
+
+/* The filter bar (Filters.module.css .bar) is the query container. Once it is
+   phone-narrow the strip takes a full row of its own and may scroll; give the
+   last chip room to clear the edge so it is visibly cut, not missing. */
+@container alert-filters (max-width: 640px) {
+  .strip {
+    padding-inline-end: var(--space-4);
+  }
+}

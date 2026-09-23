@@ -81,6 +81,19 @@
   --role-admin: #a4246e;
   --role-platform: #8b1fa8;
 
+  /* Initials avatars — the same eight hues as dark, printed as pale washes
+     with warm near-black ink (>= 11:1) so a disc sits on paper like a
+     stamp rather than a hole. Same slot, same person, in both themes. */
+  --avatar-1: #c3e3de;
+  --avatar-2: #c5dde9;
+  --avatar-3: #d1d7f1;
+  --avatar-4: #ddd2f0;
+  --avatar-5: #ebd3e8;
+  --avatar-6: #efd2da;
+  --avatar-7: #dbe3c3;
+  --avatar-8: #c8e3d2;
+  --avatar-fg: #1b1814;
+
   /* Focus ring */
   --focus-ring: #8a5600;
 

@@ -1,7 +1,11 @@
 // Package comment implements the "comment" data-model plugin: free-form
 // notes attached to a record. POST /api/v1/comment also applies a state
 // transition to the linked record when the comment's `type` is one of
-// "ack", "close", "open", or "esc" — mirroring the legacy Python route.
+// "ack", "close", "open", or "esc" — mirroring the legacy Python route — and
+// maintains the record's ownership (internal/ownership): ack and close make
+// the caller the owner, open and esc clear it, and the two ownership-only
+// types "assign" (make `assignee` the owner) and "release" (clear the owner)
+// change it without a transition of their own.
 package comment
 
 import (
@@ -16,6 +20,7 @@ import (
 	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/snoozeweb/snooze/internal/config/schema"
 	"github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/ownership"
 	"github.com/snoozeweb/snooze/internal/plugins"
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
@@ -96,6 +101,11 @@ func (p *Plugin) Schema() any {
 			// shelve_until = now + duration; absent/zero falls back to the
 			// configured housekeeping.shelve_timeout.
 			"duration": map[string]any{"type": "integer", "minimum": 0},
+			// The new owner's login and auth method on a `type: "assign"`
+			// comment. assignee_method may be omitted when the login is
+			// unambiguous in the tenant; GuardWrite fills it in.
+			"assignee":        map[string]any{"type": "string"},
+			"assignee_method": map[string]any{"type": "string"},
 		},
 		"additionalProperties": true,
 	}
@@ -116,6 +126,13 @@ func (p *Plugin) Validate(obj map[string]any) error {
 	if v, ok := obj["record_uid"]; ok {
 		if s, _ := v.(string); s == "" {
 			return errors.New("comment: record_uid must not be empty")
+		}
+	}
+	// An assign names its new owner; without one there is nothing to assign.
+	// Only checked when the type is present (partial PATCH semantics).
+	if t, _ := obj["type"].(string); t == "assign" {
+		if s, _ := obj["assignee"].(string); s == "" {
+			return errors.New("comment: assign requires an assignee")
 		}
 	}
 	// A shelve window is a forward-looking deadline: a negative one would stamp
@@ -159,12 +176,13 @@ func (p *Plugin) TransformWrite(ctx context.Context, doc map[string]any) error {
 
 // GuardWrite vetoes a state-transition comment whose action is not legal from
 // the linked record's current state, BEFORE the comment is written. It runs
-// only for state-changing comment types ({ack,close,open,esc}); free-form
-// comments, orphan comments (no record_uid), and missing records all pass
-// through (fail-open). A non-nil error aborts the create with HTTP 403.
-func (p *Plugin) GuardWrite(ctx context.Context, _ string, doc map[string]any, _ bool) error {
+// only for state-changing comment types ({ack,close,open,esc}) and the
+// ownership types ({assign,release}, see guardOwnership); free-form comments,
+// orphan comments (no record_uid), and missing records all pass through
+// (fail-open). A non-nil error aborts the create with HTTP 403.
+func (p *Plugin) GuardWrite(ctx context.Context, commentUID string, doc map[string]any, _ bool) error {
 	action, _ := doc["type"].(string)
-	if !stateChangingActions[action] {
+	if !stateChangingActions[action] && !ownershipActions[action] {
 		return nil
 	}
 	uid, _ := doc["record_uid"].(string)
@@ -176,8 +194,53 @@ func (p *Plugin) GuardWrite(ctx context.Context, _ string, doc map[string]any, _
 		// Fail-open: a missing/unreadable record is caught later in AfterCreate.
 		return nil
 	}
+	if ownershipActions[action] {
+		// Only a create applies an ownership change (AfterCreate is the only
+		// hook that acts on it), so only a create is held to its
+		// preconditions; editing an old assign comment's message later must
+		// not fail because the record has since been closed.
+		if commentUID != "" {
+			return nil
+		}
+		return p.guardOwnership(ctx, action, rec, doc)
+	}
 	currentState, _ := rec["state"].(string)
 	return ValidateTransition(currentState, action)
+}
+
+// guardOwnership holds an assign/release comment to its preconditions:
+//
+//   - assign is refused on a closed record (there is nothing left to work on)
+//     and when no enabled user with the assignee's login — and method, when
+//     given — exists in the caller's tenant. The lookup runs under the request
+//     context, so the driver's tenant scoping confines it to that tenant. An
+//     omitted assignee_method is filled in on doc from the one matching user,
+//     so the comment written right after, and AfterCreate, carry it; a login
+//     shared by several methods must name one.
+//   - release is refused on a record with no owner.
+func (p *Plugin) guardOwnership(ctx context.Context, action string, rec db.Document, doc map[string]any) error {
+	switch action {
+	case "assign":
+		if state, _ := rec["state"].(string); state == "close" {
+			return fmt.Errorf("%w: %q on a closed record", ErrInvalidTransition, action)
+		}
+		name, _ := doc["assignee"].(string)
+		method, _ := doc["assignee_method"].(string)
+		users, _, err := p.host.DB().Search(ctx, "user", ownership.UserCond(name), db.Page{})
+		if err != nil {
+			return fmt.Errorf("comment: look up assignee %q: %w", name, err)
+		}
+		resolved, err := ownership.MatchAssignee(users, name, method)
+		if err != nil {
+			return fmt.Errorf("comment: assign to %q: %w", name, err)
+		}
+		doc["assignee_method"] = resolved
+	case "release":
+		if !ownership.IsOwned(rec) {
+			return fmt.Errorf("%w: %q on a record with no owner", ErrInvalidTransition, action)
+		}
+	}
+	return nil
 }
 
 // AfterCreate applies side effects after each comment is written:
@@ -188,6 +251,11 @@ func (p *Plugin) GuardWrite(ctx context.Context, _ string, doc map[string]any, _
 //     from the comment's resolved `user` on `ack`, removed entirely on
 //     `open`/`close`, and left untouched on `esc` (the last acknowledger is
 //     kept for accountability through a re-escalation).
+//   - Maintains ownership (see applyOwnership): `ack`/`close` take it for the
+//     comment's user, `open`/`esc` clear it, `assign` takes it for the
+//     assignee and `release` clears it — returning an acknowledged record to
+//     `open` (same timers as `open`, `acked_by` removed). Neither ownership
+//     type re-notifies.
 //   - Increments the record's `comment_count` field by 1.
 //
 // Errors looking up or writing to the record collection are returned so
@@ -238,16 +306,13 @@ func (p *Plugin) AfterCreate(ctx context.Context, docs []map[string]any) error {
 					patch["acked_by"] = user
 				}
 			case "open", "esc":
-				// Reopened/escalated: clear the ack expiry and (re-)arm the
-				// escalation deadline so a reverted alert escalates again.
-				patch["ack_until"] = int64(0)
-				if escalateAfter > 0 {
-					patch["escalate_at"] = now + int64(escalateAfter.Seconds())
-				} else {
-					patch["escalate_at"] = int64(0)
+				// Reopened/escalated: clear the ack expiry, (re-)arm the
+				// escalation deadline so a reverted alert escalates again, and
+				// lift any timed shelve. Shared with `release` of an ack, which
+				// returns the record to open on the same clock.
+				for k, v := range ownership.ReopenTimers(now, escalateAfter) {
+					patch[k] = v
 				}
-				// Reopening also lifts any timed shelve.
-				patch["shelve_until"] = int64(0)
 			case "close":
 				// Terminal: nothing left to expire, escalate, or unshelve.
 				patch["ack_until"] = int64(0)
@@ -297,6 +362,7 @@ func (p *Plugin) AfterCreate(ctx context.Context, docs []map[string]any) error {
 			patch["escalation_reason"] = ""
 			patch["escalation_actor"] = ""
 		}
+		reopened := p.applyOwnership(ctx, patch, commentType, doc, rec, now)
 		current, _ := rec["comment_count"].(int64)
 		if c2, ok := rec["comment_count"].(int); ok && current == 0 {
 			current = int64(c2)
@@ -312,8 +378,9 @@ func (p *Plugin) AfterCreate(ctx context.Context, docs []map[string]any) error {
 		// deletes the key (vs. an UpdateOne zero-value that would leave an empty
 		// string), so omitempty/EXISTS stops matching and the "Acked by" column
 		// renders "—". Runs after the UpdateOne above, which already applied the
-		// state + ack_until/escalate_at clearing for this transition.
-		if commentType == "open" || commentType == "close" {
+		// state + ack_until/escalate_at clearing for this transition. A release
+		// that returned an acknowledged record to open counts as an open here.
+		if commentType == "open" || commentType == "close" || reopened {
 			if _, err := p.host.DB().UnsetFields(ctx, "record", []string{"acked_by"},
 				condition.Equals("uid", uid)); err != nil {
 				return fmt.Errorf("comment: unset acked_by on record %s: %w", uid, err)
@@ -329,6 +396,47 @@ func (p *Plugin) AfterCreate(ctx context.Context, docs []map[string]any) error {
 		}
 	}
 	return nil
+}
+
+// applyOwnership folds the ownership change a comment implies into patch,
+// computed from rec (the record as stored before this comment). It reports
+// whether a `release` moved an acknowledged record back to `open`, which the
+// caller must follow with the same acked_by unset as a manual `open`.
+//
+// The owner is the comment's `user` — server-authoritative once TransformWrite
+// has run — but the owner's method comes from the caller's JWT claims, not the
+// comment's `method`: the chat-ops bridges overwrite that with the channel
+// ("teams", "mcp", …), which is no auth method an avatar could be found under.
+// With no claims (a chat surface that authenticates by its own signature) the
+// method is "". A user-less ack/close — an auto-comment that bypassed
+// TransformWrite — takes nothing, mirroring acked_by.
+func (p *Plugin) applyOwnership(ctx context.Context, patch db.Document, commentType string, doc map[string]any, rec db.Document, now int64) (reopened bool) {
+	var change map[string]any
+	switch commentType {
+	case "ack", "close":
+		if user, _ := doc["user"].(string); user != "" {
+			method := ""
+			if claims, ok := auth.ClaimsFrom(ctx); ok {
+				method = claims.Method
+			}
+			change = ownership.Take(user, method, now)
+		}
+	case "open", "esc":
+		change = ownership.Clear(rec)
+	case "assign":
+		// GuardWrite has validated the assignee and filled its method in.
+		if assignee, _ := doc["assignee"].(string); assignee != "" {
+			method, _ := doc["assignee_method"].(string)
+			change = ownership.Take(assignee, method, now)
+		}
+	case "release":
+		_, escalateAfter := p.lifecycleTimeouts(ctx)
+		change, reopened = ownership.Release(rec, now, escalateAfter)
+	}
+	for k, v := range change {
+		patch[k] = v
+	}
+	return reopened
 }
 
 // renotify re-fires the notification dispatcher for a manually escalated

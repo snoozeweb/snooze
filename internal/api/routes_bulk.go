@@ -1,14 +1,17 @@
-// routes_bulk.go installs two synchronous bulk-mutation endpoints that apply a
-// single mutation to every record matching a ?q condition in one HTTP call:
+// routes_bulk.go installs three synchronous bulk-mutation endpoints that apply
+// a single mutation to every record matching a ?q condition in one HTTP call:
 //
 //	POST /api/v1/record/bulk_state?q=<cond>   — flip state on all matches
+//	POST /api/v1/record/bulk_owner?q=<cond>   — assign / release ownership
 //	POST /api/v1/{plugin}/bulk_update?q=<cond> — merge attrs / add+remove tags
 //
 // They are mounted as siblings to the generic plugin CRUD surface (beside the
 // snooze retro-apply endpoint) so MountCRUD's generic /{uid} handlers never
-// shadow the more-specific /bulk_* paths. Both resolve the query server-side,
-// apply the mutation with a single driver bulk call, emit one audit row per
-// affected uid, and return the matched/updated counts.
+// shadow the more-specific /bulk_* paths. They resolve the query server-side,
+// apply the mutation with a single driver bulk call — except where the new
+// value depends on each row's own prior value (an ownership clear moves THAT
+// row's owner into its previous_owner), which is a per-row read-modify-write —
+// emit one audit row per affected uid, and return the matched/updated counts.
 //
 // Tenant scoping is enforced inside the driver: every SetFields/AppendList/
 // RemoveList/Search call fail-closes on a naked (no-tenant) context for a
@@ -30,13 +33,16 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/snoozeweb/snooze/internal/api/middleware"
 	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/condition"
+	"github.com/snoozeweb/snooze/internal/config/schema"
 	"github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/ownership"
 	"github.com/snoozeweb/snooze/internal/plugins"
 	"github.com/snoozeweb/snooze/internal/protected"
 )
@@ -60,6 +66,14 @@ var bulkStateAllowed = map[string]bool{
 	"ack": true, "close": true, "open": true, "esc": true,
 }
 
+// bulkStateTakes / bulkStateClears split bulk_state's targets by what they do
+// to ownership, mirroring the comment plugin: ack and close make the caller
+// the owner, open and esc drop the owner.
+var (
+	bulkStateTakes  = map[string]bool{"ack": true, "close": true}
+	bulkStateClears = map[string]bool{"open": true, "esc": true}
+)
+
 // mountBulk wires both bulk endpoints. bulk_state carries a fixed rw_record
 // permission, so it sits under a RequirePerm group exactly like retro-apply.
 // bulk_update's permission is dynamic (rw_<plugin>), so the handler enforces
@@ -74,6 +88,9 @@ func (rt *Router) mountBulk(r chi.Router) {
 	r.Group(func(g chi.Router) {
 		g.Use(middleware.RequirePerm("rw_" + recordCollection))
 		g.Post("/api/v1/record/bulk_state", rt.handleBulkState)
+		// bulk_owner rewrites the same collection's ownership keys, so it
+		// carries the same fixed permission.
+		g.Post("/api/v1/record/bulk_owner", rt.handleBulkOwner)
 	})
 	// bulk_update gates on rw_<plugin>, which is only known once the
 	// collection is resolved, so the permission check lives in the handler.
@@ -145,6 +162,12 @@ type bulkUpdateResponse struct {
 // handleBulkState flips state ∈ {ack,close,open,esc} on every record matching
 // ?q in a single SetFields call.
 //
+// Ownership follows the single-record path: an ack or close stamps the caller
+// as owner in the same SetFields; an open or esc first clears the owner of
+// every owned match, one row at a time (see clearOwners), BEFORE the state
+// flip — ?q is written against the pre-transition rows ("state = ack"), which
+// the flip would stop matching.
+//
 // Behavioural difference from the single-record path: the per-record comment
 // endpoint writes a `comment` row AND patches state. The bulk path sets state
 // directly and does NOT fan out one comment per record (a query could match
@@ -173,8 +196,20 @@ func (rt *Router) handleBulkState(w http.ResponseWriter, r *http.Request) {
 	// straight to the driver, no hook. `record` implements no write hook at
 	// all, so in production this is a pass-through.
 	set := db.Document{"state": req.State}
+	if claims, ok := auth.ClaimsFrom(ctx); ok && claims.Subject != "" && bulkStateTakes[req.State] {
+		for k, v := range ownership.Take(claims.Subject, claims.Method, time.Now().Unix()) {
+			set[k] = v
+		}
+	}
 	if p := rt.plugin(recordCollection); p != nil {
 		if !rt.guardBulk(w, r, p, set, nil, nil) {
+			return
+		}
+	}
+
+	if bulkStateClears[req.State] {
+		if _, err := rt.clearOwners(ctx, cond); err != nil {
+			WriteError(w, r, ErrInternal.WithCause(err))
 			return
 		}
 	}
@@ -196,6 +231,210 @@ func (rt *Router) handleBulkState(w http.ResponseWriter, r *http.Request) {
 		Updated: matched,
 		State:   req.State,
 	})
+}
+
+// clearOwners drops the owner of every owned record matching cond, each row's
+// own owner becoming its previous_owner (ownership.Clear is computed per row,
+// so this cannot be one SetFields). Unowned matches are not written at all: a
+// clear would only rewrite their empties and keeps their ghost anyway. Returns
+// the uids it cleared.
+func (rt *Router) clearOwners(ctx context.Context, cond condition.Cond) ([]string, error) {
+	rows, _, err := rt.DB.Search(ctx, recordCollection, andCond(cond, ownership.OwnedCond()), db.Page{})
+	if err != nil {
+		return nil, err
+	}
+	uids := make([]string, 0, len(rows))
+	for _, row := range rows {
+		uid, _ := row["uid"].(string)
+		if uid == "" {
+			continue
+		}
+		if err := rt.DB.UpdateOne(ctx, recordCollection, uid, ownership.Clear(row), false); err != nil {
+			return uids, err
+		}
+		uids = append(uids, uid)
+	}
+	return uids, nil
+}
+
+// bulkOwnerRequest is the bulk_owner body. assignee (and optionally
+// assignee_method) is required for assign; message goes into the audit
+// summary, like bulk_state's.
+type bulkOwnerRequest struct {
+	Action         string `json:"action"`
+	Assignee       string `json:"assignee"`
+	AssigneeMethod string `json:"assignee_method"`
+	Message        string `json:"message"`
+}
+
+// bulkOwnerResponse is the JSON envelope bulk_owner returns. matched counts
+// every record ?q selects; updated only those whose ownership changed (closed
+// records are skipped by assign, unowned ones by release).
+type bulkOwnerResponse struct {
+	Matched int    `json:"matched"`
+	Updated int    `json:"updated"`
+	Action  string `json:"action"`
+}
+
+// handleBulkOwner applies an ownership action to every record matching ?q —
+// the bulk twin of the comment plugin's `assign` / `release` types, with the
+// same rules:
+//
+//   - assign makes `assignee` the owner of every match that is not closed, in
+//     one SetFields. The assignee must be an enabled user of the caller's
+//     tenant (the user lookup runs under the request context); an unknown,
+//     disabled or — without assignee_method — ambiguous login is a 422 and
+//     nothing is written.
+//   - release clears the owner of every OWNED match, per row. An
+//     acknowledged one also returns to `open` on the same timers as a manual
+//     open, with `acked_by` removed (ownership.Release is the one source of
+//     truth for both paths).
+//
+// Neither writes a comment nor re-notifies. The audit trail gets one row per
+// record whose ownership changed.
+func (rt *Router) handleBulkOwner(w http.ResponseWriter, r *http.Request) {
+	var req bulkOwnerRequest
+	if err := ParseJSONBody(r, &req); err != nil {
+		WriteError(w, r, err)
+		return
+	}
+	if req.Action != "assign" && req.Action != "release" {
+		WriteError(w, r, ErrBadRequest.WithMessage("action must be one of assign, release"))
+		return
+	}
+	if req.Action == "assign" && req.Assignee == "" {
+		WriteError(w, r, ErrBadRequest.WithMessage("assign requires an assignee"))
+		return
+	}
+	cond, err := decodeQueryCond(r)
+	if err != nil {
+		WriteError(w, r, ErrBadRequest.WithMessage("bad q: "+err.Error()))
+		return
+	}
+	ctx := r.Context()
+	now := time.Now().Unix()
+
+	// Resolve the assignee before anything else is read or written.
+	var set db.Document
+	if req.Action == "assign" {
+		users, _, err := rt.DB.Search(ctx, "user", ownership.UserCond(req.Assignee), db.Page{})
+		if err != nil {
+			WriteError(w, r, ErrInternal.WithCause(err))
+			return
+		}
+		method, err := ownership.MatchAssignee(users, req.Assignee, req.AssigneeMethod)
+		if err != nil {
+			WriteError(w, r, ErrValidation.WithMessage(err.Error()))
+			return
+		}
+		set = ownership.Take(req.Assignee, method, now)
+	} else {
+		// The shape release writes (the values differ per row), for the
+		// bulk authorization hook.
+		set = ownership.Clear(map[string]any{ownership.FieldOwner: "x"})
+		set["state"] = "open"
+	}
+	if p := rt.plugin(recordCollection); p != nil {
+		if !rt.guardBulk(w, r, p, set, nil, nil) {
+			return
+		}
+	}
+
+	_, matched, err := rt.DB.Search(ctx, recordCollection, cond, db.Page{PerPage: 1})
+	if err != nil {
+		WriteError(w, r, ErrInternal.WithCause(err))
+		return
+	}
+
+	summary := req.Action
+	if req.Action == "assign" {
+		summary += " " + req.Assignee
+		open := andCond(cond, condition.Not(condition.Equals("state", "close")))
+		// assign leaves state alone, so the same condition still selects the
+		// assigned rows after the write, which is what auditBulk re-queries.
+		n, err := rt.DB.SetFields(ctx, recordCollection, set, open)
+		if err != nil {
+			WriteError(w, r, ErrInternal.WithCause(err))
+			return
+		}
+		if req.Message != "" {
+			summary += ": " + req.Message
+		}
+		rt.auditBulk(ctx, recordCollection, "bulk_owner", open, n, summary)
+		WriteJSON(w, http.StatusOK, bulkOwnerResponse{Matched: matched, Updated: n, Action: req.Action})
+		return
+	}
+
+	uids, err := rt.releaseOwners(ctx, cond, now)
+	if err != nil {
+		WriteError(w, r, ErrInternal.WithCause(err))
+		return
+	}
+	if req.Message != "" {
+		summary += ": " + req.Message
+	}
+	// A release changes what ?q ∧ owned selects, so the audit names the
+	// released uids directly rather than re-running a query.
+	rt.auditBulkUIDs(ctx, recordCollection, "bulk_owner", uids, summary)
+	WriteJSON(w, http.StatusOK, bulkOwnerResponse{Matched: matched, Updated: len(uids), Action: req.Action})
+}
+
+// releaseOwners releases every owned record matching cond, per row, with the
+// same patch as the comment plugin's `release` (ownership.Release): clear,
+// plus a return to `open` for an acknowledged record, whose `acked_by` is then
+// removed the way a manual open removes it. Returns the released uids.
+func (rt *Router) releaseOwners(ctx context.Context, cond condition.Cond, now int64) ([]string, error) {
+	rows, _, err := rt.DB.Search(ctx, recordCollection, andCond(cond, ownership.OwnedCond()), db.Page{})
+	if err != nil {
+		return nil, err
+	}
+	escalateAfter := rt.escalateAfter(ctx)
+	uids := make([]string, 0, len(rows))
+	for _, row := range rows {
+		uid, _ := row["uid"].(string)
+		if uid == "" {
+			continue
+		}
+		patch, reopened := ownership.Release(row, now, escalateAfter)
+		if err := rt.DB.UpdateOne(ctx, recordCollection, uid, patch, false); err != nil {
+			return uids, err
+		}
+		if reopened {
+			if _, err := rt.DB.UnsetFields(ctx, recordCollection, []string{"acked_by"},
+				condition.Equals("uid", uid)); err != nil {
+				return uids, err
+			}
+		}
+		uids = append(uids, uid)
+	}
+	return uids, nil
+}
+
+// escalateAfter resolves the live escalate_after window a release re-arms on
+// a record it returns to open, with the comment plugin's preference order:
+// the tenant-aware runtime settings when the host exposes them, then the
+// file-config baseline, then the schema default.
+func (rt *Router) escalateAfter(ctx context.Context) time.Duration {
+	if rsh, ok := rt.Host.(plugins.RuntimeSettingsHost); ok {
+		if rs := rsh.RuntimeSettings(); rs != nil {
+			if hk, err := rs.Housekeeper(ctx); err == nil {
+				return hk.EscalateAfter.AsDuration()
+			}
+		}
+	}
+	if rt.Config != nil {
+		return rt.Config.Housekeeper.EscalateAfter.AsDuration()
+	}
+	return schema.DefaultHousekeeper().EscalateAfter.AsDuration()
+}
+
+// andCond conjoins a (possibly match-all) ?q condition with an extra
+// predicate, leaving out the empty AlwaysTrue node rather than nesting it.
+func andCond(q, extra condition.Cond) condition.Cond {
+	if q.IsZero() {
+		return extra
+	}
+	return condition.And(q, extra)
 }
 
 // handleBulkUpdate applies set (attribute merge), tag (idempotent add), and
@@ -412,6 +651,26 @@ func (rt *Router) auditBulk(ctx context.Context, collection, action string, cond
 		if u, ok := d["uid"].(string); ok && u != "" {
 			uids = append(uids, u)
 		}
+	}
+	plugins.EmitBulkAudit(ctx, rt.Host, meta, collection, action, uids, summary)
+}
+
+// auditBulkUIDs is auditBulk for a mutation that already knows exactly which
+// rows it changed (the per-row paths), so no query is re-run: one audit row
+// per uid, or a single summary row above bulkAuditUIDCap.
+func (rt *Router) auditBulkUIDs(ctx context.Context, collection, action string, uids []string, summary string) {
+	if rt.Host == nil || len(uids) == 0 {
+		return
+	}
+	p := rt.plugin(collection)
+	if p == nil {
+		return
+	}
+	meta := p.Metadata()
+	meta.PluginName = collection
+	if len(uids) > bulkAuditUIDCap {
+		uids = []string{collection + ":bulk"}
+		summary += " (bulk: matched count exceeds audit cap)"
 	}
 	plugins.EmitBulkAudit(ctx, rt.Host, meta, collection, action, uids, summary)
 }

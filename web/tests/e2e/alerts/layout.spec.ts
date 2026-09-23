@@ -56,8 +56,11 @@ test.describe("alerts table layout", () => {
       // tier. Each is a deliberate width-budget tradeoff, not a regression:
       // the 200-column, comfortably-clamped Message text at the narrowest
       // tier is still far from the near-0px collapse this test guards
-      // against.
-      const minWidth = width <= 720 ? 200 : width <= 900 ? 220 : width <= 1200 ? 290 : 480;
+      // against. The Owner column (64px, "lg" tier) took the 1500px floor
+      // from 480 to 430 the same way: it shows from a 1024px container up,
+      // so it costs Message exactly its width there (measured ~542 → ~478).
+      const minWidth =
+        width <= 720 ? 200 : width <= 900 ? 220 : width <= 1200 ? 290 : width <= 1500 ? 430 : 480;
       expect(box!.width).toBeGreaterThanOrEqual(minWidth);
 
       // No horizontal scroll: the table's own scroll wrapper (tableScroll)

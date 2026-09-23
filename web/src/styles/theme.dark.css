@@ -99,6 +99,21 @@
   --role-admin: #f778ba;
   --role-platform: #e879f9;
 
+  /* Initials avatars — a person's colour, picked by hashing their login
+     into one of eight slots (shared/ui/Avatar). Deep, low-chroma discs so a
+     face never reads as a status: no amber (that is the accent), and the
+     hues sit between the severity family's rather than on it. Every slot
+     holds --avatar-fg at >= 6.5:1. */
+  --avatar-1: #1e5c57;
+  --avatar-2: #245468;
+  --avatar-3: #34497f;
+  --avatar-4: #553f80;
+  --avatar-5: #6a3a66;
+  --avatar-6: #733a4c;
+  --avatar-7: #4b5a2a;
+  --avatar-8: #2b5a40;
+  --avatar-fg: #eef2f6;
+
   /* Focus ring */
   --focus-ring: #ffb000;
 

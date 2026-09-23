@@ -32,6 +32,13 @@
   --bp-md: 768px;
   --bp-lg: 1024px;
 
+  /* Avatar diameters (shared/ui/Avatar). sm rides inside chips and timeline
+     rows, md is the table's Owner cell and the sidebar footer, lg is the
+     profile page's picture. */
+  --avatar-size-sm: 20px;
+  --avatar-size-md: 24px;
+  --avatar-size-lg: 64px;
+
   /* Minimum touch hit area (WCAG 2.5.5 / Apple HIG). Applied on coarse
      pointers / the mobile shell — desktop density is unaffected. */
   --touch-target: 44px;

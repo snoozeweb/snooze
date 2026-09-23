@@ -59,6 +59,9 @@ var (
 	ErrNotFound = &Error{Code: "not_found", Status: http.StatusNotFound}
 	// ErrConflict indicates a duplicate-key or state conflict.
 	ErrConflict = &Error{Code: "conflict", Status: http.StatusConflict}
+	// ErrPayloadTooLarge indicates the body (or a payload inside it) exceeds a
+	// documented size limit.
+	ErrPayloadTooLarge = &Error{Code: "payload_too_large", Status: http.StatusRequestEntityTooLarge}
 	// ErrValidation indicates the body parsed but failed semantic validation.
 	ErrValidation = &Error{Code: "validation_error", Status: http.StatusUnprocessableEntity}
 	// ErrInternal is the catch-all for unexpected failures.
@@ -155,6 +158,8 @@ func defaultMessage(code string) string {
 		return "resource not found"
 	case "conflict":
 		return "resource conflict"
+	case "payload_too_large":
+		return "payload too large"
 	case "validation_error":
 		return "validation failed"
 	case "unavailable":

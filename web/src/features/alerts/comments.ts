@@ -6,10 +6,16 @@ import { encodeConditionQ } from "@/lib/condition/serialize";
 export type Comment = {
   uid?: string;
   record_uid: string;
-  type: "comment" | "ack" | "close" | "open" | "esc" | "shelve" | "unshelve";
+  type: "comment" | "ack" | "close" | "open" | "esc" | "shelve" | "unshelve" | "assign" | "release";
   message?: string;
   date_epoch?: number;
   user?: string;
+  /** Auth method of the author — or the chat-ops channel (teams/jira/mcp)
+   *  that relayed it, which is why avatars look people up by login first. */
+  method?: string;
+  /** type=="assign": the login the alert was handed to, and its method. */
+  assignee?: string;
+  assignee_method?: string;
   /** Shelve window in seconds, echoed back from the posted comment. Only
    * meaningful on type=="shelve", where the server stamps
    * record.shelve_until = now + duration (absent/0 → housekeeping.shelve_timeout). */

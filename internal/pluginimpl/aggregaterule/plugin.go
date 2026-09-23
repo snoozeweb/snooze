@@ -44,6 +44,7 @@ import (
 	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/ownership"
 	"github.com/snoozeweb/snooze/internal/plugins"
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
@@ -350,6 +351,14 @@ func (p *Plugin) Process(ctx context.Context, rec snoozetypes.Record) (plugins.R
 		return plugins.Result{Action: plugins.ActionAbort, Record: rec}, err
 	}
 	mergeMapIntoRecord(&rec, out)
+	// The merge only adds keys, so an ownership key matchAggregate dropped
+	// from the payload (stripOwnership / carryOwnership) has to be removed
+	// from Extra here, or the payload value would ride on regardless.
+	for _, k := range ownership.Fields {
+		if _, kept := out[k]; !kept {
+			delete(rec.Extra, k)
+		}
+	}
 	return plugins.Result{Action: action, Record: rec, AfterPersist: afterPersist}, nil
 }
 
@@ -370,6 +379,7 @@ func (p *Plugin) matchAggregate(
 ) (map[string]any, plugins.Action, error) {
 	if host == nil || host.DB() == nil {
 		// In tests with no DB the plugin is a no-op pass-through.
+		stripOwnership(rec)
 		rec["duplicates"] = int64(1)
 		newSeverity, _ := rec["severity"].(string)
 		stampTrendFields(rec, "", newSeverity)
@@ -384,6 +394,7 @@ func (p *Plugin) matchAggregate(
 	}
 	if existing == nil {
 		// First occurrence: mark and pass through.
+		stripOwnership(rec)
 		rec["duplicates"] = int64(1)
 		newSeverity, _ := rec["severity"].(string)
 		stampTrendFields(rec, "", newSeverity)
@@ -427,6 +438,15 @@ func (p *Plugin) matchAggregate(
 			rec[k] = v
 		}
 	}
+	// Ownership (internal/ownership) rides forward too, so a duplicate and
+	// the notifiers it reaches see who is working on the alert — the merge
+	// write would keep the stored keys anyway, but the in-flight record would
+	// not carry them. Unlike the fields above the STORED value wins on
+	// collision: ownership is only ever set by an operator action, and an
+	// alert payload that happens to carry an `owner` key (a monitoring label
+	// naming a team, say) must not reassign an alert somebody has taken. The
+	// transitions below that drop the owner overwrite these with a clear.
+	carryOwnership(rec, existing)
 
 	// Merge fields: existing values win for identity (uid, date_epoch,
 	// state, duplicates) but the incoming record's payload otherwise
@@ -501,9 +521,11 @@ func (p *Plugin) matchAggregate(
 		switch prevState {
 		case "close":
 			rec["state"] = "open"
+			clearOwnership(rec, existing)
 			ctype, msg = "open", "Auto re-opened from watchlist: "+fields
 		case "ack":
 			rec["state"] = "esc"
+			clearOwnership(rec, existing)
 			ctype, msg = "esc", "Auto re-escalated from watchlist: "+fields
 			// Watchlist auto-re-escalation is an escalation producer like the
 			// escalate-timeout sweep: stamp the context so the notifiers this
@@ -530,6 +552,7 @@ func (p *Plugin) matchAggregate(
 		// Auto re-open without a watch change.
 		fc := nextFlappingCountdown(flappingCountdown, hasFlap, flapping, throttling)
 		rec["state"] = "open"
+		clearOwnership(rec, existing)
 		rec["flapping_countdown"] = fc
 		rec["comment_count"] = commentCount + 1
 		msg := "Auto re-opened"
@@ -551,6 +574,7 @@ func (p *Plugin) matchAggregate(
 			ctype := "esc"
 			if prevState == "ack" {
 				rec["state"] = "esc"
+				clearOwnership(rec, existing)
 			} else {
 				rec["state"] = prevState
 			}
@@ -571,6 +595,7 @@ func (p *Plugin) matchAggregate(
 	ctype := "comment"
 	if prevState == "ack" {
 		rec["state"] = "esc"
+		clearOwnership(rec, existing)
 		ctype = "esc"
 	} else {
 		rec["state"] = prevState
@@ -682,6 +707,46 @@ var carryForwardFields = map[string]bool{
 	"escalated_at":      true,
 	"escalation_reason": true,
 	"escalation_actor":  true,
+}
+
+// carryOwnership copies the stored ownership keys onto the incoming record,
+// overwriting any the alert payload carried (see the call site for why the
+// stored value wins here, unlike carryForwardFields).
+//
+// A key the stored row lacks is dropped from the payload rather than left in:
+// a row that predates ownership (or `migrate owners`) must not become owned by
+// whatever the alert happens to send.
+func carryOwnership(rec map[string]any, existing db.Document) {
+	for _, k := range ownership.Fields {
+		if v, ok := existing[k]; ok {
+			rec[k] = v
+		} else {
+			delete(rec, k)
+		}
+	}
+}
+
+// stripOwnership drops any ownership key an alert payload carries on its first
+// occurrence. Only an operator action makes somebody the owner, so a monitoring
+// label that happens to be called `owner` must not arrive as an owned alert.
+func stripOwnership(rec map[string]any) {
+	for _, k := range ownership.Fields {
+		delete(rec, k)
+	}
+}
+
+// clearOwnership drops the owner of an aggregate this occurrence re-opens or
+// re-escalates (the alert needs somebody's attention again), keeping it as the
+// previous-owner ghost. It is computed from existing — the row as stored — not
+// from rec, which already carries the stored keys forward.
+//
+// Like resetEscalation the clear is EXPLICIT ("" / 0): the keys ride through
+// mergeMapIntoRecord into Record.Extra and the pipeline's merge write leaves an
+// absent key untouched, so an unset would leave the old owner in place.
+func clearOwnership(rec map[string]any, existing db.Document) {
+	for k, v := range ownership.Clear(existing) {
+		rec[k] = v
+	}
 }
 
 // resetEscalation clears the escalation lifecycle on a record that is being

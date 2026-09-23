@@ -4,6 +4,10 @@
 //       comment → info (blue)   ack     → ack      (violet)
 //       esc     → warning (yel) close   → closed   (muted purple)
 //       open    → neutral       shelve  → muted    unshelve → neutral
+//     plus the two ownership types: assign → ack (violet: someone has it
+//     now, the same hue as an ack) and release → neutral (like a re-open).
+//   - The author's face in the gutter; a bot glyph for auto/system entries.
+//     An `assign` entry also names who it was handed to.
 //   - Edit + delete affordances on the user's own comments, or for any
 //     comment if the user holds rw_record / rw_all.
 //   - Newest activity first (reverse-chronological): page 1 is the most
@@ -15,6 +19,8 @@ import { Button } from "@/shared/ui/Button";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogTitle } from "@/shared/ui/Dialog";
 import { IconButton } from "@/shared/ui/IconButton";
 import { Skeleton } from "@/shared/ui/Skeleton";
+import { Avatar } from "@/shared/ui/Avatar";
+import { personLabel, usePerson } from "@/shared/people/api";
 import { useAuth } from "@/lib/auth/store";
 import { hasAnyPermission } from "@/lib/auth/permissions";
 import { toast } from "@/shared/ui/toast/useToast";
@@ -33,6 +39,8 @@ const TYPE_LABEL: Record<Comment["type"], string> = {
   esc: "re-escalated",
   shelve: "shelved",
   unshelve: "unshelved",
+  assign: "assigned",
+  release: "released",
 };
 
 // Color palette: see web/src/utils/api.js:230-243 on origin/master for
@@ -45,7 +53,21 @@ const TYPE_VARIANT: Record<Comment["type"], BadgeVariant> = {
   open: "neutral", // gray
   shelve: "muted",
   unshelve: "neutral",
+  assign: "ack", // violet — somebody has it now
+  release: "neutral",
 };
+
+/** "to <face> Alice Martin" under an `assign` entry. */
+function AssigneeLine({ name, method }: { name: string; method?: string | undefined }) {
+  const person = usePerson(name, method);
+  return (
+    <p className={styles.assignee}>
+      <span>to</span>
+      <Avatar name={name} method={method} size="sm" decorative />
+      <span className={styles.assigneeName}>{personLabel(person, name)}</span>
+    </p>
+  );
+}
 
 // The composer only offers free-form comment plus the two transitions that
 // make sense to author with a note. All three are valid CommentInput types, so
@@ -239,7 +261,15 @@ export function CommentTimeline({
               className={styles.row}
               data-auto={isAuto || undefined}
             >
-              <span className={styles.dot} />
+              {/* The author's face, where the bare dot used to be; the name is
+                  in the meta line beside the badge, so the face is decoration. */}
+              <span className={styles.gutter}>
+                {isAuto || !c.user ? (
+                  <Avatar name="" variant="bot" decorative />
+                ) : (
+                  <Avatar name={c.user} method={c.method} decorative />
+                )}
+              </span>
               <div className={styles.body}>
                 {/* Badge and its who·when meta share one line — the timestamp
                     sits flush-right of the badge — so each entry stays compact
@@ -283,9 +313,14 @@ export function CommentTimeline({
                       </Button>
                     </span>
                   </>
-                ) : c.message ? (
-                  <p className={styles.message}>{c.message}</p>
-                ) : null}
+                ) : (
+                  <>
+                    {c.type === "assign" && c.assignee ? (
+                      <AssigneeLine name={c.assignee} method={c.assignee_method} />
+                    ) : null}
+                    {c.message ? <p className={styles.message}>{c.message}</p> : null}
+                  </>
+                )}
               </div>
               {canEdit && c.uid && editingUid !== c.uid ? (
                 <span className={styles.actions}>

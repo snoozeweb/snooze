@@ -107,6 +107,24 @@ Re-enable the user to restore access. The user list shows an **Enabled** /
 > The last remaining enabled `platform_admin` cannot be disabled (or stripped of
 > the role) — the server always keeps at least one platform administrator.
 
+### Profile picture
+
+Each user can upload a profile picture from their **Profile** page. It is shown
+wherever Snooze shows a person: the alert **Owner** column and owner filter (see
+[Ownership](./alerts.md#ownership)), the alert timeline, and the sidebar. Users
+without a picture get their initials on a colour derived from their login.
+
+Pick a PNG, JPEG or WebP image; the browser crops it to a centred square and
+shrinks it to 128×128 before uploading. The server only accepts PNG and JPEG,
+at most 512×512 pixels and 512 KiB, and re-encodes every picture to PNG, which
+drops any embedded metadata. Pictures are private to the tenant and readable by
+any signed-in user of it. **Remove** goes back to initials.
+
+From the command line: `snooze avatar set me.png` uploads your picture (no
+resizing — the file must already be within the limits), `snooze avatar get
+alice -o alice.png` downloads someone's, and `snooze avatar remove` deletes
+yours. `snooze people` lists who has one.
+
 ### Single sign-on (SSO) users
 
 Users who sign in through an OIDC backend such as **Microsoft 365 / Entra ID**

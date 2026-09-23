@@ -123,6 +123,9 @@ func (s *stubDriver) CleanupNotification(context.Context) (int, error) { return 
 func (s *stubDriver) ComputeStats(context.Context, string, time.Time, time.Time, string) ([]db.StatsBucket, error) {
 	return nil, nil
 }
+func (s *stubDriver) CountBy(context.Context, string, condition.Cond, string) (map[string]int, error) {
+	return map[string]int{}, nil
+}
 func (s *stubDriver) Watcher() syncer.Bus { return nil }
 func (s *stubDriver) Close() error        { return nil }
 

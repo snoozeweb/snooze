@@ -170,6 +170,51 @@ func TestMigrateMultitenancySubcommand(t *testing.T) {
 	}
 }
 
+// TestMigrateOwnersSubcommand seeds a pre-ownership acknowledged record into
+// a real SQLite file and asserts `snooze-server migrate owners` opens the
+// configured driver and backfills its owner from acked_by.
+func TestMigrateOwnersSubcommand(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "snooze.db")
+
+	tctx := snoozetypes.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+	seed, err := sqlite.New(tctx, sqlite.Config{Path: dbPath})
+	if err != nil {
+		t.Fatalf("seed open: %v", err)
+	}
+	if _, err := seed.Write(tctx, "record",
+		[]db.Document{{"state": "ack", "acked_by": "alice", "date_epoch": int64(42)}},
+		db.WriteOptions{UpdateTime: false}); err != nil {
+		t.Fatalf("seed write: %v", err)
+	}
+	_ = seed.Close()
+
+	t.Setenv("SNOOZE_SERVER_CORE_DATABASE_PATH", dbPath)
+	t.Setenv("SNOOZE_SERVER_CORE_DATABASE_TYPE", "file")
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"migrate", "owners", "--config", dir}, &stdout, &stderr)
+	if code != exitOK {
+		t.Fatalf("code = %d, want 0 (stderr=%q)", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "owners migration complete") {
+		t.Fatalf("stdout = %q, want completion notice", stdout.String())
+	}
+
+	drv, err := sqlite.New(tctx, sqlite.Config{Path: dbPath})
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer drv.Close()
+	records, _, err := drv.Search(tctx, "record", condition.Cond{}, db.Page{})
+	if err != nil {
+		t.Fatalf("search record: %v", err)
+	}
+	if len(records) != 1 || records[0]["owner"] != "alice" {
+		t.Fatalf("owner not backfilled: %v", records)
+	}
+}
+
 // TestMigrateSubcommandErrors covers the usage surface: a bare `migrate` with
 // no migration name and an unknown migration name must both exit with the
 // usage code rather than starting the daemon.

@@ -1037,6 +1037,205 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/user/me/avatar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Upload my profile picture
+         * @description Stores the caller's profile picture. The body carries a `data:` URL
+         *     (`data:image/png;base64,…` or `data:image/jpeg;base64,…`). The server
+         *     decodes it, rejects oversized or malformed input, and re-encodes it to
+         *     PNG (dropping any metadata) before storing. SVG is never accepted.
+         *     Limits: 512 KiB decoded input, at most 512×512 pixels, aspect ratio at
+         *     most 2:1, 128 KiB after re-encoding. Not permitted when the request is
+         *     authenticated with an API key.
+         *
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description A `data:image/png` or `data:image/jpeg` base64 URL. */
+                        data: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Stored. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @description Content hash; changes whenever the picture changes. */
+                            version: string;
+                        };
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                /** @description Picture too large. */
+                413: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrEnvelope"];
+                    };
+                };
+                /** @description Not a decodable PNG/JPEG data URL, or dimensions out of bounds. */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrEnvelope"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        /** Remove my profile picture */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Removed (also returned when there was none). */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                401: components["responses"]["Unauthorized"];
+                /** @description The request is authenticated with an API key. */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrEnvelope"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/avatar/{method}/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a user's profile picture
+         * @description Returns the stored profile picture of the user `name` authenticated by
+         *     `method`, within the caller's tenant, as a data URL. Readable by any
+         *     authenticated user. Clients cache it by `(name, method, version)`,
+         *     taking `version` from `GET /api/v1/people`.
+         *
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    method: string;
+                    name: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The picture. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Avatar"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/people": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Directory of the tenant's users
+         * @description Lists the enabled users of the caller's tenant with just what the UI
+         *     needs to render and pick people (owner avatars, the owner filter, the
+         *     "Assign to…" picker). Readable by any authenticated user; carries no
+         *     roles, groups or secrets.
+         *
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The directory, sorted by display name then login. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["Person"][];
+                        };
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/action/test": {
         parameters: {
             query?: never;
@@ -1858,6 +2057,142 @@ export interface paths {
                 403: components["responses"]["Forbidden"];
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/record/bulk_owner": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk assign or release across a query
+         * @description Applies an ownership action to every `record` matching `q`:
+         *     `assign` makes `assignee` the owner of every match (no state change;
+         *     closed records in the match are skipped), `release` clears the owner
+         *     of every owned match (moving it to `previous_owner`) and returns
+         *     acknowledged ones to `open`. Like `bulk_state`, no per-record comment
+         *     is written; `message` goes into the audit summary. Requires
+         *     `rw_record`. `assignee` must be an enabled user of the caller's tenant.
+         *
+         */
+        post: {
+            parameters: {
+                query?: {
+                    /** @description base64url-encoded JSON condition; omit to match every record. */
+                    q?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        action: "assign" | "release";
+                        /** @description Login of the new owner. Required for `assign`. */
+                        assignee?: string;
+                        /** @description Auth method of the assignee. Optional when the login is
+                         *     unambiguous in the tenant.
+                         *      */
+                        assignee_method?: string;
+                        /** @description Recorded once in the audit summary. */
+                        message?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Bulk ownership counts. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            matched: number;
+                            updated: number;
+                            action: string;
+                        };
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                /** @description Unknown or disabled assignee, or ambiguous login without `assignee_method`. */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrEnvelope"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/record/owners": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Count records per owner
+         * @description Groups the records matching `q` by `owner`. Records with no owner
+         *     (absent or empty `owner`, including ones that only carry a
+         *     `previous_owner`) are counted in `unowned`, not in `data`. Requires
+         *     `ro_record`.
+         *
+         */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description base64url-encoded JSON condition; omit to count every record. */
+                    q?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Per-owner counts, sorted by count descending then owner. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: {
+                                owner: string;
+                                count: number;
+                            }[];
+                            unowned: number;
+                            total: number;
+                        };
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4592,6 +4927,26 @@ export interface components {
             /** @description Login of the operator who escalated, on a `manual` escalation only.
              *      */
             escalation_actor?: string;
+            /** @description Login of the user currently working on the alert. Taken by `ack`,
+             *     `close` and `assign`; cleared (written as `""`) by `open`, `esc`,
+             *     `release`, an ack expiry, the escalate-timeout sweep and the
+             *     aggregaterule's automatic re-open / re-escalation. An automatic
+             *     close on an OK severity keeps it. Absent or `""` means unowned.
+             *      */
+            owner?: string;
+            /** @description Auth method of `owner` (`local`, `ldap`, `oidc`, …). */
+            owner_method?: string;
+            /**
+             * Format: int64
+             * @description Epoch seconds the current owner took the alert; `0` when unowned.
+             */
+            owner_since?: number;
+            /** @description The owner before the last clear, shown as a faded avatar. Reset to
+             *     `""` whenever someone takes ownership again.
+             *      */
+            previous_owner?: string;
+            /** @description Auth method of `previous_owner`. */
+            previous_owner_method?: string;
             /** @description Names of the rule-plugin rules this alert matched, in match order.
              *     Stamped by the `rule` plugin.
              *      */
@@ -4649,6 +5004,13 @@ export interface components {
          *     linked record: `ack`/`close`/`open`/`esc` set `state` directly,
          *     `shelve` sets `state=shelved` plus a `shelve_until` deadline, and
          *     `unshelve` returns the record to `open` and clears the deadline.
+         *
+         *     `ack` and `close` also make the caller the record's `owner`; `open`
+         *     and `esc` clear it. The two ownership types change ownership without
+         *     a state transition: `assign` makes `assignee` the owner (rejected on a
+         *     closed record or for an unknown/disabled user) and `release` clears the
+         *     owner (rejected on an unowned record) — releasing an acknowledged
+         *     record also returns it to `open`.
          *      */
         Comment: {
             /** @description Server-assigned identifier. */
@@ -4656,12 +5018,19 @@ export interface components {
             /** @description uid of the record this comment is attached to. */
             record_uid: string;
             /**
-             * @description `comment` is a free-form note; every other value additionally
-             *     drives the linked record's state transition.
+             * @description `comment` is a free-form note; `assign`/`release` change ownership
+             *     only (see above); every other value drives the linked record's
+             *     state transition.
              *
              * @enum {string}
              */
-            type?: "comment" | "ack" | "close" | "open" | "esc" | "shelve" | "unshelve";
+            type?: "comment" | "ack" | "close" | "open" | "esc" | "shelve" | "unshelve" | "assign" | "release";
+            /** @description Login of the new owner. Required on a `type: assign` comment (422 when missing). */
+            assignee?: string;
+            /** @description Auth method of the assignee. Optional when the login is unambiguous
+             *     in the tenant; the server fills it in from the user directory.
+             *      */
+            assignee_method?: string;
             /** @description Free-form note. Must not be empty when present. */
             message?: string;
             /**
@@ -4694,6 +5063,24 @@ export interface components {
             date_epoch?: number;
         } & {
             [key: string]: unknown;
+        };
+        Person: {
+            /** @description Login. */
+            name: string;
+            /** @description Auth method (`local`, `ldap`, `oidc`, …). */
+            method: string;
+            display_name?: string;
+            /** @description Content hash of the user's profile picture; empty or absent when
+             *     the user has none (render initials instead).
+             *      */
+            avatar_version?: string;
+        };
+        Avatar: {
+            name: string;
+            method: string;
+            version: string;
+            /** @description `data:image/png;base64,…` URL. */
+            data: string;
         };
         ListResponse: {
             data: {

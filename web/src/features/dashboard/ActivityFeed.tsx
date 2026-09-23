@@ -15,6 +15,8 @@ const TYPE_LABEL: Record<Comment["type"], string> = {
   esc: "re-escalated",
   shelve: "shelved",
   unshelve: "unshelved",
+  assign: "assigned",
+  release: "released",
 };
 
 const TYPE_VARIANT: Record<Comment["type"], BadgeVariant> = {
@@ -25,6 +27,8 @@ const TYPE_VARIANT: Record<Comment["type"], BadgeVariant> = {
   open: "neutral",
   shelve: "muted",
   unshelve: "neutral",
+  assign: "ack", // violet — somebody has it now
+  release: "neutral",
 };
 
 export function ActivityFeed() {
@@ -63,7 +67,9 @@ export function ActivityFeed() {
           <Badge variant={TYPE_VARIANT[c.type]}>{TYPE_LABEL[c.type]}</Badge>
           <div className={styles.body}>
             <span className={styles.meta}>
-              <strong>{c.user ?? "system"}</strong> · {trimDate(c.date_epoch)}
+              <strong>{c.user ?? "system"}</strong>
+              {c.type === "assign" && c.assignee ? <> → {c.assignee}</> : null} ·{" "}
+              {trimDate(c.date_epoch)}
             </span>
             {c.message ? <span className={styles.message}>{c.message}</span> : null}
           </div>

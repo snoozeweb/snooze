@@ -32,6 +32,17 @@
 .placeholder {
   color: var(--text-muted);
 }
+/* The selected value — may be custom content (renderOption), so it lays out
+   as a row and clips rather than stretching the trigger. */
+.value {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
 
 .content {
   background: var(--bg-elevated);

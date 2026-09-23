@@ -593,7 +593,10 @@ func TestBulkState_BulkGuardAllows(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 
 	require.Len(t, fake.calls, 1)
-	require.Equal(t, db.Document{"state": "ack"}, fake.calls[0].set)
+	// The guard sees the whole SetFields document: the state plus the
+	// ownership an ack takes for the caller.
+	require.Equal(t, "ack", fake.calls[0].set["state"])
+	require.Equal(t, "tester", fake.calls[0].set["owner"])
 	require.Nil(t, fake.calls[0].tag)
 	require.Nil(t, fake.calls[0].untag)
 

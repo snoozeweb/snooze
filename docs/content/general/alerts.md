@@ -12,9 +12,11 @@ This page will list all the tools available to manage alerts.
 
 Alerts that have not been [snoozed](./snooze.md), [acknowledged](./alerts.md#acknowledge) or [closed](./alerts.md#close) will be displayed under the first tab of the **Alerts** page on the web interface.
 
+Alerts that have been [acknowledged](./alerts.md#acknowledge) will be displayed under the **Acknowledged** tab, right after the first tab.
+
 Alerts that have been snoozed will be displayed under the **Snoozed** tab on the same page, until they are closed (a recovered alert moves to the **Closed** tab).
 
-Alerts that have been [re-escalated](./alerts.md#re-escalate) or [re-opened](./alerts.md#re-open) will be displayed under the **Re-escalated** tab on the same page.
+Alerts that have been [re-escalated](./alerts.md#re-escalate) or [re-opened](./alerts.md#re-open) are active again, so they are back under the first tab (or **Snoozed**, when a snooze filter holds them), marked as re-escalated in their row. There is no separate Re-escalated tab any more; an old `?tab=esc` link opens the first tab.
 
 Alerts that have been [closed](./alerts.md#close) will be displayed under the **Closed** tab on the same page.
 
@@ -90,16 +92,14 @@ changes an alert's state between the moment you see the page and the moment you
 click, the server still rejects the now-stale action and the UI shows an error
 toast.
 
-### Ack expiry countdown
+### Ack expiry
 
 When the `housekeeping.ack_timeout` setting is configured, the server stamps an
-`ack_until` deadline (epoch seconds) onto each acknowledged alert. The alerts
-table shows this deadline as an **"in Xh Ym"** hint next to the username in the
-**Acked by** column, so operators can see at a glance how long before the
-acknowledgement expires and the alert returns to open.
-
-Rows without a deadline (zero or absent `ack_until`) show no extra text — the
-column renders normally.
+`ack_until` deadline (epoch seconds) onto each acknowledged alert. Once it
+passes, the housekeeper returns the alert to `open` and it loses its
+[owner](./alerts.md#ownership) (who stays visible as the previous owner).
+Alerts without a deadline (zero or absent `ack_until`) stay acknowledged until
+someone acts on them.
 
 ### Trend indicator
 
@@ -119,7 +119,7 @@ this column.
 
 ### Acknowledge
 
-Used to let people know that someone is taking care of the issue related to the alert.
+Used to let people know that someone is taking care of the issue related to the alert. Acknowledging makes you the alert's [owner](./alerts.md#ownership).
 
 Acknowledged alerts will stop getting [notified](./notifications.md#frequency) if a frequency has been set.
 
@@ -149,20 +149,75 @@ It can be done manually by the user to have the alert go through the full proces
 
 ### Acked by
 
-The alert list shows an **Acked by** column with the login of the operator who
-last acknowledged the alert. It is a convenience denormalisation: when someone
-acknowledges an alert, their login is stamped directly onto the alert record so
-the column reads from the same response that populates every other column — no
-join against the comment timeline.
+Besides the [owner](./alerts.md#ownership), the alert record keeps an
+`acked_by` field with the login of the last acknowledger, for integrations and
+notification templates that already read it. It is set on acknowledge, kept
+through re-escalation, and cleared when the alert is re-opened or closed. The
+web interface shows the owner instead.
 
-- The column shows the acknowledger while the alert is **acknowledged**.
-- It is **blank** (`—`) while the alert is open or closed — re-opening or
-  closing an alert clears the field.
-- It is **retained through re-escalation** (`esc`): the last acknowledger stays
-  visible so the team can see who acked before the alert fired again.
+## Ownership
 
-Alerts that were already acknowledged before this feature was deployed have no
-stored acknowledger and show `—` until they are acknowledged again.
+Every alert can have an **owner**: the person working on it. The **Owner**
+column shows the owner's [profile picture](./users.md#profile-picture) (or
+their initials), and hovering it tells you since when they own the alert.
+
+| What happens | Owner afterwards |
+|---|---|
+| Someone [acknowledges](./alerts.md#acknowledge) the alert (from the UI, a chat command, the MCP server, or in bulk) | that person |
+| Someone [closes](./alerts.md#close) the alert | that person |
+| Someone assigns the alert (**Assign to…**) | the assignee — the state does not change |
+| The alert is closed automatically on an OK severity | unchanged — whoever handled it keeps it |
+| Someone [re-opens](./alerts.md#re-open) or [re-escalates](./alerts.md#re-escalate) the alert, or releases it (**Release**) | nobody |
+| The alert comes back by itself: a closed alert is received again, an acknowledged alert is re-escalated by its [aggregate rule](./aggregaterules.md), the acknowledgement [expires](./alerts.md#ack-expiry), or the [escalation timeout](./escalation.md) fires | nobody |
+
+When an alert loses its owner, the last owner stays visible as a **faded
+avatar** (the *previous owner*): nobody is on it right now, but you can see who
+handled it last — usually the right person to pick it back up. The faded avatar
+disappears as soon as someone takes the alert again.
+
+**Release** gives an alert back. Releasing an acknowledged alert also returns it
+to `open`, so it reappears in the first tab for someone else to pick up.
+**Assign to…** is not offered on closed alerts; you can assign to any enabled
+user of your tenant.
+
+### Filtering by owner
+
+Next to the tabs, a row of avatars filters the list by owner. Your own avatar is
+always first (greyed out when you own nothing in the current tab), followed by
+everyone who owns at least one alert in the current tab and search, then an
+**Unowned** chip. Select several to see the alerts owned by any of them. The
+filter combines with the tabs — select yourself on the **Acknowledged** tab to
+see what you are currently working on — and is kept in the page URL
+(`?owner=alice,bob`; `~none` stands for *Unowned*), so it can be bookmarked and
+shared. An alert that only has a previous owner counts as *Unowned*.
+
+The owner is stored on the alert as plain fields — `owner`, `owner_method`,
+`owner_since`, `previous_owner`, `previous_owner_method` — so it also works in
+the [query language](./querylanguage.md) (`owner = alice`) and in
+[notification](./notifications.md) conditions.
+
+### From the command line
+
+The `snooze` CLI covers the same actions:
+
+```bash
+snooze record assign <uid> alice            # --user-method ldap when the login is ambiguous
+snooze record release <uid> -m "end of shift"
+snooze record owners -c '["=","state","ack"]'   # alerts per owner (+ unowned)
+snooze people                                # who alerts can be assigned to
+snooze record bulk assign alice -c '["=","host","db-1"]'
+snooze record bulk release --all
+snooze record bulk state ack -c '["=","host","db-1"]'
+```
+
+`snooze record ack` / `close` also take ownership and print the new owner, and
+`snooze record list` shows an `owner` column. The `bulk` commands refuse to run
+without a target: pass a condition (`-c`) or, explicitly, `--all`.
+
+Alerts created before ownership existed get an owner from their history with a
+one-shot migration: run `snooze-server migrate owners` once after upgrading
+(it is safe to re-run). Acknowledged alerts become owned by their
+acknowledger, and closed alerts by whoever closed them.
 
 ## Bulk operations from the console
 
@@ -242,6 +297,10 @@ single alert); any other value returns `400`. Note: `shelved` is not accepted
 by `bulk_state` — use the per-alert timeline endpoint instead (`POST
 /api/v1/record/{uid}/comment` with a `shelve` comment type).
 
+Ownership follows the same rules as for a single alert: a bulk `ack` or
+`close` makes the caller the [owner](./alerts.md#ownership) of every match, a
+bulk `open` or `esc` clears it.
+
 > **One behavioural difference from the single-alert path.** Acting on one
 > alert posts a comment *and* changes its state. The bulk path changes `state`
 > directly and does **not** write one comment per alert — a query can match
@@ -272,6 +331,24 @@ produces duplicates.
 Both endpoints write one [audit](./audit_trail.md) row per affected alert when
 auditing is enabled for the collection (above a server-side cap, a single
 summary row carrying the matched count is written instead).
+
+### Bulk assign / release
+
+`POST /api/v1/record/bulk_owner?q=<condition>` assigns or releases every
+matching alert. Requires the `rw_record` permission.
+
+```bash
+curl -X POST "https://<snooze>/api/v1/record/bulk_owner?q=<base64url-cond>" \
+  -H 'Authorization: Bearer <token>' \
+  -d '{"action":"assign","assignee":"alice"}'
+# → {"matched": 8, "updated": 8, "action": "assign"}
+```
+
+`assign` needs an `assignee` (an enabled user of your tenant; add
+`assignee_method` when the same login exists for several auth methods) and skips
+closed alerts. `release` clears the owner of every owned match and returns the
+acknowledged ones to `open`. As with `bulk_state`, no per-alert comment is
+written.
 
 ## Alerts TTL
 

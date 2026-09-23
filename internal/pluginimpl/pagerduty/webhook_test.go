@@ -233,6 +233,9 @@ func (s *stubDB) CleanupAuditLogs(context.Context, time.Duration) (int, error) {
 func (s *stubDB) CleanupSnooze(context.Context) (int, error) {
 	panic("stubDB.CleanupSnooze: not implemented")
 }
+func (s *stubDB) CountBy(context.Context, string, condition.Cond, string) (map[string]int, error) {
+	panic("stubDB.CountBy: not implemented")
+}
 func (s *stubDB) CleanupNotification(context.Context) (int, error) {
 	panic("stubDB.CleanupNotification: not implemented")
 }

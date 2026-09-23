@@ -81,7 +81,7 @@ func renderAny(cmd *cobra.Command, rt *runtime, v any) error {
 func columnsFor(collection string, docs []map[string]any) []string {
 	switch collection {
 	case "record":
-		return []string{"uid", "host", "severity", "state", "message"}
+		return []string{"uid", "host", "severity", "state", "owner", "message"}
 	case "snooze":
 		return []string{"uid", "name", "ql", "ttl"}
 	}

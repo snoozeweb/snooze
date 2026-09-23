@@ -5,6 +5,8 @@ import { TimeCell } from "@/shared/ui/TimeCell";
 import { severityColor } from "@/lib/format/severity-color";
 import { AnalysedDot } from "./analysis/AnalysedDot";
 import { MessageCell } from "./MessageCell";
+import { OwnerCell } from "./Owner";
+import { OWNER_NOUN } from "./lifecycle";
 import {
   formatCountdown,
   formatShelveUntil,
@@ -84,12 +86,17 @@ function recordTrend(r: Record_): "moreSevere" | "lessSevere" | "noChange" | "" 
 // realistic desktop width and never drops under ~240px on a tablet:
 //
 //   container   hidden tiers      fixed+controls   Message
-//   1600px      —                 810px            790px
-//   1280px      xxl               714px            566px
-//   1150px      xxl+xl            594px            556px   (1440px window)
+//   1600px      —                 874px            726px
+//   1280px      xxl               778px            502px
+//   1150px      xxl+xl            658px            492px   (1440px window)
 //   1000px      xxl+xl+lg         530px            470px   (1280px window)
 //    768px      xxl+xl+lg         530px            238px
 //    640px      → card mode (cardRole decides placement, tiers stop applying)
+//
+// Owner (64px) rides the "lg" tier with Hits: showing it at a 1000px container
+// would have put Message under 400px on the most common laptop window, and
+// below that width the owner filter above the table still answers "whose is
+// this?" while the card view and the inspector keep the face.
 //
 // Hidden columns aren't gone: they reappear in the detail drawer, and on a
 // phone `cardRole` decides what the card shows.
@@ -220,6 +227,18 @@ export const alertColumns: ColumnDef<Record_>[] = [
     // lines at that width even though .badgeText tolerates the wrap
     // (nothing clips) — widened just enough to keep them on one line.
     width: "136px",
+    cardRole: "header",
+  },
+  {
+    // Who is working on it: the owner's face (tooltip: name, since when), a
+    // faded face for the previous owner of an alert nobody has now, or "—".
+    // Not sortable: "whose is this?" is the owner filter's question, and the
+    // sort arrow would not fit the 64px a single face needs.
+    id: "owner",
+    header: OWNER_NOUN,
+    cell: (r) => <OwnerCell record={r} />,
+    width: "64px",
+    hideBelow: "lg",
     cardRole: "header",
   },
   {

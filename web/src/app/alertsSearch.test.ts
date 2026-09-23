@@ -53,6 +53,7 @@ describe("validateAlertsSearch", () => {
       validateAlertsSearch({
         tab: "all",
         env: "e1,e2",
+        owner: "alice,~none",
         page: "3",
         orderby: "date_epoch",
         asc: "false",
@@ -61,6 +62,7 @@ describe("validateAlertsSearch", () => {
     ).toEqual({
       tab: "all",
       env: "e1,e2",
+      owner: "alice,~none",
       page: 3,
       orderby: "date_epoch",
       asc: false,

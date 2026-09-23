@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import * as RP from "@radix-ui/react-popover";
 import { Icon } from "@/shared/icons/Icon";
 import styles from "./Combobox.module.css";
@@ -7,11 +7,20 @@ export type ComboboxOption = { value: string; label: string };
 
 export type ComboboxProps = {
   options: ComboboxOption[];
-  value?: string;
+  value?: string | undefined;
   onValueChange: (value: string) => void;
   placeholder?: string;
   noResultsLabel?: string;
   className?: string;
+  /** Wires the trigger to a `<label htmlFor>`. */
+  id?: string;
+  /** Accessible name for the trigger when no visible label points at it. */
+  "aria-label"?: string;
+  /** What the search box says when empty (and its accessible name). */
+  searchPlaceholder?: string;
+  /** Custom content for an option (and the selected value in the trigger) —
+   *  e.g. a face beside a name. Filtering still matches `label`. */
+  renderOption?: (option: ComboboxOption) => ReactNode;
 };
 
 export function Combobox({
@@ -21,6 +30,10 @@ export function Combobox({
   placeholder = "Select…",
   noResultsLabel = "No results",
   className,
+  id,
+  "aria-label": ariaLabel,
+  searchPlaceholder,
+  renderOption,
 }: ComboboxProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -91,10 +104,12 @@ export function Combobox({
       <RP.Trigger
         role="combobox"
         aria-expanded={open}
+        {...(id ? { id } : {})}
+        {...(ariaLabel ? { "aria-label": ariaLabel } : {})}
         className={[styles.trigger, className].filter(Boolean).join(" ")}
       >
-        <span className={selected ? "" : styles.placeholder}>
-          {selected ? selected.label : placeholder}
+        <span className={selected ? styles.value : styles.placeholder}>
+          {selected ? (renderOption ? renderOption(selected) : selected.label) : placeholder}
         </span>
         <Icon name="chevron-down" size={14} />
       </RP.Trigger>
@@ -111,10 +126,10 @@ export function Combobox({
             <input
               type="text"
               autoFocus
-              aria-label="Search options"
+              aria-label={searchPlaceholder ?? "Search options"}
               className={styles.search}
               value={query}
-              placeholder="Search…"
+              placeholder={searchPlaceholder ?? "Search…"}
               onChange={(e) => {
                 setQuery(e.target.value);
                 setActiveIndex(0);
@@ -137,7 +152,7 @@ export function Combobox({
                   onClick={() => selectOption(opt)}
                   onMouseEnter={() => setActiveIndex(i)}
                 >
-                  <span>{opt.label}</span>
+                  {renderOption ? renderOption(opt) : <span>{opt.label}</span>}
                   {opt.value === value ? (
                     <span className={styles.optionCheck}>
                       <Icon name="check" size={12} />

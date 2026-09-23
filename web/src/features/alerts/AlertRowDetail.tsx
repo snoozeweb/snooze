@@ -26,6 +26,7 @@ import { authorOf, isPlanStatus, planStatusLabel, splitSummary } from "./analysi
 import { escalationLabel, severityDisplayLabel, stateBadgeVariant, stateLabel } from "./format";
 import { lastDeliverySummary } from "./lastDelivery";
 import { CommentTimeline } from "./CommentTimeline";
+import { OwnerSummary } from "./Owner";
 import { AlertFlowChart } from "./AlertFlowChart";
 import type { AlertState, Record_ } from "./types";
 import styles from "./AlertRowDetail.module.css";
@@ -74,7 +75,8 @@ function stripPrivateKeys(row: Record<string, unknown>): Record<string, unknown>
  * AlertRowDetail — the body of the docked row inspector on the alerts list.
  *
  * A compact summary header (severity + state badges, an escalation badge when
- * the alert has been re-escalated, source chip, the alert message, received
+ * the alert has been re-escalated, source chip, who owns it — or, faded, who
+ * last did — the alert message, received
  * time, the last delivery, and — when the alert has been analysed — one line
  * pointing at the analysis) sits above five tabs:
  *   - Timeline (default): comment/activity history + composer — the read-write
@@ -210,6 +212,8 @@ export function AlertRowDetail({
           {escalation ? <Badge variant="warning">{escalation}</Badge> : null}
           {row.source ? <span className={styles.source}>{row.source}</span> : null}
         </div>
+        {/* Who is on it, right under the state it is in. */}
+        <OwnerSummary record={row} />
         {row.message ? <p className={styles.message}>{row.message}</p> : null}
         <div className={styles.received}>
           <TimeCell epoch={row.date_epoch} />

@@ -15,7 +15,10 @@ import type { ErrorCopy } from "@/lib/api/errorMessage";
 import type { Record_ } from "./types";
 import styles from "./ActionDialog.module.css";
 
-export type ActionType = "ack" | "close" | "open" | "esc" | "comment";
+// `release` rides here because it has this dialog's exact shape — a confirm
+// with an optional note. `assign` does not: it needs a person, so it has its
+// own dialog (AssignDialog).
+export type ActionType = "ack" | "close" | "open" | "esc" | "comment" | "release";
 
 const META: Record<
   ActionType,
@@ -58,6 +61,14 @@ const META: Record<
     confirmLabel: "Re-escalate",
     description:
       "Reset the alert(s) and fire notifications again. A message is recommended so operators see why.",
+    variant: "primary",
+    requireMessage: false,
+  },
+  release: {
+    title: (n) => (n === 1 ? "Release alert" : `Release ${n} alerts`),
+    confirmLabel: "Release",
+    description:
+      "Give the alert(s) back: nobody owns them afterwards, and an acknowledged one returns to open for someone else to pick up. The last owner stays visible as the previous owner.",
     variant: "primary",
     requireMessage: false,
   },

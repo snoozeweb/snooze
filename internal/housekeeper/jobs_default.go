@@ -10,6 +10,7 @@ import (
 	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/ownership"
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
@@ -148,6 +149,11 @@ const (
 //     notification dispatcher with the now-escalated record. notify errors are
 //     logged, not fatal.
 //
+// Both passes also clear the record's owner in the same patch
+// (internal/ownership.Clear, computed from the row the pass read): the alert
+// is back to needing somebody, and the old owner stays as the previous-owner
+// ghost. The unshelve sweep below leaves ownership alone.
+//
 // rs is read live on every fire (operators can retune the windows without a
 // restart); a tenant whose settings are unreadable falls back to defaults via
 // the accessor contract rather than failing the whole sweep. clk supplies the
@@ -198,6 +204,11 @@ func revertExpiredAcks(tctx context.Context, d db.Driver, now int64, escalateAft
 		} else {
 			patch["escalate_at"] = int64(0)
 		}
+		// An expired ack means nobody followed up: the owner is dropped (kept
+		// as the previous-owner ghost), computed from the row just read.
+		for k, v := range ownership.Clear(doc) {
+			patch[k] = v
+		}
 		if err := d.UpdateOne(tctx, recordCollection, uid, patch, true); err != nil {
 			return fmt.Errorf("housekeeper: escalate_timeout: revert ack %s: %w", uid, err)
 		}
@@ -240,6 +251,13 @@ func escalateOverdueOpens(tctx context.Context, d db.Driver, now int64, escalate
 			"escalated_at":      now,
 			"escalation_reason": escalationReasonTimeout,
 		}
+		// Escalating an unhandled alert drops its owner, like every other
+		// automatic re-escalation. Kept separately so the in-memory record
+		// below carries the same clear as the stored row.
+		cleared := ownership.Clear(doc)
+		for k, v := range cleared {
+			patch[k] = v
+		}
 		if err := d.UpdateOne(tctx, recordCollection, uid, patch, true); err != nil {
 			return fmt.Errorf("housekeeper: escalate_timeout: escalate open %s: %w", uid, err)
 		}
@@ -253,6 +271,13 @@ func escalateOverdueOpens(tctx context.Context, d db.Driver, now int64, escalate
 		rec.EscalationCount = count
 		rec.EscalatedAt = now
 		rec.EscalationReason = escalationReasonTimeout
+		// The ownership keys are untyped, so they live in Extra.
+		if rec.Extra == nil {
+			rec.Extra = map[string]any{}
+		}
+		for k, v := range cleared {
+			rec.Extra[k] = v
+		}
 		if nerr := notify(tctx, rec); nerr != nil {
 			// Best-effort: a re-notification failure must not abort the sweep.
 			slog.Default().Warn("housekeeper: escalate_timeout: re-notify failed", "uid", uid, "err", nerr)

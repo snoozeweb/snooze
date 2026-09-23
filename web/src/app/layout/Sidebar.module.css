@@ -159,19 +159,10 @@
   color: var(--text-muted);
   flex-shrink: 0;
 }
+/* The Avatar primitive owns size, colour and initials; the footer only adds
+   a hairline so a picture's edge holds against the sidebar surface. */
 .footerAvatar {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-strong);
-  font-weight: var(--weight-semibold);
-  font-size: var(--text-xs);
-  flex-shrink: 0;
+  box-shadow: 0 0 0 1px var(--border);
 }
 .footerUsername {
   color: var(--text-strong);

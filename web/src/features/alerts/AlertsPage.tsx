@@ -33,8 +33,10 @@ import {
   useCommentRecord,
   useShelveRecord,
   useBulkStateRecord,
+  useBulkOwnerRecord,
   encodeUidsAsQ,
 } from "./api";
+import { usePeople, findPerson, personLabel } from "@/shared/people/api";
 import type { AlertPane } from "@/app/alertsSearch";
 import { AlertRowDetail, DiscardAnalysisDraftDialog, type AlertDetailTab } from "./AlertRowDetail";
 import { AlertFlowChart } from "./AlertFlowChart";
@@ -46,6 +48,9 @@ import { useAutoRefresh } from "./useAutoRefresh";
 import type { Record_, AlertState } from "./types";
 import { tabById, type TabId } from "./tabs";
 import { ActionDialog, type ActionType } from "./ActionDialog";
+import { AssignDialog, type AssignInput } from "./AssignDialog";
+import { formatOwnerParam, ownerCondition, parseOwnerParam, UNOWNED_TOKEN } from "./ownerFilter";
+import { ASSIGN_VERB, RELEASE_VERB, UNOWNED_NOUN } from "./lifecycle";
 import { ShelveDialog } from "./ShelveDialog";
 import { ROW_ACTION_DESCRIPTIONS, SILENCE_DESCRIPTIONS } from "./silencingGuide";
 import { BulkTagDialog } from "./BulkTagDialog";
@@ -56,6 +61,8 @@ import {
   eligibleForBulkState,
   describeBulkSkips,
   BULK_STATE_CAVEAT,
+  canAssign,
+  canRelease,
 } from "./transitions";
 import styles from "./AlertsPage.module.css";
 
@@ -111,6 +118,7 @@ const ACTION_VERB: Record<ActionType, string> = {
   open: "re-open",
   esc: "re-escalate",
   comment: "comment on",
+  release: "release",
 };
 
 /** host+message AND condition for the "Snooze this alert" action — the two
@@ -177,6 +185,8 @@ type AlertsSearch = AlertFilters & {
   asc?: boolean;
   /** Comma-separated env UIDs in the URL (parsed/stringified in onChange). */
   env?: string;
+  /** Comma-separated owner tokens (`~none` = Unowned) — see ownerFilter.ts. */
+  owner?: string;
   /** Open detail-drawer record key (its uid). Round-trips the modal detail
    *  drawer through the URL so an open alert is shareable / deep-linkable. */
   record?: string;
@@ -210,7 +220,7 @@ type AlertsSearch = AlertFilters & {
 const PAGE_SIZE = 50;
 
 // Advertised in the DataTable's "?" shortcuts legend. Mirrors the per-row
-// bindings wired in `rowKeyBindings` (a=ack, c=close, m=comment); the table
+// bindings wired in `rowKeyBindings` (a=ack, c=close, m=comment, o=assign); the table
 // prepends its own built-in navigation shortcuts (move / open / view / expand /
 // select). Module constant so its identity is stable across renders (row-memo
 // contract).
@@ -218,6 +228,7 @@ const ALERT_KEYBOARD_HINTS = [
   { keys: "A", label: "Acknowledge focused alert" },
   { keys: "C", label: "Close focused alert" },
   { keys: "M", label: "Comment on focused alert" },
+  { keys: "O", label: "Assign focused alert to…" },
 ];
 
 /**
@@ -305,6 +316,7 @@ function buildQueryParam(
   tab: TabId,
   dsl: ParsedCondition | Condition | null,
   envCondition: Condition | null,
+  ownerCond: Condition | null = null,
 ): string | undefined {
   const parts: Condition[] = [];
   const tabCondition = tabById(tab).condition;
@@ -318,6 +330,7 @@ function buildQueryParam(
     parts.push(dsl as unknown as Condition);
   }
   if (envCondition) parts.push(envCondition);
+  if (ownerCond) parts.push(ownerCond);
   if (parts.length === 0) return undefined;
   const combined: Condition =
     parts.length === 1 ? (parts[0] as Condition) : { type: "AND", args: parts };
@@ -360,7 +373,18 @@ export function AlertsPage() {
     records: Record_[];
     /** Set when the bulk bar narrowed `records` to the eligible subset. */
     skip?: BulkSkip;
+    /** Opened from the bulk bar. Only Release reads it: a row's Release is a
+     *  comment (it lands on the timeline), the bar's is one bulk_owner call. */
+    bulk?: boolean;
   } | null>(null);
+  // "Assign to…" — its own dialog (it needs a person), with the same
+  // row-vs-bulk split and inline-error contract as `dialog` above.
+  const [assignDialog, setAssignDialog] = useState<{
+    records: Record_[];
+    skip?: BulkSkip;
+    bulk?: boolean;
+  } | null>(null);
+  const [assignError, setAssignError] = useState<ErrorCopy | null>(null);
   // Failure from the most recent submitDialog attempt, rendered inline inside
   // the ActionDialog (see the corner-toast-only bug this replaces). Cleared
   // whenever a fresh dialog opens or a new submit attempt starts.
@@ -381,6 +405,7 @@ export function AlertsPage() {
   const [selectAllMode, setSelectAllMode] = useState(false);
   const shelveMut = useShelveRecord();
   const bulkStateMut = useBulkStateRecord();
+  const bulkOwnerMut = useBulkOwnerRecord();
   const removeMut = Records.useRemove();
 
   const page = search.page ?? 1;
@@ -454,7 +479,11 @@ export function AlertsPage() {
   const [searchCondition, setSearchCondition] = useState<ParsedCondition | Condition | null>(() =>
     searchOnlyCondition(search.search ?? ""),
   );
-  const activeTab: TabId = search.tab ?? "alerts";
+  // Normalised through the catalogue: an id it does not know — a typo, or the
+  // retired `esc` (Re-escalated) from an old bookmark — is the default tab,
+  // and must be treated as it everywhere (the active tab, the chip strip, the
+  // panel's aria-labelledby), not just in the query.
+  const activeTab: TabId = tabById(search.tab).id;
 
   const selectedEnvs = useMemo<string[]>(
     () => (search.env ? search.env.split(",").filter(Boolean) : []),
@@ -487,9 +516,15 @@ export function AlertsPage() {
     return conds.length === 1 ? (conds[0] as Condition) : { type: "OR", args: conds };
   }, [selectedEnvs, envList.data]);
 
+  // Owner filter: the chips' tokens from `?owner=`, and the OR condition they
+  // add to the list query.
+  const selectedOwners = useMemo(() => parseOwnerParam(search.owner), [search.owner]);
+  const ownerCond = useMemo(() => ownerCondition(selectedOwners), [selectedOwners]);
+
   const filters: AlertFilters = {
     tab: activeTab,
     envs: selectedEnvs,
+    owners: selectedOwners,
   };
 
   // Combine the active tab's preset condition with the SearchBar's DSL
@@ -497,7 +532,16 @@ export function AlertsPage() {
   // sent server-side as ?q=. The "All" tab has a null preset, so a clean
   // DSL query with no env selection collapses to no filter at all — the
   // request stays cacheable.
+  //
+  // The owner filter is ANDed in too, so everything that reuses `q` — the
+  // list, "select all N matching", the bulk tag dialog — acts on exactly the
+  // rows on screen. The owner chips count over the same view WITHOUT their own
+  // filter (`ownerCountsQ`): a chip's number is what clicking it would show.
   const q = useMemo(
+    () => buildQueryParam(activeTab, searchCondition, envCondition, ownerCond),
+    [activeTab, searchCondition, envCondition, ownerCond],
+  );
+  const ownerCountsQ = useMemo(
     () => buildQueryParam(activeTab, searchCondition, envCondition),
     [activeTab, searchCondition, envCondition],
   );
@@ -539,6 +583,14 @@ export function AlertsPage() {
       updateSearch({ pane: undefined } as unknown as Partial<AlertsSearch>, { replace: true });
     }
   }, [search.record, search.pane, updateSearch]);
+  // The same correction for a tab id the catalogue does not know (the retired
+  // `?tab=esc` above all): the page already shows the default tab, so the URL
+  // stops claiming otherwise. Replace, not push — nobody asked to be here.
+  useEffect(() => {
+    if (search.tab !== undefined && tabById(search.tab).id !== search.tab) {
+      updateSearch({ tab: undefined } as unknown as Partial<AlertsSearch>, { replace: true });
+    }
+  }, [search.tab, updateSearch]);
   const handlePaneChange = useCallback(
     (next: AlertDetailTab) =>
       updateSearch({
@@ -727,6 +779,10 @@ export function AlertsPage() {
     setDialogError(null);
     setDialog({ type, records });
   }, []);
+  const openAssign = useCallback((records: Record_[]) => {
+    setAssignError(null);
+    setAssignDialog({ records });
+  }, []);
 
   // "Snooze this alert(s)" — hands off to the snoozes page with a new-snooze
   // form prefilled from the given rows: a host+message condition (OR'd across
@@ -847,6 +903,25 @@ export function AlertsPage() {
         icon: "message-square",
         onSelect: () => openDialog("comment", [row]),
       });
+      // Ownership sits with the other "I'm on it" verbs. Gated like the
+      // backend gates them: no assigning a closed alert, no releasing one
+      // nobody owns.
+      if (canAssign(row)) {
+        out.push({
+          key: "assign",
+          label: ASSIGN_VERB,
+          icon: "user-plus",
+          onSelect: () => openAssign([row]),
+        });
+      }
+      if (canRelease(row)) {
+        out.push({
+          key: "release",
+          label: RELEASE_VERB,
+          icon: "unlock",
+          onSelect: () => openDialog("release", [row]),
+        });
+      }
 
       // ── Quiet it down ────────────────────────────────────────────────
       // Snooze lives here rather than beside Comment: it is one of the four
@@ -972,7 +1047,7 @@ export function AlertsPage() {
 
       return out;
     },
-    [openDialog, shelveMut, commentMut, snoozeRows],
+    [openDialog, openAssign, shelveMut, commentMut, snoozeRows],
   );
 
   // Count pill on the kebab: signals a row carries discussion (the full thread
@@ -1075,7 +1150,8 @@ export function AlertsPage() {
   //   a → Acknowledge the focused row (confirm dialog)
   //   c → Close the focused row (confirm dialog)
   //   m → Comment on the focused row
-  // Each opens the SAME ActionDialog the kebab and bulk bar use. The mouse
+  //   o → Assign the focused row to someone (the owner picker)
+  // Each opens the SAME dialog the kebab and bulk bar use. The mouse
   // quick-actions still ack/close inline with an Undo toast — a click lands on
   // a row the operator is pointing at, whereas a keystroke lands on whichever
   // row the focus ring happens to be on, so the keyboard path keeps its
@@ -1089,9 +1165,10 @@ export function AlertsPage() {
       };
       if (isActionAllowed(state, "ack")) bindings.a = () => openDialog("ack", [row]);
       if (isActionAllowed(state, "close")) bindings.c = () => openDialog("close", [row]);
+      if (canAssign(row)) bindings.o = () => openAssign([row]);
       return bindings;
     },
-    [openDialog],
+    [openDialog, openAssign],
   );
 
   // Right-click context menu. DataTable auto-prepends its own "View details"
@@ -1161,6 +1238,23 @@ export function AlertsPage() {
         onSelect: () => openDialog("comment", [row]),
       });
 
+      if (canAssign(row)) {
+        items.push({
+          key: "assign",
+          label: ASSIGN_VERB,
+          icon: "user-plus",
+          onSelect: () => openAssign([row]),
+        });
+      }
+      if (canRelease(row)) {
+        items.push({
+          key: "release",
+          label: RELEASE_VERB,
+          icon: "unlock",
+          onSelect: () => openDialog("release", [row]),
+        });
+      }
+
       items.push({
         key: "snooze",
         label: "Snooze this alert",
@@ -1180,14 +1274,18 @@ export function AlertsPage() {
 
       return items;
     },
-    [openDialog, confirmDelete, config?.clipboard_template, snoozeRows],
+    [openDialog, openAssign, confirmDelete, config?.clipboard_template, snoozeRows],
   );
 
   const bulkActions = useCallback(
     (rows: Record_[]) => {
       const openBulkDialog = (type: ActionType, records: Record_[] = rows, skip?: BulkSkip) => {
         setDialogError(null);
-        setDialog({ type, records, ...(skip ? { skip } : {}) });
+        setDialog({ type, records, bulk: true, ...(skip ? { skip } : {}) });
+      };
+      const openBulkAssign = (records: Record_[] = rows, skip?: BulkSkip) => {
+        setAssignError(null);
+        setAssignDialog({ records, bulk: true, ...(skip ? { skip } : {}) });
       };
       const total = list.data?.meta.total ?? 0;
       const pageCount = rows.length;
@@ -1310,6 +1408,98 @@ export function AlertsPage() {
           >
             Comment ({pageCount})
           </Button>
+          {/* Ownership. Assign skips closed rows and Release unowned ones —
+              the same eligible-subset honesty as Acknowledge/Close above, and
+              in select-all mode the backend does that filtering itself. */}
+          {(() => {
+            if (selectAllMode) {
+              return (
+                <>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    leadingIcon="user-plus"
+                    onClick={() => openBulkAssign()}
+                  >
+                    {ASSIGN_VERB} ({countLabel})
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    leadingIcon="unlock"
+                    onClick={() => openBulkDialog("release")}
+                  >
+                    {RELEASE_VERB} ({countLabel})
+                  </Button>
+                </>
+              );
+            }
+            const assignable = rows.filter(canAssign);
+            const releasable = rows.filter(canRelease);
+            const assignSkipped = pageCount - assignable.length;
+            const releaseSkipped = pageCount - releasable.length;
+            return (
+              <>
+                {assignable.length > 0 ? (
+                  <Tooltip
+                    content={
+                      assignSkipped > 0
+                        ? `${assignSkipped} of the ${pageCount} selected will be skipped (already closed).`
+                        : null
+                    }
+                  >
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      leadingIcon="user-plus"
+                      onClick={() =>
+                        openBulkAssign(
+                          assignable,
+                          assignSkipped > 0
+                            ? {
+                                count: assignSkipped,
+                                reason: "already closed",
+                                selected: pageCount,
+                              }
+                            : undefined,
+                        )
+                      }
+                    >
+                      {ASSIGN_VERB} (
+                      {assignSkipped > 0 ? `${assignable.length} of ${pageCount}` : pageCount})
+                    </Button>
+                  </Tooltip>
+                ) : null}
+                {releasable.length > 0 ? (
+                  <Tooltip
+                    content={
+                      releaseSkipped > 0
+                        ? `${releaseSkipped} of the ${pageCount} selected will be skipped (nobody owns them).`
+                        : null
+                    }
+                  >
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      leadingIcon="unlock"
+                      onClick={() =>
+                        openBulkDialog(
+                          "release",
+                          releasable,
+                          releaseSkipped > 0
+                            ? { count: releaseSkipped, reason: "unowned", selected: pageCount }
+                            : undefined,
+                        )
+                      }
+                    >
+                      {RELEASE_VERB} (
+                      {releaseSkipped > 0 ? `${releasable.length} of ${pageCount}` : pageCount})
+                    </Button>
+                  </Tooltip>
+                ) : null}
+              </>
+            );
+          })()}
           {/* Tag / set fields */}
           <Button
             size="sm"
@@ -1364,7 +1554,7 @@ export function AlertsPage() {
   const submitDialog = useCallback(
     async ({ message }: { message: string }) => {
       if (!dialog) return;
-      const { type, records, skip } = dialog;
+      const { type, records, skip, bulk } = dialog;
       setDialogError(null);
       // "srv-prod-db-01" for a single record, "3 alerts" for a bulk action —
       // names the object in the inline failure copy below.
@@ -1408,6 +1598,45 @@ export function AlertsPage() {
             ...(secondary ? { secondary } : {}),
           });
           toast.error(`${failed} of ${records.length} failed; ${ok} succeeded`);
+        }
+        return;
+      }
+
+      if (type === "release") {
+        // A row's Release is a `release` comment, so it lands on the alert's
+        // timeline like every other single-alert verb; the bulk bar's is one
+        // bulk_owner call over the selection (or the whole query).
+        setBulkSubmitting(true);
+        try {
+          if (!bulk) {
+            const r = records[0];
+            if (!r?.uid) return;
+            await commentMut.mutateAsync({
+              record_uid: r.uid,
+              type: "release",
+              ...(message ? { message } : {}),
+            });
+            toast.success(`Released ${recordLabel(r)}`);
+          } else {
+            const releaseQ = selectAllMode ? q : encodeUidsAsQ(records.map((r) => r.uid ?? ""));
+            const resp = await bulkOwnerMut.mutateAsync({
+              ...(releaseQ ? { q: releaseQ } : {}),
+              action: "release",
+              ...(message ? { message } : {}),
+            });
+            const skippedNote = skip ? ` — ${skip.count} skipped (${skip.reason})` : "";
+            toast.success(
+              `${alertCount(resp.updated)} released${skippedNote} — ${BULK_STATE_CAVEAT}`,
+            );
+          }
+          setDialog(null);
+          setSelectedKeys(new Set());
+          setSelectAllMode(false);
+        } catch (e) {
+          setDialogError(describeActionError(ACTION_VERB[type], subject, e));
+          toast.error(describeError(e, "Release failed").summary);
+        } finally {
+          setBulkSubmitting(false);
         }
         return;
       }
@@ -1470,7 +1699,64 @@ export function AlertsPage() {
         setBulkSubmitting(false);
       }
     },
-    [commentMut, bulkStateMut, dialog, selectAllMode, q],
+    [commentMut, bulkStateMut, bulkOwnerMut, dialog, selectAllMode, q],
+  );
+
+  // Directory lookups for toast copy and the active-filter chips — the same
+  // cached query every avatar on the page reads.
+  const people = usePeople();
+  const ownerName = useCallback(
+    (token: string) =>
+      token === UNOWNED_TOKEN ? UNOWNED_NOUN : personLabel(findPerson(people.data, token), token),
+    [people.data],
+  );
+
+  const submitAssign = useCallback(
+    async ({ assignee, assignee_method, message }: AssignInput) => {
+      if (!assignDialog) return;
+      const { records, skip, bulk } = assignDialog;
+      setAssignError(null);
+      const subject = records.length === 1 ? recordLabel(records[0]!) : `${records.length} alerts`;
+      const who = personLabel(findPerson(people.data, assignee, assignee_method), assignee);
+      setBulkSubmitting(true);
+      try {
+        if (!bulk) {
+          // One alert: an `assign` comment, so the handover is on its timeline.
+          const r = records[0];
+          if (!r?.uid) return;
+          await commentMut.mutateAsync({
+            record_uid: r.uid,
+            type: "assign",
+            assignee,
+            ...(assignee_method ? { assignee_method } : {}),
+            ...(message ? { message } : {}),
+          });
+          toast.success(`Assigned ${recordLabel(r)} to ${who}`);
+        } else {
+          const assignQ = selectAllMode ? q : encodeUidsAsQ(records.map((r) => r.uid ?? ""));
+          const resp = await bulkOwnerMut.mutateAsync({
+            ...(assignQ ? { q: assignQ } : {}),
+            action: "assign",
+            assignee,
+            ...(assignee_method ? { assignee_method } : {}),
+            ...(message ? { message } : {}),
+          });
+          const skippedNote = skip ? ` — ${skip.count} skipped (${skip.reason})` : "";
+          toast.success(
+            `${alertCount(resp.updated)} assigned to ${who}${skippedNote} — ${BULK_STATE_CAVEAT}`,
+          );
+        }
+        setAssignDialog(null);
+        setSelectedKeys(new Set());
+        setSelectAllMode(false);
+      } catch (e) {
+        setAssignError(describeActionError("assign", subject, e));
+        toast.error(describeError(e, "Assign failed").summary);
+      } finally {
+        setBulkSubmitting(false);
+      }
+    },
+    [assignDialog, commentMut, bulkOwnerMut, selectAllMode, q, people.data],
   );
 
   // The rows behind the current selection, resolved from the visible page.
@@ -1515,6 +1801,7 @@ export function AlertsPage() {
     searchText.trim() !== "" ||
     searchCondition !== null ||
     selectedEnvs.length > 0 ||
+    selectedOwners.length > 0 ||
     activeTab !== "alerts";
 
   // A cleared queue and a fresh install render identically ("no rows") but
@@ -1531,10 +1818,11 @@ export function AlertsPage() {
   );
   const hasEverReceivedAlert = everReceivedStats.data?.meta.counters?.present ?? false;
 
-  // Whether the ActiveFilters chip strip should render. It only carries tab +
-  // env chips now (search shows in the SearchBar itself, with its own clear),
-  // so a search-only filter leaves the strip empty — gate on tab/env alone.
-  const hasChipFilters = selectedEnvs.length > 0 || activeTab !== "alerts";
+  // Whether the ActiveFilters chip strip should render. It only carries tab,
+  // owner and env chips (search shows in the SearchBar itself, with its own
+  // clear), so a search-only filter leaves the strip empty.
+  const hasChipFilters =
+    selectedEnvs.length > 0 || selectedOwners.length > 0 || activeTab !== "alerts";
 
   // Resolve an env UID to its display name for the ActiveFilters chips. Falls
   // back to the UID when the env list hasn't loaded or the env was deleted.
@@ -1564,6 +1852,15 @@ export function AlertsPage() {
     },
     [selectedEnvs, updateSearch],
   );
+  const removeOwner = useCallback(
+    (token: string) => {
+      updateSearch({
+        page: 1,
+        owner: formatOwnerParam(selectedOwners.filter((o) => o !== token)),
+      } as unknown as Partial<AlertsSearch>);
+    },
+    [selectedOwners, updateSearch],
+  );
   const clearTab = useCallback(() => {
     updateSearch({ page: 1, tab: undefined } as unknown as Partial<AlertsSearch>);
   }, [updateSearch]);
@@ -1574,6 +1871,7 @@ export function AlertsPage() {
       page: 1,
       tab: undefined,
       env: undefined,
+      owner: undefined,
       search: undefined,
     } as unknown as Partial<AlertsSearch>);
   }, [updateSearch]);
@@ -1812,8 +2110,11 @@ export function AlertsPage() {
             page: 1,
             tab: next.tab && next.tab !== "alerts" ? next.tab : undefined,
             env: nextEnv,
+            owner: formatOwnerParam(next.owners ?? []),
           } as Partial<AlertsSearch>);
         }}
+        ownerCountsQ={ownerCountsQ}
+        refetchIntervalMs={effectiveIntervalMs}
       />
       <SavedSearches currentQuery={searchText} onApply={handleSearchSubmit} />
       {hasChipFilters ? (
@@ -1822,6 +2123,9 @@ export function AlertsPage() {
           envs={selectedEnvs}
           envName={envName}
           onRemoveEnv={removeEnv}
+          owners={selectedOwners}
+          ownerName={ownerName}
+          onRemoveOwner={removeOwner}
           onClearTab={clearTab}
           onClearAll={clearAllFilters}
         />
@@ -1979,6 +2283,27 @@ export function AlertsPage() {
           onConfirm={submitDialog}
           submitting={bulkSubmitting}
           error={dialogError}
+        />
+      ) : null}
+      {assignDialog ? (
+        <AssignDialog
+          open
+          onOpenChange={(o) => {
+            if (!o) {
+              setAssignDialog(null);
+              setAssignError(null);
+              setSelectAllMode(false);
+            }
+          }}
+          records={assignDialog.records}
+          {...(assignDialog.skip
+            ? {
+                note: `${assignDialog.skip.count} of the ${assignDialog.skip.selected} selected alerts will be skipped (${assignDialog.skip.reason}).`,
+              }
+            : {})}
+          onConfirm={submitAssign}
+          submitting={bulkSubmitting}
+          error={assignError}
         />
       ) : null}
       <BulkTagDialog

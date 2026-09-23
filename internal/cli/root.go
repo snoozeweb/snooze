@@ -185,6 +185,8 @@ func NewRootCmd(rt *runtime) *cobra.Command {
 		newVersionCmd(),
 		newTenantCmd(),
 		newMigrateCmd(),
+		newPeopleCmd(),
+		newAvatarCmd(),
 	)
 	return cmd
 }

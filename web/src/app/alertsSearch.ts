@@ -17,6 +17,10 @@ export type AlertsSearchParams = {
   // stripped on every navigation through this route.
   tab?: string;
   env?: string;
+  // Comma-separated owner logins for the owner filter, `~none` meaning
+  // Unowned (features/alerts/ownerFilter.ts). Same reason as tab/env: the
+  // page drives its filter off it, so it must survive validation.
+  owner?: string;
   // Open detail-drawer record key. AlertsPage syncs the modal detail drawer's
   // open alert here so it's shareable / deep-linkable.
   record?: string;
@@ -66,6 +70,7 @@ export function validateAlertsSearch(raw: Record<string, unknown>): AlertsSearch
     setIf("uid", s("uid"));
     setIf("tab", s("tab"));
     setIf("env", s("env"));
+    setIf("owner", s("owner"));
     // An empty `?record=` is not "open nothing", it's a key that matches no
     // row — the same reason the notifications route refuses an empty
     // `?details=`. Reject it the way an absent param is rejected.

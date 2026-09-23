@@ -6,12 +6,14 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 
 	"github.com/snoozeweb/snooze/internal/config"
+	"github.com/snoozeweb/snooze/internal/plugins"
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
@@ -211,4 +213,34 @@ func indexOf(ss []string, want string) int {
 		}
 	}
 	return -1
+}
+
+// TestConfig_DefaultColumnsOwnerAfterState pins the ownership column's slot in
+// the default layout: right after `state`, so "who is on it" reads next to
+// "what state is it in".
+func TestConfig_DefaultColumnsOwnerAfterState(t *testing.T) {
+	code, cfg := getConfig(t, &fakeRuntimeStore{})
+	require.Equal(t, http.StatusOK, code)
+	idxState := indexOf(cfg.Columns, "state")
+	require.GreaterOrEqual(t, idxState, 0)
+	require.Equal(t, idxState+1, indexOf(cfg.Columns, "owner"), "owner must follow state")
+}
+
+// TestConfig_DefaultColumnsMatchSettingsMetadata enforces the "must match"
+// note on defaultColumns: the settings catalogue advertises the same default
+// to the Settings → Console editor. The YAML is read from disk rather than by
+// importing the settings plugin, which this package must never import.
+func TestConfig_DefaultColumnsMatchSettingsMetadata(t *testing.T) {
+	raw, err := os.ReadFile("../pluginimpl/settings/metadata.yaml")
+	require.NoError(t, err)
+	meta, err := plugins.ParseMetadata(raw)
+	require.NoError(t, err)
+	field, ok := meta.SettingForm.Get("columns")
+	require.True(t, ok, "settings metadata must declare the columns setting")
+	def, _ := field.(map[string]any)["default_value"].([]any)
+	got := make([]string, 0, len(def))
+	for _, v := range def {
+		got = append(got, v.(string))
+	}
+	require.Equal(t, defaultColumns, got)
 }

@@ -36,7 +36,7 @@ type ConsoleConfig struct {
 // defaultColumns is the server-owned default alert-table layout the SPA falls
 // back to when no `console.columns` override is set. Message-first: severity
 // then the message (which takes the flexible remainder of the row), then the
-// aggregation count, state and age.
+// aggregation count, state, owner (who is working on it) and age.
 //
 // Deliberately NOT the full set defined in web/src/features/alerts/columns.tsx
 // — `process` and `source` are defined there but left off this list, because
@@ -54,6 +54,7 @@ var defaultColumns = []string{
 	"message",
 	"hits",
 	"state",
+	"owner",
 	"date_epoch",
 	"host",
 	"environment",

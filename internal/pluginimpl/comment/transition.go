@@ -37,6 +37,18 @@ var stateChangingActions = map[string]bool{
 	"shelve": true, "unshelve": true,
 }
 
+// ownershipActions is the set of comment types that change who owns the linked
+// record without a state transition of their own: `assign` makes the comment's
+// `assignee` the owner and `release` clears the owner. They are deliberately
+// NOT in stateChangingActions — ValidateTransition passes them through and the
+// validity table has no row for them; GuardWrite applies their own
+// preconditions (see guardOwnership). A `release` of an acknowledged record
+// does move it back to `open`, but as a consequence of dropping the owner, not
+// as a transition the table governs.
+var ownershipActions = map[string]bool{
+	"assign": true, "release": true,
+}
+
 // stateForAction maps a state-changing comment type to the record `state` it
 // drives. Most actions are their own state (ack→"ack"); the timed-shelve pair
 // is the exception — "shelve" parks the record in "shelved" and "unshelve"

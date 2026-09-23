@@ -398,3 +398,87 @@ describe("CommentTimeline", () => {
     expect(screen.getByText(/got it/)).toBeInTheDocument();
   });
 });
+
+describe("CommentTimeline — ownership entries and faces", () => {
+  afterEach(() => authStore.getState().logout());
+
+  function serveComments(data: unknown[]) {
+    mswServer.use(
+      http.get("/api/v1/comment", () =>
+        HttpResponse.json({
+          data,
+          meta: { count: data.length, limit: 5, offset: 0, total: data.length },
+        }),
+      ),
+      http.get("/api/v1/people", () =>
+        HttpResponse.json({
+          data: [
+            { name: "alice", method: "local", display_name: "Alice Martin" },
+            { name: "bob", method: "ldap", display_name: "Bob Stone" },
+          ],
+        }),
+      ),
+    );
+  }
+
+  it("renders an assign as 'assigned' to the named person, and a release as 'released'", async () => {
+    serveComments([
+      {
+        uid: "c2",
+        record_uid: "r1",
+        type: "release",
+        user: "bob",
+        method: "ldap",
+        date_epoch: 2000,
+      },
+      {
+        uid: "c1",
+        record_uid: "r1",
+        type: "assign",
+        user: "alice",
+        method: "local",
+        assignee: "bob",
+        assignee_method: "ldap",
+        message: "yours now",
+        date_epoch: 1000,
+      },
+    ]);
+    const Wrapper = wrap();
+    const { container } = render(
+      <Wrapper>
+        <CommentTimeline recordUid="r1" />
+      </Wrapper>,
+    );
+    expect(await screen.findByText("assigned")).toBeInTheDocument();
+    expect(screen.getByText("released")).toBeInTheDocument();
+    // "to <face> Bob Stone" names the new owner from the directory.
+    await waitFor(() => expect(screen.getByText("Bob Stone")).toBeInTheDocument());
+    expect(screen.getByText("yours now")).toBeInTheDocument();
+    // Every human entry carries its author's face in the gutter.
+    const faces = container.querySelectorAll('[data-variant="normal"]');
+    expect(faces.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("gives auto/system entries the bot glyph instead of a face", async () => {
+    serveComments([
+      {
+        uid: "c-auto",
+        record_uid: "r1",
+        type: "open",
+        message: "Ack expired, reverted to open",
+        date_epoch: 1000,
+        user: null,
+        auto: true,
+      },
+    ]);
+    const Wrapper = wrap();
+    const { container } = render(
+      <Wrapper>
+        <CommentTimeline recordUid="r1" />
+      </Wrapper>,
+    );
+    await screen.findByText(/System \(auto\)/);
+    expect(container.querySelector('[data-variant="bot"]')).not.toBeNull();
+    expect(container.querySelector('[data-variant="normal"]')).toBeNull();
+  });
+});
