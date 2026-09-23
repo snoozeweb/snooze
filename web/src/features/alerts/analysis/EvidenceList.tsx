@@ -27,12 +27,16 @@
 // than leaving a flagged command plain, because the reader stops trusting the
 // distinction.
 //
-// When two or more lines share the same probe ("df -h: /var at 100%", "df -h:
-// /tmp at 3%"), the probe is printed once as the label of a small group, at
-// the position of its first line, with each result under it in recorded
-// order. Repeating the same command on every line made the list read as a
-// wall of identical mono prefixes, and the results — the part that differs —
-// were the part the eye had to hunt for.
+// Every line stays its own numbered entry, so the list counts what the
+// "Evidence · N" disclosure promises and the numbers keep the recorded order.
+// When EVERY line was read through the same probe — the common shape is an
+// agent tagging each line with its source, "kubectl --context ovh: …" — the
+// probe is printed once above the list and the entries carry only the
+// results. Folding them into one list item instead (the earlier design) showed
+// "Evidence · 6" over a single "1.", with the six results run together so a
+// wrapped line could not be told from the next result. A probe shared by only
+// some lines stays on each of its lines: hoisting it would attribute the other
+// lines to it.
 import { useId } from "react";
 import styles from "./EvidenceList.module.css";
 
@@ -103,80 +107,52 @@ function splitEvidence(item: string): { command: string; rest: string } | null {
   return { command, rest: item.slice(at + SEPARATOR.length) };
 }
 
-/** One rendered entry: a plain line, a line with its probe, or a probe's group. */
-type Entry =
-  | { kind: "line"; item: string; command?: undefined; rest?: undefined }
-  | { kind: "probe"; item: string; command: string; rest: string }
-  | { kind: "group"; command: string; results: string[] };
-
 /**
- * Folds lines that share a probe into one group, placed where the probe's
- * first line was. A probe seen once stays an ordinary line.
+ * The probe every line shares, or null. Needs two lines at least — a lone
+ * probe line reads better inline.
  */
-function toEntries(items: readonly string[]): Entry[] {
-  const splits = items.map(splitEvidence);
-  const counts = new Map<string, number>();
-  for (const split of splits) {
-    if (split !== null) counts.set(split.command, (counts.get(split.command) ?? 0) + 1);
-  }
-  const entries: Entry[] = [];
-  const groups = new Map<string, { kind: "group"; command: string; results: string[] }>();
-  items.forEach((item, i) => {
-    const split = splits[i] ?? null;
-    if (split === null) {
-      entries.push({ kind: "line", item });
-      return;
-    }
-    if ((counts.get(split.command) ?? 0) < 2) {
-      entries.push({ kind: "probe", item, command: split.command, rest: split.rest });
-      return;
-    }
-    const existing = groups.get(split.command);
-    if (existing) {
-      existing.results.push(split.rest);
-      return;
-    }
-    const group = { kind: "group" as const, command: split.command, results: [split.rest] };
-    groups.set(split.command, group);
-    entries.push(group);
-  });
-  return entries;
+function sharedProbe(splits: readonly ({ command: string; rest: string } | null)[]): string | null {
+  if (splits.length < 2) return null;
+  const first = splits[0]?.command;
+  if (first === undefined) return null;
+  return splits.every((split) => split?.command === first) ? first : null;
 }
 
 export function EvidenceList({ items }: EvidenceListProps) {
-  const baseId = useId();
+  const sourceId = useId();
   if (items.length === 0) return null;
-  const entries = toEntries(items);
+  const splits = items.map(splitEvidence);
+  const shared = sharedProbe(splits);
+  if (shared !== null) {
+    return (
+      <div className={styles.wrap}>
+        <p className={styles.source} id={sourceId}>
+          All read with <code className={styles.command}>{shared}</code>
+        </p>
+        {/* Labelled by the probe, so a screen reader hears which command
+            the results came from before it hears them. */}
+        <ol className={styles.list} aria-labelledby={sourceId}>
+          {splits.map((split, i) => (
+            <li key={`${i}-${split?.rest ?? ""}`} className={styles.item}>
+              {split?.rest}
+            </li>
+          ))}
+        </ol>
+      </div>
+    );
+  }
   return (
     <ol className={styles.list}>
-      {entries.map((entry, i) => {
-        if (entry.kind === "group") {
-          const labelId = `${baseId}-group-${i}`;
-          return (
-            <li key={`${i}-group-${entry.command}`} className={styles.item}>
-              <code className={styles.command} id={labelId}>
-                {entry.command}
-              </code>
-              {/* Labelled by the probe, so a screen reader hears "df -h, list,
-                  2 items" rather than two unlabelled results. */}
-              <ul className={styles.results} aria-labelledby={labelId}>
-                {entry.results.map((rest, k) => (
-                  <li key={`${k}-${rest}`} className={styles.result}>
-                    {rest}
-                  </li>
-                ))}
-              </ul>
-            </li>
-          );
-        }
+      {items.map((item, i) => {
+        const split = splits[i] ?? null;
         return (
-          <li key={`${i}-${entry.item}`} className={styles.item}>
-            {entry.kind === "line" ? (
-              entry.item
+          <li key={`${i}-${item}`} className={styles.item}>
+            {split === null ? (
+              item
             ) : (
               <>
-                <code className={styles.command}>{entry.command}</code>
-                {`: ${entry.rest}`}
+                <code className={styles.command}>{split.command}</code>
+                {`: ${split.rest}`}
               </>
             )}
           </li>

@@ -109,8 +109,32 @@ describe("EvidenceList", () => {
     expect(container.querySelector("code")).toBeNull();
   });
 
-  it("names a probe shared by several lines once, as the group's label", () => {
+  it("hoists a probe every line shares above the list, one numbered entry per result", () => {
+    // Prod shape: an agent tags every line with its source. Folding the lines
+    // into one list item showed "Evidence · 6" over a single "1.".
     const { container } = render(
+      <EvidenceList
+        items={[
+          "kubectl --context ovh: revision 24 created 19:07:11, 0 available replicas",
+          "kubectl --context ovh: revision 25 adds securityContext.runAsUser:84000",
+          "kubectl --context ovh: 1/1 for 15h with 0 restarts",
+        ]}
+      />,
+    );
+    const codes = Array.from(container.querySelectorAll("code")).map((c) => c.textContent);
+    expect(codes).toEqual(["kubectl --context ovh"]);
+    const list = screen.getByRole("list", { name: /kubectl --context ovh/ });
+    expect(screen.getAllByRole("listitem").map((li) => li.textContent)).toEqual([
+      "revision 24 created 19:07:11, 0 available replicas",
+      "revision 25 adds securityContext.runAsUser:84000",
+      "1/1 for 15h with 0 restarts",
+    ]);
+    expect(list.tagName).toBe("OL");
+  });
+
+  it("keeps a probe on each of its lines when only some lines share it", () => {
+    // Hoisting it would attribute the journalctl line to df -h.
+    render(
       <EvidenceList
         items={[
           "df -h: /var at 100%",
@@ -119,20 +143,26 @@ describe("EvidenceList", () => {
         ]}
       />,
     );
-    // The shared command is printed once, not once per line…
-    const codes = Array.from(container.querySelectorAll("code")).map((c) => c.textContent);
-    expect(codes).toEqual(["df -h", "journalctl"]);
-    // …and both of its results sit under it, in the order they were recorded.
-    const group = screen.getByRole("list", { name: "df -h" });
-    expect(Array.from(group.querySelectorAll("li")).map((li) => li.textContent)).toEqual([
-      "/var at 100%",
-      "/tmp at 3%",
+    expect(screen.getAllByRole("listitem").map((li) => li.textContent)).toEqual([
+      "df -h: /var at 100%",
+      "journalctl: 4.2G under /var/log/journal",
+      "df -h: /tmp at 3%",
     ]);
   });
 
-  it("does not group a probe that appears only once", () => {
-    render(<EvidenceList items={["df -h: /var at 100%", "the unit restarted twice"]} />);
-    expect(screen.queryByRole("list", { name: "df -h" })).toBeNull();
-    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+  it("does not hoist when a prose line sits among the probe lines", () => {
+    const { container } = render(
+      <EvidenceList
+        items={["df -h: /var at 100%", "df -h: /tmp at 3%", "the unit restarted twice"]}
+      />,
+    );
+    expect(container.querySelectorAll("code")).toHaveLength(2);
+    expect(screen.getAllByRole("listitem")).toHaveLength(3);
+  });
+
+  it("leaves a lone probe line inline", () => {
+    const { container } = render(<EvidenceList items={["df -h: /var at 100%"]} />);
+    expect(container.querySelector("p")).toBeNull();
+    expect(screen.getByRole("listitem")).toHaveTextContent("df -h: /var at 100%");
   });
 });

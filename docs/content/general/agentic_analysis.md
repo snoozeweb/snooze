@@ -172,8 +172,9 @@ The tab shows, in this order:
 3. The verdict, the headline, the detail and the scope.
 4. **What to do**, marked *Automatable* or *Manual*.
 5. **Caveats**.
-6. **Evidence · N**, folded by default. A probe shared by several lines is
-   printed once as a group label.
+6. **Evidence · N**, folded by default, one numbered line per item. When
+   every line was read with the same probe (`kubectl --context ovh: …`), the
+   probe is printed once above the list.
 
 Anyone who can read the alert can read its analysis. **Edit**, **Remove**
 and, on an unanalysed alert, **Write analysis** appear only for an identity

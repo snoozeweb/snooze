@@ -22,18 +22,14 @@
   font-size: 0.95em;
   color: var(--text-strong);
 }
-/* A probe's results, under the probe printed once. Hung from the probe's own
-   left edge with a hairline guide — a rule, not a coloured side border — so
-   the results read as "what this command showed". */
-.results {
-  margin: var(--space-1) 0 0;
-  padding: 0 0 0 var(--space-3);
-  list-style: none;
+/* The probe every line shares, printed once above the numbered results. */
+.wrap {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  border-inline-start: 1px solid var(--border-muted);
+  gap: var(--space-2);
 }
-.result {
-  overflow-wrap: anywhere;
+.source {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
 }
