@@ -37,7 +37,14 @@ export type DeliveryFilter = DeliveryScope & {
   batchOnly?: boolean;
   /** Restrict to a `date_epoch` window. */
   range?: DeliveryRange;
+  /** Only rows a given notification (uid) routed — a folded run's members. */
+  notification?: string;
 };
+
+/** One folded run of repeats (GET /notificationlog/runs). */
+export type DeliveryRun = components["schemas"]["DeliveryRun"];
+/** A page of runs plus the whole alert's summary. */
+export type DeliveryRunsResponse = components["schemas"]["DeliveryRunsResponse"];
 
 /** Which columns a `DeliveryTimeline` renders — set by the hosting inspector. */
 export type DeliveryVariant = "notification" | "action" | "alert";

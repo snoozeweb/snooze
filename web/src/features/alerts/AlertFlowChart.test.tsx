@@ -53,6 +53,11 @@ function linkParams(name: string | RegExp): URLSearchParams {
   return new URL(href, "http://x").searchParams;
 }
 
+// The stepper <li> of a stage, by its label.
+function stage(label: string): HTMLElement {
+  return screen.getByText(label, { selector: "span" }).closest("li")!;
+}
+
 const base: Record_ = {
   uid: "u1",
   source: "syslog",
@@ -124,13 +129,13 @@ describe("AlertFlowChart", () => {
     expect(snooze).toBeInTheDocument();
     expect(snooze.getAttribute("href")).toContain("/web/snoozes");
     expect(linkParams(/maint-window/).get("search")).toBe('name = "maint-window"');
-    expect(screen.getByText("silenced — pipeline stopped")).toBeInTheDocument();
-    // The stage still renders — it just says the run never got there. No
-    // notification or action links, because neither ran.
-    expect(screen.getByText("Notifications")).toBeInTheDocument();
-    expect(screen.getByText("not reached — silenced upstream")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "oncall" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /email/ })).not.toBeInTheDocument();
+    expect(screen.getByText("Silenced — the run stopped here.")).toBeInTheDocument();
+    expect(stage("Snooze")).toHaveAttribute("data-status", "held");
+    // The stage still renders, greyed out, saying the run never got there;
+    // what an earlier run sent is kept, labelled as history.
+    expect(stage("Notifications")).toHaveAttribute("data-status", "skipped");
+    expect(screen.getByText("not reached — silenced")).toBeInTheDocument();
+    expect(within(stage("Notifications")).getByText("Last notified via")).toBeInTheDocument();
   });
 
   it("shows a recovery that passed a kept snooze attribution as notified, not silenced", () => {
@@ -145,9 +150,12 @@ describe("AlertFlowChart", () => {
       actions: [{ name: "email", notification: "oncall", status: "success" }],
     });
     expect(screen.getByRole("link", { name: /maint-window/ })).toBeInTheDocument();
-    expect(screen.getByText("silenced earlier — the recovery passed through")).toBeInTheDocument();
-    expect(screen.queryByText("silenced — pipeline stopped")).not.toBeInTheDocument();
-    expect(screen.queryByText("not reached — silenced upstream")).not.toBeInTheDocument();
+    expect(
+      screen.getByText("Silenced earlier — this recovery passed through."),
+    ).toBeInTheDocument();
+    expect(stage("Snooze")).toHaveAttribute("data-status", "passed");
+    expect(stage("Notifications")).toHaveAttribute("data-status", "notified");
+    expect(screen.queryByText(/not reached/)).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "oncall" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /email/ })).toBeInTheDocument();
   });
@@ -155,12 +163,10 @@ describe("AlertFlowChart", () => {
   it("always renders the snooze stage, saying so when nothing matched", () => {
     renderChart({ ...base, notifications: ["oncall"] });
     expect(screen.getByText("Snooze")).toBeInTheDocument();
-    expect(
-      screen.getByText("No snooze matched — this one was meant to reach you"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("no snooze matched")).toBeInTheDocument();
     // …and the pipeline carries on to the notifications it actually reached.
     expect(screen.getByRole("link", { name: "oncall" })).toBeInTheDocument();
-    expect(screen.queryByText("not reached — silenced upstream")).not.toBeInTheDocument();
+    expect(screen.queryByText(/not reached/)).not.toBeInTheDocument();
   });
 
   it("labels the aggregate hash as the group key and keeps the full value in the title", () => {
@@ -249,11 +255,10 @@ describe("AlertFlowChart", () => {
 
   it("shows the none placeholder for empty rules and actions on a minimal record", () => {
     renderChart({ uid: "u2", source: "prom" });
-    // Empty rules and notifications each render the placeholder.
-    expect(screen.getAllByText("none").length).toBeGreaterThanOrEqual(2);
-    const node = (label: string) => screen.getByText(label).closest("div")!.parentElement!;
-    expect(node("Rules")).toHaveTextContent("none");
-    expect(node("Notifications")).toHaveTextContent("none");
+    // Empty rules and notifications each render their placeholder.
+    expect(stage("Rules")).toHaveTextContent("none");
+    expect(stage("Notifications")).toHaveTextContent("none matched");
+    expect(stage("Notifications")).toHaveAttribute("data-status", "passed");
     // Nothing to link on a minimal record.
     expect(screen.queryAllByRole("link")).toHaveLength(0);
   });
@@ -269,14 +274,66 @@ describe("AlertFlowChart", () => {
         { name: "sms", notification: "slack-team", status: "skipped" },
       ],
     });
-    // Each notification head link → its branch card is head.parent.parent.
-    const oncall = screen.getByRole("link", { name: "oncall" }).parentElement!.parentElement!;
-    const slack = screen.getByRole("link", { name: "slack-team" }).parentElement!.parentElement!;
+    // Each notification head link sits on its branch line.
+    const oncall = screen.getByRole("link", { name: "oncall" }).parentElement!;
+    const slack = screen.getByRole("link", { name: "slack-team" }).parentElement!;
     // Actions appear under their own notification, not the other.
     expect(within(oncall).getByRole("link", { name: /email/ })).toBeInTheDocument();
     expect(within(oncall).getByRole("link", { name: /pager/ })).toBeInTheDocument();
     expect(within(slack).getByRole("link", { name: /webhook/ })).toBeInTheDocument();
     expect(within(slack).getByRole("link", { name: /sms/ })).toBeInTheDocument();
     expect(within(slack).queryByRole("link", { name: /email/ })).not.toBeInTheDocument();
+  });
+
+  it("stops at the aggregate for a held repeat, and says so instead of drawing it as notified", () => {
+    // Trail went through the aggregate and the snooze filter, never to
+    // notification, and nothing was snoozed: a repeat inside the throttle.
+    renderChart({
+      ...base,
+      state: "open",
+      plugins: ["rule", "aggregaterule", "snooze"],
+      notifications: ["oncall"],
+      actions: [{ name: "email", notification: "oncall", status: "sent" }],
+    });
+    expect(stage("Aggregate")).toHaveAttribute("data-status", "held");
+    expect(
+      screen.getByText("A repeat inside the throttle window — not notified this time."),
+    ).toBeInTheDocument();
+    expect(stage("Snooze")).toHaveAttribute("data-status", "passed");
+    expect(stage("Notifications")).toHaveAttribute("data-status", "skipped");
+    expect(screen.getByText("not reached — held as a repeat")).toBeInTheDocument();
+    // What was sent before is still named, as history.
+    expect(within(stage("Notifications")).getByText("Last notified via")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "oncall" })).toBeInTheDocument();
+    // Screen readers get the state the colour carries.
+    expect(stage("Aggregate")).toHaveTextContent("(stopped here)");
+    expect(stage("Notifications")).toHaveTextContent("(not reached)");
+  });
+
+  it("words a held repeat of a closed alert as such", () => {
+    renderChart({ ...base, state: "close", plugins: ["rule", "aggregaterule", "snooze"] });
+    expect(
+      screen.getByText("A repeat of a closed alert — not notified again."),
+    ).toBeInTheDocument();
+  });
+
+  it("marks the notification stage failed when an action errored", () => {
+    renderChart({
+      ...base,
+      plugins: ["rule", "aggregaterule", "snooze", "notification"],
+      notifications: ["oncall"],
+      actions: [{ name: "pager", notification: "oncall", status: "error", error: "boom" }],
+    });
+    expect(stage("Notifications")).toHaveAttribute("data-status", "failed");
+  });
+
+  it("reads a record with no plugin trail (older data) as notified", () => {
+    renderChart({
+      ...base,
+      notifications: ["oncall"],
+      actions: [{ name: "email", notification: "oncall", status: "success" }],
+    });
+    expect(stage("Aggregate")).toHaveAttribute("data-status", "passed");
+    expect(stage("Notifications")).toHaveAttribute("data-status", "notified");
   });
 });

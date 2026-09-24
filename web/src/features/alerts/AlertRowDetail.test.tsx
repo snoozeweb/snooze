@@ -10,9 +10,10 @@ import {
   RouterProvider,
 } from "@tanstack/react-router";
 import { http, HttpResponse } from "msw";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/shared/ui/Tooltip";
 import { mswServer } from "@/tests/msw/server";
+import { runsHandler } from "@/tests/msw/deliveryRuns";
 import { authStore } from "@/lib/auth/store";
 import { decodeConditionQ } from "@/lib/condition/decode";
 import type { Condition } from "@/lib/condition/types";
@@ -107,6 +108,7 @@ function analysisFor(uid: string, confidence: "high" | "medium" | "low"): Agenti
 function stubDeliveries(rows: DeliveryEntry[]) {
   const seen: { cond: Condition | null; params: URLSearchParams }[] = [];
   mswServer.use(
+    runsHandler(() => rows),
     http.get("/api/v1/notificationlog", ({ request }) => {
       const url = new URL(request.url);
       const cond = decodeConditionQ(url.searchParams.get("q") ?? "");
@@ -191,8 +193,9 @@ describe("AlertRowDetail", () => {
     // display, with the raw "critical" wire token kept as the badge's title.
     expect(screen.getByText("Critical")).toBeInTheDocument();
     expect(screen.getByText("Open")).toBeInTheDocument();
-    // Source chip.
+    // Source, as a labelled fact.
     expect(screen.getByText("prom")).toBeInTheDocument();
+    expect(screen.getByText("Source")).toBeInTheDocument();
     // Message (selectable) is shown directly in the header.
     expect(screen.getByText("disk full")).toBeInTheDocument();
     // Host is the inspector title, so it is NOT repeated in the detail body.
@@ -334,7 +337,7 @@ describe("AlertRowDetail", () => {
       expect(screen.getByRole("tab", { name: "Deliveries · 1" })).toBeInTheDocument(),
     );
     await user.click(screen.getByRole("tab", { name: "Deliveries · 1" }));
-    // "page-oncall" also appears in the header's "Last notified … via
+    // "page-oncall" also appears in the header's "Notified … via
     // page-oncall" line, so scope to the action badge inside the timeline row.
     await waitFor(() =>
       expect(screen.getByRole("tabpanel", { name: "Deliveries · 1" })).toHaveTextContent(
@@ -343,25 +346,33 @@ describe("AlertRowDetail", () => {
     );
   });
 
-  it("shows a success 'Last notified' header line from the newest delivery", async () => {
+  it("shows a success 'Notified' fact from the newest delivery", async () => {
     stubComments();
     stubDeliveries([{ uid: "d1", date_epoch: 100, status: "success", action: "mail-oncall" }]);
     const row: Record_ = { uid: "r1", host: "srv-1", date_epoch: 1 };
     renderDetail(row);
-    await waitFor(() => expect(screen.getByText(/Last notified/)).toBeInTheDocument());
-    expect(screen.getByText("mail-oncall")).toBeInTheDocument();
-    expect(screen.queryByText(/Last delivery failed/)).toBeNull();
+    const fact = await waitFor(() => {
+      const el = screen.getByText("Notified").parentElement;
+      expect(el).toHaveTextContent(/via mail-oncall/);
+      return el!;
+    });
+    expect(fact).not.toHaveTextContent(/Failed/);
+    expect(fact).not.toHaveAttribute("data-tone", "error");
   });
 
-  it("shows a failed 'Last delivery failed' header line when the newest delivery errored", async () => {
+  it("shows a failed 'Notified' fact when the newest delivery errored", async () => {
     stubComments();
     stubDeliveries([
       { uid: "d1", date_epoch: 100, status: "error", action: "mail-oncall", error: "dial tcp" },
     ]);
     const row: Record_ = { uid: "r1", host: "srv-1", date_epoch: 1 };
     renderDetail(row);
-    await waitFor(() => expect(screen.getByText(/Last delivery failed/)).toBeInTheDocument());
-    expect(screen.getByText(/\(mail-oncall\)/)).toBeInTheDocument();
+    const fact = await waitFor(() => {
+      const el = screen.getByText("Notified").parentElement;
+      expect(el).toHaveTextContent(/Failed .* via mail-oncall/);
+      return el!;
+    });
+    expect(fact).toHaveAttribute("data-tone", "error");
   });
 
   it("hides the header line entirely when there are no deliveries", async () => {
@@ -372,8 +383,7 @@ describe("AlertRowDetail", () => {
     await waitFor(() =>
       expect(screen.getByRole("tab", { name: "Deliveries" })).toBeInTheDocument(),
     );
-    expect(screen.queryByText(/Last notified/)).toBeNull();
-    expect(screen.queryByText(/Last delivery failed/)).toBeNull();
+    expect(screen.queryByText("Notified")).toBeNull();
   });
 
   it("scopes the delivery query to the alert uid with a CONTAINS clause", async () => {
@@ -433,7 +443,7 @@ describe("AlertRowDetail", () => {
     renderDetail({ uid: "r1", host: "srv-1", date_epoch: 1 });
     await waitFor(() => expect(screen.getByRole("tab", { name: "Timeline" })).toBeInTheDocument());
     expect(screen.queryByRole("tab", { name: /Deliveries/ })).toBeNull();
-    expect(screen.queryByText(/Last notified/)).toBeNull();
+    expect(screen.queryByText("Notified")).toBeNull();
     expect(seen).toHaveLength(0);
   });
 
@@ -684,7 +694,7 @@ describe("AlertRowDetail — ownership", () => {
     });
     await waitFor(() => expect(screen.getByText("Alice Martin")).toBeInTheDocument());
     expect(container.querySelector('[data-slot="owner"]')).toHaveTextContent(
-      /Owner Alice Martin · since 2m ago/,
+      /Alice Martin · since 2m ago/,
     );
   });
 
@@ -703,5 +713,142 @@ describe("AlertRowDetail — ownership", () => {
     });
     expect(line).toHaveTextContent("Unowned · previously bob");
     expect(line.querySelector('[data-variant="ghost"]')).not.toBeNull();
+  });
+});
+
+describe("AlertRowDetail — header facts", () => {
+  beforeEach(() => loginWithPerms(["ro_record"]));
+  afterEach(() => authStore.getState().logout());
+
+  function factValue(label: string): HTMLElement | null {
+    return (screen.queryByText(label, { selector: "dt" })?.nextElementSibling ??
+      null) as HTMLElement | null;
+  }
+
+  it("says when it was first and last seen, and how many times", () => {
+    stubComments();
+    const now = Math.floor(Date.now() / 1000);
+    const { unmount } = renderDetail({
+      uid: "r1",
+      host: "h",
+      date_epoch: now - 120,
+      first_seen: now - 15 * 86400,
+      duplicates: 50923,
+    } as Record_);
+    const seen = factValue("Seen")!;
+    expect(seen).toHaveTextContent(/^last 2m ago · first .+ · 50,923 hits$/);
+    unmount();
+    // Seen once: just when.
+    renderDetail({ uid: "r1", host: "h", date_epoch: now - 120, first_seen: now - 120 } as Record_);
+    expect(factValue("Seen")).toHaveTextContent(/^2m ago$/);
+  });
+
+  it("says when the state ends on its own, in the state badge", () => {
+    stubComments();
+    const now = Math.floor(Date.now() / 1000);
+    renderDetail({ uid: "r1", host: "h", state: "ack", ack_until: now + 7260 } as Record_);
+    expect(screen.getByText("Acknowledged · reopens in 2h 1m")).toBeInTheDocument();
+  });
+
+  it("lists the alert's labels, severity aside, the long tail behind a toggle", async () => {
+    stubComments();
+    const user = userEvent.setup();
+    const labels: Record<string, string> = { severity: "critical", namespace: "velero" };
+    for (let i = 1; i <= 7; i++) labels[`k${i}`] = `v${i}`;
+    renderDetail({ uid: "r1", host: "h", labels } as unknown as Record_);
+    const value = factValue("Labels")!;
+    expect(within(value).getByTitle("namespace=velero")).toHaveTextContent("namespace=velero");
+    expect(within(value).queryByTitle(/^severity=/)).toBeNull();
+    // Six shown, two behind "+2 more".
+    expect(within(value).getAllByRole("listitem")).toHaveLength(6);
+    await user.click(within(value).getByRole("button", { name: "+2 more" }));
+    expect(within(value).getAllByRole("listitem")).toHaveLength(8);
+  });
+
+  it("opens the Deliveries tab from the Notified fact", async () => {
+    loginWithPerms(["ro_record", "ro_notificationlog"]);
+    stubComments();
+    stubDeliveries([{ uid: "d1", date_epoch: 100, status: "success", action: "mail-oncall" }]);
+    const user = userEvent.setup();
+    renderDetail({ uid: "r1", host: "h", date_epoch: 1 });
+    await user.click(await screen.findByRole("button", { name: /Show deliveries/ }));
+    expect(screen.getByRole("tab", { name: /Deliveries/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
+
+  it("names the snooze that silenced it, linked — but not on a recovery it let through", () => {
+    stubComments();
+    const { unmount } = renderDetail({
+      uid: "r1",
+      host: "h",
+      snoozed: "K8S Backups",
+      plugins: ["rule", "aggregaterule", "snooze"],
+    } as Record_);
+    const link = within(factValue("Silenced")!).getByRole("link", { name: "K8S Backups" });
+    expect(link.getAttribute("href")).toContain("/web/snoozes");
+    unmount();
+    renderDetail({
+      uid: "r1",
+      host: "h",
+      snoozed: "K8S Backups",
+      plugins: ["rule", "aggregaterule", "snooze", "notification"],
+    } as Record_);
+    expect(factValue("Silenced")).toBeNull();
+  });
+
+  it("links back to the source only for an http(s) URL", () => {
+    stubComments();
+    const { unmount } = renderDetail({
+      uid: "r1",
+      host: "h",
+      source: "AlertManager",
+      process: "Basic alerts",
+      generatorURL: "https://grafana.example/alerting/1",
+    } as Record_);
+    const source = factValue("Source")!;
+    expect(source).toHaveTextContent("AlertManager · Basic alerts · Open ↗");
+    expect(within(source).getByRole("link", { name: /Open/ })).toHaveAttribute(
+      "href",
+      "https://grafana.example/alerting/1",
+    );
+    unmount();
+    renderDetail({
+      uid: "r1",
+      host: "h",
+      source: "AlertManager",
+      generatorURL: "javascript:alert(1)",
+    } as Record_);
+    expect(within(factValue("Source")!).queryByRole("link")).toBeNull();
+  });
+
+  it("offers Show more only when the clamp hides something", async () => {
+    stubComments();
+    const user = userEvent.setup();
+    // jsdom lays nothing out: stand in for a paragraph whose text is taller
+    // than its three clamped lines.
+    const scroll = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(120);
+    const client = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(60);
+    try {
+      renderDetail({ uid: "r1", host: "h", message: "x".repeat(400) });
+      const toggle = await screen.findByRole("button", { name: "Show more" });
+      expect(screen.getByText("x".repeat(400))).toHaveAttribute("data-clamped", "true");
+      await user.click(toggle);
+      expect(screen.getByText("x".repeat(400))).not.toHaveAttribute("data-clamped");
+      expect(screen.getByRole("button", { name: "Show less" })).toHaveAttribute(
+        "aria-expanded",
+        "true",
+      );
+    } finally {
+      scroll.mockRestore();
+      client.mockRestore();
+    }
+  });
+
+  it("offers no toggle when the message fits", () => {
+    stubComments();
+    renderDetail({ uid: "r1", host: "h", message: "disk full" });
+    expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
   });
 });

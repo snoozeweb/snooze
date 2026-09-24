@@ -34,10 +34,21 @@
   gap: 1px;
   min-width: 0;
 }
+/* Prose lines (weekdays, zone) may wrap at their spaces: a table cell's
+   inherited nowrap + ellipsis cut "Mon · Tue · Wed · Thu · Fri" mid-word. */
 .line {
   color: var(--text);
+  white-space: normal;
 }
 .lineMono {
+  color: var(--text);
+  font-family: var(--font-mono);
+}
+/* A bounded date range: "start →", then the end on the line below, the two
+   dates left-aligned. */
+.range {
+  display: flex;
+  flex-direction: column;
   color: var(--text);
   font-family: var(--font-mono);
 }

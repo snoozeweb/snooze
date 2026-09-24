@@ -2,6 +2,7 @@ package aggregaterule
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -228,4 +229,33 @@ func TestAggregate_PayloadCannotSetOwner(t *testing.T) {
 
 	dup, _ := runProcess(t, p, host, snoozetypes.Record{Extra: map[string]any{"a": "n", "owner": "team-x"}})
 	require.NotContains(t, dup.Extra, ownership.FieldOwner, "duplicate of a never-owned row")
+}
+
+// first_seen is stamped once, on the occurrence that creates the aggregate,
+// and never moves: the header's "First seen" is how long the alert has been
+// going on. A payload cannot set or move it, and a row that predates the field
+// is left without one rather than given a made-up start.
+func TestAggregate_FirstSeenStampedOnceAndProtected(t *testing.T) {
+	t.Parallel()
+	host := newTestHost(t)
+	writeRule(t, host, db.Document{
+		"name": "AggFirst", "condition": []any{"=", "a", "f"},
+		"fields": []string{"a"}, "throttle": int64(0),
+	})
+	p := freshPlugin(t, host)
+	start := p.clock().Unix()
+
+	first, _ := runProcess(t, p, host, snoozetypes.Record{Extra: map[string]any{"a": "f", fieldFirstSeen: int64(42)}})
+	require.Equal(t, start, toInt64(first.Extra[fieldFirstSeen], -1), "stamped from the clock, not the payload")
+
+	later := time.Unix(start+3600, 0)
+	p.clock = func() time.Time { return later }
+	dup, _ := runProcess(t, p, host, snoozetypes.Record{Extra: map[string]any{"a": "f", fieldFirstSeen: int64(7)}})
+	require.Equal(t, start, toInt64(dup.Extra[fieldFirstSeen], -1), "a duplicate keeps the original")
+
+	// A row written before the field existed.
+	_, err := host.driver.UnsetFields(tctx(), recordCollection, []string{fieldFirstSeen}, condition.Equals("hash", first.Hash))
+	require.NoError(t, err)
+	legacy, _ := runProcess(t, p, host, snoozetypes.Record{Extra: map[string]any{"a": "f", fieldFirstSeen: int64(7)}})
+	require.NotContains(t, legacy.Extra, fieldFirstSeen, "no invented start for a legacy row")
 }

@@ -613,45 +613,6 @@ describe("AlertsPage", () => {
     expect(within(dialog).getByText(/close alert/i)).toBeInTheDocument();
   });
 
-  it("keyboard 'f' expands the focused row's pipeline flow inline", async () => {
-    mswServer.use(
-      http.get("/api/v1/record", () =>
-        HttpResponse.json({
-          data: [
-            {
-              uid: "r1",
-              host: "srv-1",
-              state: "open",
-              date_epoch: 1,
-              source: "prometheus",
-              rules: ["tag-prod"],
-            },
-          ],
-          meta: { count: 1, limit: 50, offset: 0, total: 1 },
-        }),
-      ),
-    );
-    const user = userEvent.setup();
-    setup();
-    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
-
-    const grid = screen.getByRole("grid");
-    grid.focus();
-    await user.keyboard("{ArrowDown}f");
-
-    // The SAME AlertFlowChart the drawer's Flow tab renders, hung under the
-    // row — its stage labels are unique to that component.
-    expect(await screen.findByText("Aggregate")).toBeInTheDocument();
-    expect(screen.getByText("Input")).toBeInTheDocument();
-    expect(screen.getByText("tag-prod")).toBeInTheDocument();
-
-    // …and f again collapses it.
-    await user.keyboard("f");
-    await waitFor(() => expect(screen.queryByText("Aggregate")).toBeNull());
-  });
-
-  // ── Action gating ─────────────────────────────────────────────────────────
-
   it("ack_hidden_for_acked_rows — Acknowledge absent from kebab on acked row", async () => {
     mswServer.use(
       http.get("/api/v1/record", () =>

@@ -60,3 +60,77 @@ export function useRecordComments(
     enabled: !!record_uid,
   });
 }
+
+/**
+ * One folded run of the timeline (GET /comment/runs): consecutive automatic
+ * comments of the same type and message — the "New escalation" an alert
+ * re-notifying every quarter of an hour writes each time. Anything a person
+ * wrote is a run of one. `latest` is the newest member, rendered as the run.
+ */
+export type CommentRun = {
+  key: string;
+  count: number;
+  first_epoch: number;
+  last_epoch: number;
+  interval_s: number;
+  latest: Comment;
+  truncated: boolean;
+};
+
+export type CommentRunsResponse = {
+  data: CommentRun[];
+  meta: { total: number; comments: number; truncated: boolean };
+};
+
+/**
+ * useRecordCommentRuns pages over a record's timeline with automatic repeats
+ * folded (see CommentRun). The fold spans the whole timeline, so it is the
+ * server's — internal/api/routes_runs.go. Keyed under "comment" so posting,
+ * editing or deleting a comment refreshes it with everything else.
+ */
+export function useRecordCommentRuns(
+  record_uid: string | undefined,
+  page: RecordCommentsPage = {},
+): UseQueryResult<CommentRunsResponse, ApiError> {
+  const limit = page.limit ?? 5;
+  const offset = page.offset ?? 0;
+  return useQuery<CommentRunsResponse, ApiError>({
+    queryKey: ["comment", "runs", record_uid ?? "", limit, offset],
+    queryFn: ({ signal }) =>
+      api<CommentRunsResponse>("GET", "/comment/runs", {
+        query: { record_uid: record_uid ?? "", limit, offset },
+        signal,
+      }),
+    enabled: !!record_uid,
+    placeholderData: (prev, prevQuery) =>
+      prevQuery?.queryKey?.[2] === (record_uid ?? "") ? prev : undefined,
+  });
+}
+
+/**
+ * useCommentsBetween lists one record's comments inside [from, to], newest
+ * first — the members of an expanded run.
+ */
+export function useCommentsBetween(
+  record_uid: string,
+  range: { from: number; to: number },
+  limit: number,
+): UseQueryResult<ListResponse<Comment>, ApiError> {
+  const q = encodeConditionQ({
+    type: "AND",
+    args: [
+      { type: "EQUALS", field: "record_uid", value: record_uid },
+      { type: "GE", field: "date_epoch", value: range.from },
+      { type: "LE", field: "date_epoch", value: range.to },
+    ],
+  });
+  return useQuery<ListResponse<Comment>, ApiError>({
+    queryKey: ["comment", "between", record_uid, range.from, range.to, limit],
+    queryFn: ({ signal }) =>
+      api<ListResponse<Comment>>("GET", "/comment", {
+        query: { q, orderby: "date_epoch", asc: false, limit, offset: 0 },
+        signal,
+      }),
+    placeholderData: (prev) => prev,
+  });
+}

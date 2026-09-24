@@ -197,6 +197,11 @@ func (rt *Router) Build() chi.Router {
 	//     generic `/{uid}` handlers). --------------------------------------
 	rt.mountAgentic(r)
 
+	// --- repeat-folded views of one alert's delivery log and timeline
+	//     (mounted BEFORE plugin CRUD: the static `/notificationlog/runs` and
+	//     `/comment/runs` GETs must win over the generic `/{uid}` handlers). --
+	rt.mountRuns(r)
+
 	// --- self-service /api/v1/user/me/* (mounted BEFORE the user plugin's
 	//     CRUD so /me/password wins over the generic /{uid} matcher chi
 	//     would otherwise route to). ----------------------------------------

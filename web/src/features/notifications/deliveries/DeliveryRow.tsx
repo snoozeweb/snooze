@@ -16,6 +16,7 @@ import { IconButton } from "@/shared/ui/IconButton";
 import { TimeCell } from "@/shared/ui/TimeCell";
 import { Icon } from "@/shared/icons/Icon";
 import { toast } from "@/shared/ui/toast/useToast";
+import { trimDate } from "@/lib/format/time";
 import { DeliveryAlertLine } from "./DeliveryAlertLine";
 import {
   deliveryActionName,
@@ -25,9 +26,13 @@ import {
   sortAlertsBySeverity,
 } from "./format";
 import { alertsForDelivery } from "./links";
-import type { DeliveryGroup } from "./group";
-import type { DeliveryEntry, DeliveryVariant } from "./types";
+import { useDeliveries } from "./api";
+import { groupDeliveries, type DeliveryGroup } from "./group";
+import type { DeliveryEntry, DeliveryRun, DeliveryVariant } from "./types";
+import { cadenceLabel, repeatLabel } from "@/lib/format/cadence";
+import { Skeleton } from "@/shared/ui/Skeleton";
 import styles from "./DeliveryRow.module.css";
+import timelineStyles from "./DeliveryTimeline.module.css";
 
 /** Alert lines shown before the "+N more" toggle takes over. */
 export const ALERT_PREVIEW_COUNT = 5;
@@ -49,10 +54,20 @@ export type DeliveryRowProps = {
    * here to remove.
    */
   showSubject: boolean;
+  /**
+   * The folded run this row stands for, on the alert inspector: `group` is
+   * then the run's newest dispatch, and the row says how often it repeated
+   * and can list every member. Absent — or a run of one — is a plain row.
+   */
+  run?: DeliveryRun | undefined;
+  /** The alert the run belongs to; needed to list the run's members. */
+  alertUid?: string | undefined;
 };
 
-export function DeliveryRow({ group, variant, showSubject }: DeliveryRowProps) {
+export function DeliveryRow({ group, variant, showSubject, run, alertUid }: DeliveryRowProps) {
   const [alertsExpanded, setAlertsExpanded] = useState(false);
+  const [membersOpen, setMembersOpen] = useState(false);
+  const repeated = run !== undefined && run.dispatches > 1;
 
   const failed = group.failed > 0;
   const alerts = useMemo(() => sortAlertsBySeverity(group.alerts), [group.alerts]);
@@ -60,14 +75,26 @@ export function DeliveryRow({ group, variant, showSubject }: DeliveryRowProps) {
   const visibleAlerts = alertsExpanded ? alerts : alerts.slice(0, ALERT_PREVIEW_COUNT);
 
   const failures = group.rows.filter((r) => r.status === "error");
-  const refs = group.rows.filter((r) => typeof r.ref?.url === "string");
+  // A send's external reference: a link to open, or — when the notifier only
+  // reports a ticket key (Jira quoting an existing issue) — the key alone.
+  const refs = group.rows.filter(
+    (r) => typeof r.ref?.url === "string" || typeof r.ref?.["issue_key"] === "string",
+  );
   const multi = group.rows.length > 1;
   const hasExtras =
-    showAlertLines || group.alertCount > 1 || failures.length > 0 || refs.length > 0;
+    repeated || showAlertLines || group.alertCount > 1 || failures.length > 0 || refs.length > 0;
+  const ariaLabel = repeated
+    ? `${deliveryGroupAriaLabel(group)}, repeated ${run.dispatches} times since ${trimDate(run.first_epoch)}`
+    : deliveryGroupAriaLabel(group);
 
   return (
-    <li className={styles.row} aria-label={deliveryGroupAriaLabel(group)}>
-      <span className={styles.dot} data-status={failed ? "error" : "success"} aria-hidden="true" />
+    <li className={styles.row} aria-label={ariaLabel}>
+      <span
+        className={styles.dot}
+        data-status={failed ? "error" : "success"}
+        data-run={repeated || undefined}
+        aria-hidden="true"
+      />
 
       <div className={styles.time}>
         <TimeCell epoch={group.dateEpoch} />
@@ -100,6 +127,35 @@ export function DeliveryRow({ group, variant, showSubject }: DeliveryRowProps) {
 
       {hasExtras ? (
         <div className={styles.extras}>
+          {repeated ? (
+            <div className={styles.runLine}>
+              <span className={styles.runCount}>{repeatLabel(run.dispatches)}</span>
+              <span className={styles.runText}>
+                {[
+                  cadenceLabel(run.interval_s),
+                  `${run.truncated ? "since at least" : "since"} ${trimDate(run.first_epoch)}`,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </span>
+              {alertUid ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className={styles.runToggle}
+                  aria-expanded={membersOpen}
+                  trailingIcon={membersOpen ? "chevron-up" : "chevron-down"}
+                  onClick={() => setMembersOpen((v) => !v)}
+                >
+                  {membersOpen ? "Hide" : `Show all ${run.dispatches.toLocaleString("en-US")}`}
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+          {repeated && membersOpen && alertUid ? (
+            <RunMembers run={run} alertUid={alertUid} />
+          ) : null}
+
           {showAlertLines ? (
             <ul className={styles.alerts}>
               {visibleAlerts.map((alert, i) => (
@@ -138,9 +194,16 @@ export function DeliveryRow({ group, variant, showSubject }: DeliveryRowProps) {
 
           {refs.map((row, i) => {
             const url = row.ref?.url;
-            if (!url) return null;
             const key = typeof row.ref?.["issue_key"] === "string" ? row.ref["issue_key"] : "";
             const via = multi ? `${deliveryActionName(row)}: ` : "";
+            if (!url) {
+              return (
+                <span key={row.uid ?? `ref-${i}`} className={styles.refKey}>
+                  {via}
+                  <span className={styles.refKeyValue}>{key}</span>
+                </span>
+              );
+            }
             return (
               <a
                 key={row.uid ?? `ref-${i}`}
@@ -156,6 +219,59 @@ export function DeliveryRow({ group, variant, showSubject }: DeliveryRowProps) {
         </div>
       ) : null}
     </li>
+  );
+}
+
+/** Raw log rows fetched per "Show older" step of an expanded run. */
+const RUN_MEMBER_STEP = 60;
+
+/**
+ * Every dispatch of an expanded run, newest first, as plain rows on a nested
+ * timeline. The run is a contiguous stretch of one notification's log, so its
+ * members are exactly that notification's rows for the alert inside the run's
+ * window — no second fold endpoint needed. Grows in steps rather than pages:
+ * the operator is scanning a column of identical rows for the one that
+ * differs, and a pager would hide the one they have just scrolled past.
+ */
+function RunMembers({ run, alertUid }: { run: DeliveryRun; alertUid: string }) {
+  const [shown, setShown] = useState(RUN_MEMBER_STEP);
+  const notification = run.latest[0]?.notification_uids?.[0];
+  const q = useDeliveries(
+    {
+      kind: "alert",
+      uid: alertUid,
+      range: { from: run.first_epoch, to: run.last_epoch },
+      ...(notification ? { notification } : {}),
+    },
+    { limit: shown, offset: 0 },
+  );
+  const rows = useMemo(() => q.data?.data ?? [], [q.data]);
+  const groups = useMemo(() => groupDeliveries(rows), [rows]);
+  const total = q.data?.meta.total ?? 0;
+
+  if (q.isPending) return <Skeleton height={34} />;
+  if (q.isError) {
+    return <p className={styles.runNote}>Could not load this run&apos;s deliveries.</p>;
+  }
+  return (
+    <div className={styles.runMembers}>
+      <ol className={timelineStyles.rows} data-cols="4" aria-label="Every delivery in this run">
+        {groups.map((g) => (
+          <DeliveryRow key={g.key} group={g} variant="alert" showSubject={false} />
+        ))}
+      </ol>
+      {total > rows.length ? (
+        <Button
+          size="sm"
+          variant="ghost"
+          className={styles.moreButton}
+          loading={q.isFetching}
+          onClick={() => setShown((n) => n + RUN_MEMBER_STEP)}
+        >
+          Show older
+        </Button>
+      ) : null}
+    </div>
   );
 }
 

@@ -16,7 +16,16 @@ import { InlineError } from "@/shared/ui/InlineError";
 import { Skeleton } from "@/shared/ui/Skeleton";
 import { Icon } from "@/shared/icons/Icon";
 import { describeError } from "@/lib/api/errorMessage";
-import { deliveryScopeKey, useDeliveries, useDeliverySummary, useFailedDeliveryCount } from "./api";
+import {
+  deliveryScopeKey,
+  useDeliveries,
+  useDeliveryRuns,
+  useDeliverySummary,
+  useFailedDeliveryCount,
+} from "./api";
+import { cadenceLabel } from "@/lib/format/cadence";
+import { trimDate } from "@/lib/format/time";
+import { TimeCell } from "@/shared/ui/TimeCell";
 import { rangeChipLabel } from "./format";
 import { groupDeliveries } from "./group";
 import { DeliveryRow } from "./DeliveryRow";
@@ -103,10 +112,24 @@ export function DeliveryTimeline({
   }, [baseFilter, chip]);
 
   const liveOpts = live === true ? { live: true } : undefined;
+  const offset = (page - 1) * pageSize;
+  // One alert's log folds its repeats into runs (useDeliveryRuns): an alert
+  // that re-notified every quarter of an hour for weeks is a few rows, not a
+  // hundred pages. Only the unnarrowed list folds — Failed and Batched are
+  // already the exceptions, and a dashboard window is a slice to read raw.
+  const alertScope = filter.kind === "alert" && !range;
+  const runsMode = alertScope && chip === "all";
+  // Fetched whenever the scope is one alert, not only in runs mode: its meta
+  // is the header's summary line, which must not vanish under a chip.
+  const runsQuery = useDeliveryRuns(
+    filter.kind === "alert" ? filter.uid : "",
+    { limit: pageSize, offset: runsMode ? offset : 0 },
+    { ...liveOpts, enabled: alertScope },
+  );
   const query = useDeliveries(
     listFilter,
-    { limit: pageSize, offset: (page - 1) * pageSize },
-    liveOpts,
+    { limit: pageSize, offset },
+    { ...liveOpts, enabled: !runsMode },
   );
 
   // Counts follow the scope, not the chips: the header is a fixed statement
@@ -122,16 +145,26 @@ export function DeliveryTimeline({
   // the same header sentence, and a rows-poll that leaves "142 deliveries ·
   // 3 failed" frozen (and the alert inspector's tab badge with it, which
   // dedupes onto this key) states two different moments in one line.
-  const scopeSummary = useDeliverySummary(baseFilter, { ...liveOpts, enabled: chip !== "all" });
+  const scopeSummary = useDeliverySummary(baseFilter, {
+    ...liveOpts,
+    enabled: chip !== "all" && !alertScope,
+  });
   const failedCount = useFailedDeliveryCount(baseFilter, liveOpts);
-  const listTotal = query.data?.meta.total ?? 0;
+  const runsMeta = runsQuery.data?.meta;
+  // The active list: runs, or raw rows. Paging, emptiness and the stale dim
+  // all follow whichever one is on screen.
+  const listQuery = runsMode ? runsQuery : query;
+  const listTotal = runsMode ? (runsMeta?.total ?? 0) : (query.data?.meta.total ?? 0);
   // Placeholder rows outlive the narrowing that produced them: clearing the
   // Failed chip reuses the previous (failed) page as the placeholder for the
   // un-narrowed request, so `meta.total` is the *narrowed* count until the
   // real response lands. Reading it would flash "3 deliveries" under an All
   // chip. A skeleton for one frame is the honest answer.
-  const headerTotal =
-    chip === "all"
+  const headerTotal = alertScope
+    ? runsQuery.isPlaceholderData
+      ? undefined
+      : runsMeta?.sends
+    : chip === "all"
       ? query.isPlaceholderData
         ? undefined
         : query.data?.meta.total
@@ -145,10 +178,22 @@ export function DeliveryTimeline({
   // Stable identity across renders so the grouping memo below only re-runs
   // when a new page actually lands.
   const rows = useMemo(() => query.data?.data ?? [], [query.data]);
+  const runs = useMemo(() => runsQuery.data?.data ?? [], [runsQuery.data]);
   // The log stores one row per (alert × action); the list shows one row per
   // dispatch, with the actions as chips inside it. See group.ts for why the
-  // fold happens here (per page) and not on the server.
-  const groups = useMemo(() => groupDeliveries(rows), [rows]);
+  // fold happens here (per page) and not on the server. A run is shown as its
+  // newest dispatch, which the server hands over whole.
+  const entries = useMemo(
+    () =>
+      runsMode
+        ? runs.flatMap((run) => {
+            const group = groupDeliveries(run.latest)[0];
+            return group ? [{ key: run.key, group, run }] : [];
+          })
+        : groupDeliveries(rows).map((group) => ({ key: group.key, group, run: undefined })),
+    [runsMode, runs, rows],
+  );
+  const groups = entries.map((e) => e.group);
   // The route column is a list-wide decision, not a per-row one: reserving it
   // on some rows and not others is the misalignment the grid exists to fix.
   const showSubject = variant !== "notification" && groups.some((g) => g.notifications.length > 0);
@@ -158,8 +203,8 @@ export function DeliveryTimeline({
   // scope changing (rows aged out by retention, or the live refetch shrinking
   // the list under the operator).
   useEffect(() => {
-    if (query.isSuccess && page > pageCount) setPage(pageCount);
-  }, [query.isSuccess, page, pageCount]);
+    if (listQuery.isSuccess && page > pageCount) setPage(pageCount);
+  }, [listQuery.isSuccess, page, pageCount]);
 
   // The paging controls are also the page-SIZE controls, so they have to stay
   // reachable whenever any of them is doing something: more than one page, a
@@ -172,7 +217,11 @@ export function DeliveryTimeline({
   // state that already says "No deliveries yet" is three ways of saying the
   // same nothing. The header comes back as soon as there is a row — and it
   // stays while a chip is active, because the chips are the only way back.
-  const scopeEmpty = chip === "all" && rows.length === 0 && headerTotal === 0;
+  const scopeEmpty = chip === "all" && entries.length === 0 && headerTotal === 0;
+  // "every ~16 min · since Sep 9th 12:14 · last 8m ago": how the alert has
+  // been notifying, said once for its whole log. The cadence needs a few
+  // dispatches before a median means anything.
+  const cadence = runsMeta && runsMeta.dispatches >= 3 ? cadenceLabel(runsMeta.interval_s) : "";
 
   return (
     <div className={styles.timeline}>
@@ -189,6 +238,14 @@ export function DeliveryTimeline({
                 <span className={styles.countsFailed}>
                   {" · "}
                   {failedCount.failed} failed
+                </span>
+              ) : null}
+              {runsMeta && runsMeta.dispatches > 0 ? (
+                <span className={styles.countsSummary}>
+                  {cadence ? ` · ${cadence}` : null}
+                  {` · ${runsMeta.truncated ? "since at least" : "since"} ${trimDate(runsMeta.first_epoch)}`}
+                  {" · last "}
+                  <TimeCell epoch={runsMeta.last_epoch} compact />
                 </span>
               ) : null}
             </>
@@ -210,6 +267,15 @@ export function DeliveryTimeline({
         </div>
       </div>
 
+      {/* The folding rule, said once where it applies — a row saying ×158
+          otherwise leaves the operator guessing what was merged, and whether
+          anything that mattered went with it. */}
+      {runsMode && runs.some((r) => r.dispatches > 1) ? (
+        <p className={styles.foldNote}>
+          Repeats are folded. A failed send or a new ticket always gets its own row.
+        </p>
+      ) : null}
+
       {initialRange ? (
         <div className={styles.rangeStrip}>
           <span className={styles.rangeChip}>
@@ -229,7 +295,7 @@ export function DeliveryTimeline({
         </div>
       ) : null}
 
-      {query.isPending ? (
+      {listQuery.isPending ? (
         <div className={styles.skeletons} aria-busy="true">
           {Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className={styles.skeletonRow}>
@@ -238,19 +304,21 @@ export function DeliveryTimeline({
             </div>
           ))}
         </div>
-      ) : query.isError ? (
+      ) : listQuery.isError ? (
         <div className={styles.errorState}>
-          <InlineError {...describeError(query.error, "Could not load the delivery history.")} />
+          <InlineError
+            {...describeError(listQuery.error, "Could not load the delivery history.")}
+          />
           <Button
             size="sm"
             variant="secondary"
             leadingIcon="refresh"
-            onClick={() => void query.refetch()}
+            onClick={() => void listQuery.refetch()}
           >
             Retry
           </Button>
         </div>
-      ) : rows.length === 0 ? (
+      ) : entries.length === 0 ? (
         chip === "all" ? (
           <div className={styles.empty}>{emptyState}</div>
         ) : (
@@ -262,15 +330,17 @@ export function DeliveryTimeline({
         <ol
           className={styles.rows}
           data-cols={showSubject ? "5" : "4"}
-          data-stale={query.isPlaceholderData || undefined}
-          aria-busy={query.isPlaceholderData || undefined}
+          data-stale={listQuery.isPlaceholderData || undefined}
+          aria-busy={listQuery.isPlaceholderData || undefined}
         >
-          {groups.map((group) => (
+          {entries.map(({ key, group, run }) => (
             <DeliveryRow
-              key={group.key}
+              key={key}
               group={group}
               variant={variant}
               showSubject={showSubject}
+              run={run}
+              alertUid={filter.kind === "alert" ? filter.uid : undefined}
             />
           ))}
         </ol>
@@ -279,7 +349,8 @@ export function DeliveryTimeline({
       {showControls ? (
         <div className={styles.controls}>
           <span>
-            Page {page} / {pageCount} · {listTotal} total
+            Page {page} / {pageCount} ·{" "}
+            {runsMode ? `${listTotal} ${listTotal === 1 ? "row" : "rows"}` : `${listTotal} total`}
           </span>
           <span className={styles.controlButtons}>
             {PAGE_SIZE_OPTIONS.map((n) => (

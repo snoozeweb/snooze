@@ -1,22 +1,22 @@
-// AlertFlowChart — the pipeline path a single alert actually took:
+// AlertFlowChart — the pipeline path the alert's last occurrence took:
 //   input → rules → aggregate → snooze → notifications → actions
 // The stage list is fixed: every stage renders even when it matched nothing,
 // because "which stage let this through?" is only answerable if the stages that
-// stayed quiet are visible too. A snooze hit makes the run terminal, so the
-// Notifications node then says so instead of being dropped from the chart —
-// unless the record's plugin trail shows the run carried on past the snooze
-// stage (the recovery of a silenced alert keeps `snoozed` but is notified).
-// All data comes from the record row; no fetch. Colours via Badge variants only.
-// Every entity (rule, aggregate, snooze, notification, action) deep-links to
-// its management page with the page's search filter pre-set to the clicked
-// object by name — the same URL contract the dashboard drill-downs and
-// ActivityFeed use (see useTableSearch / SearchBar). Navigating to a page with
-// ?search=name = "X" lands with that filter already applied.
+// stayed quiet are visible too. The record's plugin trail says where the run
+// stopped — at the snooze (silenced) or at the aggregate (a throttled repeat) —
+// and everything after the stop is greyed out on a dashed rail, with what the
+// last run that did notify sent shown as history rather than as this run.
+// Drawn as a stepper: a rail of markers down the drawer's Flow tab, turning
+// horizontal when the drawer is wide enough. All data comes from the record row; no
+// fetch. Every entity (rule, aggregate, snooze, notification, action)
+// deep-links to its management page with the page's search filter pre-set to
+// the clicked object by name (?search=name = "X").
 import { Fragment, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { Badge, type BadgeVariant } from "@/shared/ui/Badge";
 import { Tooltip } from "@/shared/ui/Tooltip";
 import type { Record_ } from "./types";
+import { nameQuery } from "./nameQuery";
 import styles from "./AlertFlowChart.module.css";
 
 type ActionResult = NonNullable<Record_["actions"]>[number];
@@ -43,35 +43,14 @@ const ACTION_HINT: Record<string, string> = {
   sent: "Dispatched — outcome tracking disabled",
 };
 
-// nameQuery encodes a value into a search-DSL equality on `name`, e.g.
-// `name = "web-01"`. Backslash and double-quote are escaped to match the
-// lexer's string rules (shared/searchdsl/lexer.ts) so names containing spaces
-// or quotes still round-trip through the target page's SearchBar cleanly.
-function nameQuery(value: string): string {
-  const escaped = value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-  return `name = "${escaped}"`;
-}
-
-function Node({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className={styles.node}>
-      <div className={styles.nodeLabel}>{label}</div>
-      <div className={styles.nodeBody}>{children}</div>
-    </div>
-  );
-}
-
-function Connector() {
-  return <div className={styles.connector} aria-hidden="true" />;
-}
-
 function ActionChip({ action }: { action: ActionResult }) {
   const status = action.status ?? "sent";
   const variant = ACTION_VARIANT[status] ?? "neutral";
   const glyph = ACTION_GLYPH[status] ?? "";
   const badge = (
-    <Badge variant={variant}>
-      <span aria-hidden="true">{glyph}</span> {action.name}
+    <Badge variant={variant} className={styles.actionBadge ?? ""}>
+      <span aria-hidden="true">{glyph}</span>
+      {action.name}
     </Badge>
   );
   // The error message and the sent/skipped hints are both surfaced as a hover
@@ -135,26 +114,63 @@ function NotificationBranch({ name, actions }: { name: string; actions: ActionRe
   return (
     <div className={styles.branch}>
       {name ? (
-        <div className={styles.branchHead}>
-          <Link
-            to="/web/notifications"
-            search={{ tab: "notifications", search: nameQuery(name) }}
-            className={styles.entityLink}
-          >
-            {name}
-          </Link>
-        </div>
+        <Link
+          to="/web/notifications"
+          search={{ tab: "notifications", search: nameQuery(name) }}
+          className={styles.branchHead}
+        >
+          {name}
+        </Link>
+      ) : null}
+      {name ? (
+        <span className={styles.branchArrow} aria-hidden="true">
+          →
+        </span>
       ) : null}
       {actions.length > 0 ? (
-        <div className={styles.branchActions}>
-          {actions.map((a, i) => (
-            <ActionChip key={`${a.name ?? "action"}-${i}`} action={a} />
-          ))}
-        </div>
+        actions.map((a, i) => <ActionChip key={`${a.name ?? "action"}-${i}`} action={a} />)
       ) : (
         <span className={styles.none}>no actions</span>
       )}
     </div>
+  );
+}
+
+/**
+ * How a stage fared on the alert's last run:
+ *   passed   — the run went through it (whether or not anything matched)
+ *   held     — the run stopped here, before notification
+ *   skipped  — never reached: greyed out, reached by a dashed rail
+ *   notified — the notification stage ran and sent
+ *   failed   — the notification stage ran and an action failed
+ */
+type StageStatus = "passed" | "held" | "skipped" | "notified" | "failed";
+
+const STATUS_TEXT: Partial<Record<StageStatus, string>> = {
+  held: "stopped here",
+  skipped: "not reached",
+  failed: "an action failed",
+};
+
+function Stage({
+  label,
+  status,
+  children,
+}: {
+  label: string;
+  status: StageStatus;
+  children: ReactNode;
+}) {
+  const said = STATUS_TEXT[status];
+  return (
+    <li className={styles.stage} data-status={status}>
+      <span className={styles.marker} aria-hidden="true" />
+      <span className={styles.label}>
+        {label}
+        {said ? <span className={styles.srOnly}>{` (${said})`}</span> : null}
+      </span>
+      <div className={styles.body}>{children}</div>
+    </li>
   );
 }
 
@@ -163,32 +179,54 @@ export function AlertFlowChart({ row }: { row: Record_ }) {
   const notifications = row.notifications ?? [];
   const actions = row.actions ?? [];
   const snoozed = row.snoozed;
-  // `snoozed` names the filter that silenced the alert, but not necessarily
-  // THIS run: the snooze plugin keeps it on the recovery (close) of a silenced
-  // alert and lets that close through to notification. The plugin trail of the
-  // last run tells the two apart; a row with no trail (older data) reads as
-  // silenced, the only case that existed before.
-  const passedThrough = !!snoozed && (row.plugins ?? []).includes("notification");
+  const trail = row.plugins ?? [];
+  // The plugin trail of the last run says how far it got. `snoozed` names the
+  // filter that silenced the alert, but not necessarily THIS run: the snooze
+  // plugin keeps it on the recovery (close) of a silenced alert and lets that
+  // close through to notification. A row with no trail (older data) reads as
+  // silenced when snoozed and as notified otherwise, the only stories that
+  // existed before the trail.
+  const reachedNotification = trail.length === 0 || trail.includes("notification");
+  const passedThrough = !!snoozed && trail.includes("notification");
   const silenced = !!snoozed && !passedThrough;
+  // A run that went through the aggregate but not to notification, with no
+  // snooze to blame, was held by the aggregate: a repeat inside the throttle
+  // window (or a flapping alert, or a repeat of a closed one). The snooze
+  // stage still ran — as a filter, to keep the silence attribution honest —
+  // but nothing was sent. Without this the chart drew such a run as notified,
+  // with the notifications of whichever earlier run did reach them.
+  const held = !silenced && !reachedNotification && trail.includes("aggregaterule");
+  const stopped = silenced || held;
+  // Notifications and actions persist from the last run that reached them; on
+  // a run that stopped short they are history, shown as such.
+  const branches = notificationBranches(notifications, actions);
+  const anyFailed = actions.some((a) => a.status === "error");
+  const notificationStatus: StageStatus = stopped
+    ? "skipped"
+    : branches.length === 0
+      ? "passed"
+      : anyFailed
+        ? "failed"
+        : "notified";
   // "default" is the aggregaterule plugin's synthetic fallback bucket — it has
   // no backing rule, so a deep-link would dead-end on an empty list. Render it
   // (and the empty "—") as plain text; link only real aggregate rule names.
   const aggregateLinkable = row.aggregate && row.aggregate !== "default";
+  const heldReason =
+    row.state === "close"
+      ? "A repeat of a closed alert — not notified again."
+      : "A repeat inside the throttle window — not notified this time.";
 
   return (
-    // The sizing container the stage layout keys off: narrow (the drawer's
-    // Flow tab on a laptop) stacks the stages top-to-bottom; wide (the alerts
-    // table's inline expander, or the drawer on a NOC screen) lays the same
-    // stages left-to-right, which is both the shape a pipeline wants and four
-    // times shorter — it matters when the trace is hanging inside a list the
-    // operator is still scanning.
+    // The sizing container the stage layout keys off: the drawer's usual
+    // width runs the stages down a vertical rail; a wide drawer (a NOC screen)
+    // lays the same stages left to right.
     <div className={styles.flowContainer}>
-      <div className={styles.flow}>
-        <Node label="Input">
+      <ol className={styles.flow} aria-label="Pipeline path of the last occurrence">
+        <Stage label="Input" status="passed">
           <span className={styles.value}>{row.source || "—"}</span>
-        </Node>
-        <Connector />
-        <Node label="Rules">
+        </Stage>
+        <Stage label="Rules" status="passed">
           {rules.length > 0 ? (
             <span className={styles.value}>
               {rules.map((r, i) => (
@@ -207,9 +245,8 @@ export function AlertFlowChart({ row }: { row: Record_ }) {
           ) : (
             <span className={styles.none}>none</span>
           )}
-        </Node>
-        <Connector />
-        <Node label="Aggregate">
+        </Stage>
+        <Stage label="Aggregate" status={held ? "held" : "passed"}>
           <span className={styles.value}>
             {aggregateLinkable ? (
               <Link
@@ -223,24 +260,22 @@ export function AlertFlowChart({ row }: { row: Record_ }) {
               row.aggregate || "—"
             )}
           </span>
-          {/* hash is an extra key stamped by the aggregaterule plugin; not in the Record schema, hence the typeof guard */}
-          {/* Labelled, because a bare 12-char hex string under the aggregate
-              name reads as noise. The truncation stays (the full hash is 64
-              chars and would wrap the node) — the title carries the whole
-              value for anyone who needs to match it against a query. */}
+          {/* hash is an extra key stamped by the aggregaterule plugin; not in
+              the Record schema, hence the typeof guard. Truncated (the full
+              hash would wrap the stage); the title carries the whole value. */}
           {typeof row.hash === "string" && row.hash ? (
             <span className={styles.subtle} title={row.hash}>
               <span className={styles.subtleLabel}>group key </span>
               {row.hash.slice(0, 12)}
             </span>
           ) : null}
-        </Node>
-        <Connector />
+          {held ? <p className={styles.reason}>{heldReason}</p> : null}
+        </Stage>
         {/* The snooze stage renders whether or not it fired. An operator woken
             at 03:00 is asking "should this have reached me?", and the silence
             of a stage that matched nothing is an answer — it is just an answer
             nobody can read if the stage is missing from the chart. */}
-        <Node label="Snooze">
+        <Stage label="Snooze" status={silenced ? "held" : "passed"}>
           {snoozed ? (
             <>
               <Link
@@ -248,30 +283,47 @@ export function AlertFlowChart({ row }: { row: Record_ }) {
                 search={{ search: nameQuery(snoozed) }}
                 className={styles.chipLink}
               >
-                <Badge variant="muted">
-                  <span aria-hidden="true">⊘</span> {snoozed}
+                <Badge variant="muted" className={styles.actionBadge ?? ""}>
+                  <span aria-hidden="true">⊘</span>
+                  {snoozed}
                 </Badge>
               </Link>
-              <span className={styles.subtle}>
+              <p className={styles.reason}>
                 {passedThrough
-                  ? "silenced earlier — the recovery passed through"
-                  : "silenced — pipeline stopped"}
-              </span>
+                  ? "Silenced earlier — this recovery passed through."
+                  : "Silenced — the run stopped here."}
+              </p>
             </>
           ) : (
-            <span className={styles.none}>No snooze matched — this one was meant to reach you</span>
+            <span className={styles.none}>no snooze matched</span>
           )}
-        </Node>
-        <Connector />
-        {/* A snooze is terminal: the notification stage never ran, so it carries
-            no branches and no action links — saying "none" here would read as
-            "nothing was configured", which is a different and wrong story. */}
-        <Node label="Notifications">
-          {silenced ? (
-            <span className={styles.none}>not reached — silenced upstream</span>
-          ) : notifications.length > 0 || actions.length > 0 ? (
+        </Stage>
+        <Stage label="Notifications" status={notificationStatus}>
+          {stopped ? (
+            <>
+              <span className={styles.none}>
+                {silenced ? "not reached — silenced" : "not reached — held as a repeat"}
+              </span>
+              {/* What the last run that did get here sent — the answer to
+                  "so who has been told about this?". */}
+              {branches.length > 0 ? (
+                <div className={styles.earlier}>
+                  <span className={styles.earlierLabel}>Last notified via</span>
+                  <div className={styles.fork}>
+                    {branches.map((b, i) => (
+                      <NotificationBranch
+                        key={`${b.name || "orphaned"}-${i}`}
+                        name={b.name}
+                        actions={b.actions}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </>
+          ) : branches.length > 0 ? (
             <div className={styles.fork}>
-              {notificationBranches(notifications, actions).map((b, i) => (
+              {branches.map((b, i) => (
                 <NotificationBranch
                   key={`${b.name || "orphaned"}-${i}`}
                   name={b.name}
@@ -280,10 +332,10 @@ export function AlertFlowChart({ row }: { row: Record_ }) {
               ))}
             </div>
           ) : (
-            <span className={styles.none}>none</span>
+            <span className={styles.none}>none matched</span>
           )}
-        </Node>
-      </div>
+        </Stage>
+      </ol>
     </div>
   );
 }

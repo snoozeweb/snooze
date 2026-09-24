@@ -45,4 +45,57 @@ describe("JsonViewer", () => {
     expect(screen.queryByRole("button", { name: /toggle b/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /toggle c/i })).toBeNull();
   });
+
+  describe("search", () => {
+    const value = { host: "srv-db1", labels: { team: "db", cluster: "prod-db" }, count: 3 };
+
+    it("has no search box unless asked for", () => {
+      render(<JsonViewer value={value} />);
+      expect(screen.queryByRole("searchbox")).toBeNull();
+    });
+
+    it("highlights every match, case-insensitively, in keys and values", async () => {
+      const user = userEvent.setup();
+      const { container } = render(<JsonViewer value={value} searchable />);
+      await user.type(screen.getByRole("searchbox", { name: /find in/i }), "DB");
+      const marks = [...container.querySelectorAll("mark")].map((m) => m.textContent);
+      expect(marks).toEqual(["db", "db", "db"]);
+      expect(screen.getByRole("status")).toHaveTextContent("1 of 3");
+    });
+
+    it("steps through matches with Enter and Shift+Enter, wrapping", async () => {
+      const user = userEvent.setup();
+      const { container } = render(<JsonViewer value={value} searchable />);
+      const box = screen.getByRole("searchbox", { name: /find in/i });
+      await user.type(box, "db");
+      const current = () =>
+        [...container.querySelectorAll("mark")].findIndex((m) => m.hasAttribute("data-current"));
+      expect(current()).toBe(0);
+      await user.keyboard("{Enter}");
+      expect(current()).toBe(1);
+      expect(screen.getByRole("status")).toHaveTextContent("2 of 3");
+      await user.keyboard("{Shift>}{Enter}{/Shift}{Shift>}{Enter}{/Shift}");
+      expect(current()).toBe(2);
+      await user.click(screen.getByRole("button", { name: /next match/i }));
+      expect(current()).toBe(0);
+    });
+
+    it("searches inside a collapsed key", async () => {
+      const user = userEvent.setup();
+      render(<JsonViewer value={value} searchable />);
+      await user.click(screen.getByRole("button", { name: /toggle labels/i }));
+      expect(screen.queryByText(/prod-/)).toBeNull();
+      await user.type(screen.getByRole("searchbox", { name: /find in/i }), "prod");
+      expect(screen.getByText("prod")).toBeInTheDocument();
+    });
+
+    it("says so when nothing matches", async () => {
+      const user = userEvent.setup();
+      const { container } = render(<JsonViewer value={value} searchable />);
+      await user.type(screen.getByRole("searchbox", { name: /find in/i }), "nope");
+      expect(container.querySelector("mark")).toBeNull();
+      expect(screen.getByRole("status")).toHaveTextContent("No matches");
+      expect(screen.getByRole("button", { name: /next match/i })).toBeDisabled();
+    });
+  });
 });

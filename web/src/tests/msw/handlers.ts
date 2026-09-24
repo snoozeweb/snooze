@@ -1,4 +1,5 @@
 import { http, HttpResponse } from "msw";
+import { commentRunsViaList } from "./commentRuns";
 
 function makeStubToken(sub: string): string {
   const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
@@ -26,6 +27,10 @@ function stubLoginEnvelope(sub: string, method: string) {
 
 export const handlers = [
   http.get("/api/v1/healthz", () => HttpResponse.json({ status: "ok" })),
+
+  // The timeline reads /comment/runs; derive it from the test's own
+  // /comment stub so a test about comments can keep stubbing the list.
+  commentRunsViaList,
 
   // Login backend index — tests assume all three are enabled. Individual
   // tests override via mswServer.use() when they need a narrower set.

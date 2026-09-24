@@ -48,6 +48,50 @@
 .dot[data-status="error"] {
   background: var(--severity-critical);
 }
+/* A folded run: the same dot with a second ring behind it — a stack of
+   identical sends, read before the ×N beside it is. */
+.dot[data-run] {
+  box-shadow:
+    0 0 0 2px var(--bg-surface),
+    0 0 0 3px var(--severity-ok);
+}
+
+/* "×1,420 · every ~16 min · since Sep 17th 10:46   Show all". The count is
+   the one strong word; the rest is the muted metadata voice. */
+.runLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  font-feature-settings: var(--font-features-numeric);
+}
+.runCount {
+  font-weight: var(--weight-semibold);
+  color: var(--text-strong);
+}
+.runText {
+  min-width: 0;
+}
+.runToggle {
+  margin-inline-start: auto;
+}
+/* The expanded members: a nested timeline under the run, set off by the rail
+   it hangs from so it reads as "inside" this row, not as the next rows. */
+.runMembers {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2) 0 var(--space-1) var(--space-2);
+  border-left: 1px solid var(--border-muted);
+}
+.runNote {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
 
 .time {
   font-size: var(--text-sm);
@@ -190,6 +234,16 @@
   font-size: var(--text-xs);
   color: var(--accent);
   text-decoration: none;
+}
+/* A ticket key with no link to follow: stated, not styled as a link. */
+.refKey {
+  align-self: flex-start;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.refKeyValue {
+  font-family: var(--font-mono);
+  color: var(--text);
 }
 .refLink:hover {
   text-decoration: underline;

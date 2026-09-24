@@ -1,6 +1,5 @@
-// Phase 6 — power-user flow: row traversal from the keyboard, the inline Flow
-// expander, and the search query staying legible while a bulk action is
-// committed against it.
+// Phase 6 — power-user flow: row traversal from the keyboard and the search
+// query staying legible while a bulk action is committed against it.
 import { test, expect } from "../harness/fixtures";
 
 test.describe("alerts keyboard traversal", () => {
@@ -100,54 +99,6 @@ test.describe("alerts keyboard traversal", () => {
     await page.keyboard.press("?");
     await expect(page.getByText("Move between rows")).toBeVisible();
     await expect(page.getByText("Acknowledge focused alert")).toBeVisible();
-  });
-});
-
-test.describe("alerts inline flow expander", () => {
-  test.beforeEach(async ({ api, adminAuth }) => {
-    await api.alerts.clear();
-    await adminAuth();
-  });
-
-  test("f expands the pipeline flow under the focused row", async ({ page, api, server }) => {
-    await api.alerts.send({
-      host: "flow-host",
-      message: "pipeline trace",
-      severity: "info",
-      source: "e2e-source",
-    });
-    await page.goto(server.baseURL + "/web/alerts");
-    await expect(page.getByText("flow-host")).toBeVisible();
-
-    await page.getByRole("grid").focus();
-    await page.keyboard.press("j");
-    await page.keyboard.press("f");
-
-    // The same AlertFlowChart the drawer's Flow tab shows — its stage labels
-    // are unique to that component — with no dialog opened.
-    await expect(page.getByText("Input", { exact: true })).toBeVisible();
-    await expect(page.getByText("Aggregate", { exact: true })).toBeVisible();
-    await expect(page.getByRole("dialog")).toHaveCount(0);
-
-    await page.keyboard.press("f");
-    await expect(page.getByText("Aggregate", { exact: true })).toHaveCount(0);
-  });
-
-  test("the row chevron toggles the same expander", async ({ page, api, server }) => {
-    await api.alerts.send({ host: "flow-click", message: "pipeline trace", severity: "info" });
-    await page.goto(server.baseURL + "/web/alerts");
-    await expect(page.getByText("flow-click")).toBeVisible();
-
-    await page
-      .locator("tr", { hasText: "flow-click" })
-      .first()
-      .getByRole("button", { name: /show pipeline flow/i })
-      .click({ force: true });
-    await expect(page.getByText("Aggregate", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: /hide pipeline flow/i })).toHaveAttribute(
-      "aria-expanded",
-      "true",
-    );
   });
 });
 

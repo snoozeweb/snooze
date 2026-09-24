@@ -351,10 +351,11 @@ func (p *Plugin) Process(ctx context.Context, rec snoozetypes.Record) (plugins.R
 		return plugins.Result{Action: plugins.ActionAbort, Record: rec}, err
 	}
 	mergeMapIntoRecord(&rec, out)
-	// The merge only adds keys, so an ownership key matchAggregate dropped
-	// from the payload (stripOwnership / carryOwnership) has to be removed
-	// from Extra here, or the payload value would ride on regardless.
-	for _, k := range ownership.Fields {
+	// The merge only adds keys, so an ownership or first_seen key
+	// matchAggregate dropped from the payload (stripOwnership / carryOwnership,
+	// a legacy row's first_seen) has to be removed from Extra here, or the
+	// payload value would ride on regardless.
+	for _, k := range serverOwnedFields {
 		if _, kept := out[k]; !kept {
 			delete(rec.Extra, k)
 		}
@@ -381,6 +382,7 @@ func (p *Plugin) matchAggregate(
 		// In tests with no DB the plugin is a no-op pass-through.
 		stripOwnership(rec)
 		rec["duplicates"] = int64(1)
+		rec[fieldFirstSeen] = now.Unix()
 		newSeverity, _ := rec["severity"].(string)
 		stampTrendFields(rec, "", newSeverity)
 		return rec, plugins.ActionContinue, nil
@@ -396,6 +398,7 @@ func (p *Plugin) matchAggregate(
 		// First occurrence: mark and pass through.
 		stripOwnership(rec)
 		rec["duplicates"] = int64(1)
+		rec[fieldFirstSeen] = now.Unix()
 		newSeverity, _ := rec["severity"].(string)
 		stampTrendFields(rec, "", newSeverity)
 		return rec, plugins.ActionContinue, nil
@@ -447,6 +450,13 @@ func (p *Plugin) matchAggregate(
 	// naming a team, say) must not reassign an alert somebody has taken. The
 	// transitions below that drop the owner overwrite these with a clear.
 	carryOwnership(rec, existing)
+	// first_seen: the stored value, always — or none, for a row that predates
+	// the field (inventing a start would claim a history we do not have).
+	if v, ok := existing[fieldFirstSeen]; ok {
+		rec[fieldFirstSeen] = v
+	} else {
+		delete(rec, fieldFirstSeen)
+	}
 
 	// Merge fields: existing values win for identity (uid, date_epoch,
 	// state, duplicates) but the incoming record's payload otherwise
@@ -725,6 +735,14 @@ func carryOwnership(rec map[string]any, existing db.Document) {
 		}
 	}
 }
+
+// fieldFirstSeen is the epoch the aggregate was created — the first time this
+// alert was seen. Server-owned: stamped once here, never taken from a payload.
+const fieldFirstSeen = "first_seen"
+
+// serverOwnedFields are the record keys an alert payload can never set: the
+// ownership keys and first_seen.
+var serverOwnedFields = append(append([]string{}, ownership.Fields...), fieldFirstSeen)
 
 // stripOwnership drops any ownership key an alert payload carries on its first
 // occurrence. Only an operator action makes somebody the owner, so a monitoring

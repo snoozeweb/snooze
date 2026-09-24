@@ -1229,34 +1229,6 @@ describe("DataTable", () => {
       expect(screen.getByText("alpha").closest("tr")).not.toHaveAttribute("data-focused");
     });
 
-    it("f toggles the inline row expansion, and the chevron does the same", async () => {
-      const user = userEvent.setup();
-      render(
-        <DataTable
-          data={sample}
-          columns={columns}
-          rowKey={(r) => r.id}
-          renderRowExpansion={(r) => <div data-testid={`flow-${r.id}`}>{r.name} flow</div>}
-          rowExpansionLabel="pipeline flow"
-        />,
-      );
-      const table = screen.getByRole("grid");
-      table.focus();
-      fireEvent.keyDown(table, { key: "j" });
-      fireEvent.keyDown(table, { key: "f" });
-      expect(screen.getByTestId("flow-1")).toBeInTheDocument();
-      fireEvent.keyDown(table, { key: "f" });
-      expect(screen.queryByTestId("flow-1")).toBeNull();
-
-      // Same state, reached with the mouse.
-      await user.click(screen.getAllByRole("button", { name: /show pipeline flow/i })[0]!);
-      expect(screen.getByTestId("flow-1")).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /hide pipeline flow/i })).toHaveAttribute(
-        "aria-expanded",
-        "true",
-      );
-    });
-
     it("? opens the shortcuts legend", async () => {
       render(
         <DataTable

@@ -10,7 +10,7 @@ import { api, type ApiError } from "@/lib/api/client";
 import type { ListResponse } from "@/lib/api/resource";
 import { encodeConditionQ } from "@/lib/condition/serialize";
 import type { Condition } from "@/lib/condition/types";
-import type { DeliveryEntry, DeliveryFilter } from "./types";
+import type { DeliveryEntry, DeliveryFilter, DeliveryRunsResponse } from "./types";
 
 /** REST path (relative to /api/v1) of the delivery-log collection. */
 export const DELIVERY_PATH = "/notificationlog";
@@ -62,6 +62,7 @@ function deliveryNarrowKey(filter: DeliveryFilter): string {
     status: filter.status ?? null,
     batchOnly: filter.batchOnly ?? false,
     range: filter.range ?? null,
+    notification: filter.notification ?? null,
   });
 }
 
@@ -119,6 +120,9 @@ export function buildDeliveryCondition(filter: DeliveryFilter): Condition {
   if (filter.range !== undefined) {
     args.push({ type: "GE", field: "date_epoch", value: filter.range.from });
     args.push({ type: "LE", field: "date_epoch", value: filter.range.to });
+  }
+  if (filter.notification) {
+    args.push({ type: "CONTAINS", field: "notification_uids", value: filter.notification });
   }
   return { type: "AND", args };
 }
@@ -217,4 +221,35 @@ export function useFailedDeliveryCount(
 ): DeliveryFailedCount {
   const query = useDeliveries({ ...filter, status: "error" }, SUMMARY_PAGE, opts);
   return { failed: query.data?.meta.total, isPending: query.isPending };
+}
+
+/**
+ * useDeliveryRuns reads one alert's delivery log folded into runs of repeats
+ * (GET /notificationlog/runs): consecutive, all-successful dispatches of one
+ * notification to the same actions become one entry, so an alert that
+ * re-notified every quarter of an hour for two weeks is a handful of rows,
+ * not 143 pages. The fold spans the alert's whole history, which is why it is
+ * the server's job — see internal/api/routes_runs.go.
+ *
+ * Keyed under DELIVERY_QUERY_KEY so everything that invalidates the log
+ * invalidates this too. Previous data is kept while paging within one alert.
+ */
+export function useDeliveryRuns(
+  alertUid: string,
+  page: DeliveryPage,
+  opts?: DeliveryQueryOptions,
+): UseQueryResult<DeliveryRunsResponse, ApiError> {
+  const { limit, offset } = page;
+  return useQuery<DeliveryRunsResponse, ApiError>({
+    queryKey: [DELIVERY_QUERY_KEY, "runs", alertUid, limit, offset],
+    queryFn: ({ signal }) =>
+      api<DeliveryRunsResponse>("GET", `${DELIVERY_PATH}/runs`, {
+        query: { alert_uid: alertUid, limit, offset },
+        signal,
+      }),
+    enabled: (opts?.enabled ?? true) && alertUid !== "",
+    placeholderData: (prev, prevQuery) =>
+      prevQuery?.queryKey?.[2] === alertUid ? prev : undefined,
+    ...(opts?.live === true ? { refetchInterval: DELIVERY_REFETCH_MS } : {}),
+  });
 }

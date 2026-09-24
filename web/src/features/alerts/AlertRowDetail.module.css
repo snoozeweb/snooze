@@ -5,6 +5,25 @@
   flex-direction: column;
   gap: var(--space-3);
 }
+/*
+ * Record pane: the raw record reaches the bottom of the drawer and scrolls
+ * inside its own box, find bar pinned on top. That takes a bounded height all
+ * the way down — the drawer body (a flex item of a fixed-height column), this
+ * detail, the Radix Tabs root and the active panel — each a flex column that
+ * may shrink (min-height: 0). Radix keeps inactive panels mounted with
+ * `hidden`, so the panel rule skips those — display: flex would unhide them.
+ */
+.detail[data-fill] {
+  height: 100%;
+  min-height: 0;
+}
+.detail[data-fill] > [data-orientation],
+.detail[data-fill] > [data-orientation] > [role="tabpanel"]:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
 
 .summary {
   display: flex;
@@ -22,46 +41,160 @@
   align-items: center;
   gap: var(--space-2);
 }
-/* Source rendered as a quiet mono chip — it identifies the ingest path without
-   competing with the severity/state badges. */
-.source {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-  background: var(--bg-hover);
-  border: 1px solid var(--border-muted);
-  border-radius: var(--radius-sm);
-  padding: 0 var(--space-2);
+
+/* The message leads: it is the alert's sentence, and the one line of the
+   header an operator reads first. Clamped to three lines — a stack trace
+   pasted into a message must not push the tabs off screen. */
+.messageBlock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
 }
 .message {
   margin: 0;
-  color: var(--text);
-  font-size: var(--text-sm);
-  line-height: var(--leading-normal);
+  color: var(--text-strong);
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-tight);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   user-select: text;
 }
-.received {
+.message[data-clamped="true"] {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.messageToggle {
+  padding: 0;
+  background: none;
+  border: 0;
+  font: inherit;
   font-size: var(--text-xs);
+  color: var(--accent);
+  cursor: pointer;
+}
+.messageToggle:hover {
+  text-decoration: underline;
+}
+.messageToggle:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/*
+ * The facts: one label column, one value column, every line on the same
+ * two tracks — so "when / who / did it page / silenced / from where" read
+ * down a column instead of as five differently-worded sentences. Each row is
+ * a <div> in the <dl>, `display: contents` so its dt and dd join the grid.
+ */
+.facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: var(--space-3);
+  row-gap: var(--space-1);
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: 20px;
+}
+.fact {
+  display: contents;
+}
+.fact dt {
   color: var(--text-muted);
 }
-/* "Last notified …" line — answers "did anyone get paged?" without opening
-   the Deliveries tab. Muted like .received; the action name gets the mono
-   treatment the rest of the app uses for identifiers. */
-.lastDelivery {
-  font-size: var(--text-xs);
+.fact dd {
+  margin: 0;
+  min-width: 0;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* TimeCell sets its own mono face at --text-sm for table columns; in a line
+   of prose it reads as a different, larger font. Match the line instead. */
+.fact dd time {
+  font-family: inherit;
+  font-size: inherit;
+  vertical-align: baseline;
+}
+.factMuted {
   color: var(--text-muted);
 }
-.lastDeliveryAction {
-  font-family: var(--font-mono);
-}
-/* Failure variant — same critical text token the alerts table and the
-   delivery timeline use, so a failed send reads as urgent at a glance. */
-.lastDeliveryError {
-  font-size: var(--text-xs);
+/* A failed last delivery: the one fact worth a hue. */
+.fact[data-tone="error"] dd {
   color: var(--severity-critical);
 }
+/* A fact that opens its tab: reads as the line it replaces, underlines on
+   hover so it says it goes somewhere. */
+.factButton {
+  padding: 0;
+  background: none;
+  border: 0;
+  font: inherit;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.factButton:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--text-muted);
+}
+.factButton:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+  border-radius: var(--radius-sm);
+}
+
+/* Labels: key=value chips that wrap, unlike the single-line facts above. */
+.fact dd.labelsValue {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  white-space: normal;
+  overflow: visible;
+  padding-top: 2px;
+}
+.labels {
+  display: contents;
+  list-style: none;
+}
+.label {
+  max-width: 100%;
+  padding: 0 var(--space-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 18px;
+  color: var(--text);
+  background: var(--bg-hover);
+  border: 1px solid var(--border-muted);
+  border-radius: var(--radius-sm);
+}
+.labelKey {
+  color: var(--text-muted);
+}
+
+.factLink {
+  color: var(--accent);
+  text-decoration: none;
+}
+.factLink:hover {
+  text-decoration: underline;
+}
+.factLink:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+  border-radius: var(--radius-sm);
+}
+
 /* The one-line pointer at the analysis: "[verdict] AI analysis · <headline> ›".
    A button, because its job is to open the tab — the headline is clipped to
    one line on purpose (the full reading is one click away, and the tooltip

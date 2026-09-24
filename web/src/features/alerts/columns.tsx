@@ -25,7 +25,7 @@ import styles from "./columns.module.css";
 // the single bump site around line 466). So 1 (or absent, on records written
 // before the counter existed) means "this happened once" — not "unknown".
 // Read-only.
-function recordHits(r: Record_): number {
+export function recordHits(r: Record_): number {
   const v = (r as { duplicates?: unknown }).duplicates;
   if (typeof v === "number") return v;
   if (typeof v === "string") {

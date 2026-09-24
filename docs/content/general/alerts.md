@@ -408,6 +408,34 @@ touches a permanent shelve (`shelve_until=0`). A timed shelve leaves `ttl` alone
 so the alert can still expire normally — if its `ttl` is shorter than
 `shelve_timeout`, the TTL cleanup job may delete it before the shelve expires.
 
+## Alert details
+
+Clicking an alert opens its details beside the list, titled with its host. The
+header leads with the alert **message** (clamped to three lines, with **Show
+more** when it is longer), then its severity and state, then a short list of
+facts. Each fact appears only when there is something to say:
+
+| Fact | Shows |
+|---|---|
+| **Seen** | When the alert last came in, when it was first seen, and how many times (its hits). |
+| **Owner** | Who is working on it and since when, or, faded, who last did. |
+| **Notified** | When the alert was last sent and by which action, in red when that send failed. Click it to open the **Deliveries** tab. |
+| **Silenced** | The snooze filter that stopped it before notification, linked to that snooze. |
+| **Source** | Where it came from (source and process), with **Open ↗** back to the originating system when the payload carries a `generatorURL`. |
+| **Labels** | The alert's labels as `key=value`, where-it-lives keys first (`alertname`, `cluster`, `namespace`, `job`, …), `severity` left out; past six, **+N more**. |
+
+A state that ends on its own says when, in its badge: an acknowledgement with an
+[ack expiry](#ack-expiry) reads **Acknowledged · reopens in 1h 59m**, and a
+timed [shelve](#shelve) reads **Shelved · returns in 30m**.
+
+**First seen** comes from the record's `first_seen`. It is stamped once, when
+the alert first arrives, and never changes afterwards; an alert payload cannot
+set it. Alerts that already existed before the upgrade have no `first_seen`, so
+their Seen line shows only the last time and the hits.
+
+Below the header are the **Timeline**, **Flow**, **Analysis**, **Deliveries**
+and **Record** tabs.
+
 ## Timeline
 
 ![](./images/web_alerts_ack.png)

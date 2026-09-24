@@ -8,6 +8,7 @@ import {
   severityBadgeVariant,
   severityDisplayLabel,
   stateBadgeVariant,
+  stateDeadline,
   stateLabel,
   trendLabel,
   trimDate,
@@ -316,5 +317,32 @@ describe("formatShelveUntil", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("stateDeadline", () => {
+  const NOW = new Date("2026-06-30T12:00:00Z");
+  const now = Math.floor(NOW.getTime() / 1000);
+
+  it("says when an acknowledgement lapses and a shelve ends", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    try {
+      expect(stateDeadline({ state: "ack", ack_until: now + 7200 })).toBe("reopens in 2h");
+      expect(stateDeadline({ state: "shelved", shelve_until: now + 1800 })).toBe("returns in 30m");
+      // Past the deadline, before the housekeeper's sweep got to it.
+      expect(stateDeadline({ state: "ack", ack_until: now - 5 })).toBe("reopens shortly");
+      expect(stateDeadline({ state: "shelved", shelve_until: now - 5 })).toBe("returns shortly");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("says nothing without a deadline, or for a state that has none", () => {
+    expect(stateDeadline({ state: "ack" })).toBe("");
+    expect(stateDeadline({ state: "ack", ack_until: 0 })).toBe("");
+    expect(stateDeadline({ state: "shelved" })).toBe("");
+    // A stale ack_until on a re-opened alert is not this state's deadline.
+    expect(stateDeadline({ state: "open", ack_until: now + 60 })).toBe("");
   });
 });

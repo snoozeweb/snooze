@@ -297,43 +297,6 @@
   padding-bottom: 4px;
 }
 
-/* Inline row expansion (renderRowExpansion): a full-width cell hung under its
-   row. Recessed a step behind the table surface and tied to its row by an
-   accent rail on the left, so a long list of rows with one open still reads as
-   "this belongs to that row" rather than as a second table. */
-.expansionRow > td {
-  padding: 0;
-  background: var(--bg-canvas);
-  border-bottom: 1px solid var(--border-muted);
-  /* The parent .row td rules clip and ellipsize single-line cells; the
-     expansion is a block of real content and must be allowed to breathe. */
-  overflow: visible;
-  white-space: normal;
-  text-overflow: clip;
-}
-/* Indented past the checkbox column so it reads as hanging off its row, and
-   recessed onto the canvas colour so it is legibly "under" the table surface
-   rather than a second table. */
-.expansionInner {
-  padding: var(--space-3) var(--space-4) var(--space-4) var(--space-6);
-  animation: expansionIn var(--dur-fast, 120ms) var(--ease-out, ease-out);
-}
-@keyframes expansionIn {
-  from {
-    opacity: 0;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .expansionInner {
-    animation: none;
-  }
-}
-/* An expanded row keeps its expander chevron visible without hover, and the
-   row itself stays tinted, so the pair reads as one unit. */
-.row[data-expanded="true"] td {
-  background: var(--bg-hover);
-}
-
 .checkboxCell {
   /* 18px checkbox (16px + 1px border each side) + 8px right pad + 12px left
      pad = 38px. At 32px the checkbox itself overflowed the cell and the
@@ -413,7 +376,6 @@
    action itself holds focus (so it stays reachable via the keyboard). */
 .row:hover .quickActions,
 .row[data-focused="true"] .quickActions,
-.row[data-expanded="true"] .quickActions,
 .quickActions:focus-within {
   opacity: 1;
 }
@@ -547,11 +509,6 @@
   .table tbody .row[data-focused="true"] {
     outline: 2px solid var(--focus-ring);
     outline-offset: -1px;
-  }
-  /* The inline expansion is a block hung under its card, not a field of it. */
-  .table tbody .expansionRow > td {
-    display: block;
-    padding: 0;
   }
   /* Label/value rows. `data-label` comes from the column header. Each data
      field spans the full card width. */

@@ -2199,6 +2199,115 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/notificationlog/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One alert's delivery log, repeats folded into runs
+         * @description Folds the delivery log of one alert into *runs*: consecutive dispatches
+         *     of the same notification, to the same actions, for the same alert set,
+         *     that all succeeded. A dispatch with a failed send is always a run of
+         *     its own. Runs are newest first and paged; `meta` sums up the whole log
+         *     of the alert. At most 10,000 rows are read, newest first; past that the
+         *     oldest run and `meta` carry `truncated: true`. Gated like the
+         *     `notificationlog` list (`ro_notificationlog`).
+         *
+         */
+        get: {
+            parameters: {
+                query: {
+                    /** @description The alert (record uid). */
+                    alert_uid: string;
+                    /** @description Runs per page (default 10 */
+                    limit?: number;
+                    /** @description Runs to skip. */
+                    offset?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description A page of runs, newest first. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DeliveryRunsResponse"];
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/comment/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One alert's timeline, automatic repeats folded into runs
+         * @description Folds the comments of one record into *runs*: consecutive automatic
+         *     comments (`auto: true`) with the same type and message. Anything a
+         *     person wrote is a run of one. Newest first and paged; at most 10,000
+         *     comments are read. Gated like the `comment` list.
+         *
+         */
+        get: {
+            parameters: {
+                query: {
+                    /** @description The alert (record uid). */
+                    record_uid: string;
+                    /** @description Runs per page (default 10 */
+                    limit?: number;
+                    /** @description Runs to skip. */
+                    offset?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description A page of runs, newest first. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CommentRunsResponse"];
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/record/{uid}/agentic": {
         parameters: {
             query?: never;
@@ -4941,6 +5050,15 @@ export interface components {
              * @description Epoch seconds the current owner took the alert; `0` when unowned.
              */
             owner_since?: number;
+            /**
+             * Format: int64
+             * @description Epoch seconds of the occurrence that created this aggregate — when
+             *     the alert was first seen. Stamped once by the aggregate rule and
+             *     never changed; an alert payload cannot set it. Absent on records
+             *     created before the field existed.
+             *
+             */
+            readonly first_seen?: number;
             /** @description The owner before the last clear, shown as a faded avatar. Reset to
              *     `""` whenever someone takes ownership again.
              *      */
@@ -5233,6 +5351,61 @@ export interface components {
             readonly tenant_id?: string;
         } & {
             [key: string]: unknown;
+        };
+        /** @description Consecutive, all-successful dispatches of one notification to the same actions for the same alerts. */
+        DeliveryRun: {
+            /** @description Stable while the run grows (its oldest dispatch). */
+            key: string;
+            /** @description Times the notification fired in this run. */
+            dispatches: number;
+            /** @description Log rows in the run (dispatches × actions). */
+            sends: number;
+            /** @description Oldest dispatch (epoch seconds). */
+            first_epoch: number;
+            /** @description Newest dispatch (epoch seconds). */
+            last_epoch: number;
+            /** @description Median gap between consecutive dispatches; 0 for a single one. */
+            interval_s: number;
+            /** @description The log rows of the newest dispatch. */
+            latest: components["schemas"]["NotificationLogEntry"][];
+            /** @description The run reaches the scan cap and may be longer. */
+            truncated: boolean;
+        };
+        DeliveryRunsResponse: {
+            data: components["schemas"]["DeliveryRun"][];
+            meta: {
+                /** @description Runs. */
+                total: number;
+                /** @description Delivery-log rows for the alert. */
+                sends: number;
+                dispatches: number;
+                first_epoch: number;
+                last_epoch: number;
+                /** @description Median gap between consecutive dispatches. */
+                interval_s: number;
+                truncated: boolean;
+            };
+        };
+        /** @description Consecutive automatic comments of the same type and message; a person's comment is a run of one. */
+        CommentRun: {
+            /** @description The oldest member's uid. */
+            key: string;
+            count: number;
+            first_epoch: number;
+            last_epoch: number;
+            interval_s: number;
+            latest: components["schemas"]["Comment"];
+            truncated: boolean;
+        };
+        CommentRunsResponse: {
+            data: components["schemas"]["CommentRun"][];
+            meta: {
+                /** @description Runs. */
+                total: number;
+                /** @description Comments on the record. */
+                comments: number;
+                truncated: boolean;
+            };
         };
         /** @description One **delivery**: a single send attempt performed by one action, on
          *     behalf of one or more notifications, covering one or more alerts.

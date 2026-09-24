@@ -52,10 +52,11 @@ test.describe("alert inspector deliveries", () => {
     const drawer = page.getByRole("dialog");
     await expect(drawer).toBeVisible();
 
-    // The header answers "was anyone told?" before any tab is touched.
-    const lastNotified = drawer.getByText(/Last notified/);
+    // The header answers "was anyone told?" before any tab is touched: its
+    // Notified fact names the action that last sent.
+    const lastNotified = drawer.locator('dt:text-is("Notified") + dd');
     await expect(lastNotified).toBeVisible();
-    await expect(lastNotified).toContainText("act-alert-view");
+    await expect(lastNotified).toContainText("via act-alert-view");
 
     // The tab carries the count, so an alert with history is distinguishable
     // from one without at a glance.

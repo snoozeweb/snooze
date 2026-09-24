@@ -12,6 +12,10 @@
 //     comment if the user holds rw_record / rw_all.
 //   - Newest activity first (reverse-chronological): page 1 is the most
 //     recent, the last page the oldest.
+//   - Automatic repeats folded: a run of identical auto-comments ("New
+//     escalation" every quarter of an hour for weeks) is one entry with its
+//     count, cadence and start, expandable to its timestamps. What people
+//     wrote is never folded, so it cannot be buried under the bot.
 //   - Page controls (5 / 10 / 20 per page) with first/last page jumps.
 import { useState } from "react";
 import { Badge, type BadgeVariant } from "@/shared/ui/Badge";
@@ -26,7 +30,14 @@ import { hasAnyPermission } from "@/lib/auth/permissions";
 import { toast } from "@/shared/ui/toast/useToast";
 import { ApiError } from "@/lib/api/client";
 import { trimDate } from "./format";
-import { Comments, useRecordComments, type Comment } from "./comments";
+import {
+  Comments,
+  useCommentsBetween,
+  useRecordCommentRuns,
+  type Comment,
+  type CommentRun,
+} from "./comments";
+import { cadenceLabel, repeatLabel } from "@/lib/format/cadence";
 import { useCommentRecord } from "./api";
 import { canTransition } from "./transitions";
 import styles from "./CommentTimeline.module.css";
@@ -83,6 +94,82 @@ const SUBMIT_LABEL: Record<ComposerType, string> = {
 };
 const PAGE_SIZE_OPTIONS = [5, 10, 20] as const;
 
+/** Timestamps fetched per "Show older" step of an expanded run. */
+const RUN_MEMBER_STEP = 50;
+
+/**
+ * "×2,100 · every ~16 min · since Sep 9th 12:14   Show all" under a folded
+ * entry, and on demand the timestamps of every member — the only thing that
+ * differs between them.
+ */
+function RunLine({ run, recordUid }: { run: CommentRun; recordUid: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <p className={styles.runLine}>
+        <span className={styles.runCount}>{repeatLabel(run.count)}</span>
+        <span>
+          {[
+            cadenceLabel(run.interval_s),
+            `${run.truncated ? "since at least" : "since"} ${trimDate(run.first_epoch)}`,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </span>
+        <Button
+          size="sm"
+          variant="ghost"
+          className={styles.runToggle}
+          aria-expanded={open}
+          trailingIcon={open ? "chevron-up" : "chevron-down"}
+          onClick={() => setOpen((v) => !v)}
+        >
+          {open ? "Hide" : `Show all ${run.count.toLocaleString("en-US")}`}
+        </Button>
+      </p>
+      {open ? <RunTimes run={run} recordUid={recordUid} /> : null}
+    </>
+  );
+}
+
+function RunTimes({ run, recordUid }: { run: CommentRun; recordUid: string }) {
+  const [shown, setShown] = useState(RUN_MEMBER_STEP);
+  const q = useCommentsBetween(recordUid, { from: run.first_epoch, to: run.last_epoch }, shown);
+  if (q.isPending) return <Skeleton height={24} />;
+  if (q.isError) return <p className={styles.empty}>Could not load these entries.</p>;
+  // The window can also hold a person's comment written in the same second
+  // as a boundary member; only the run's own kind of entry is listed.
+  const members = q.data.data.filter(
+    (c) => c.auto === true && c.type === run.latest.type && c.message === run.latest.message,
+  );
+  return (
+    <div className={styles.runTimes}>
+      <ul className={styles.runTimeList} aria-label="Every occurrence in this run">
+        {/* Plain dates, not TimeCell: its "Nm ago" prefix doubles the width
+            of a cell in a list that is nothing but dates. */}
+        {members.map((c) => (
+          <li key={c.uid ?? c.date_epoch}>
+            <time dateTime={new Date((c.date_epoch ?? 0) * 1000).toISOString()}>
+              {trimDate(c.date_epoch)}
+            </time>
+          </li>
+        ))}
+      </ul>
+      {q.data.meta.total > q.data.data.length ? (
+        <Button
+          size="sm"
+          variant="ghost"
+          className={styles.runToggle}
+          loading={q.isFetching}
+          onClick={() => setShown((n) => n + RUN_MEMBER_STEP)}
+        >
+          Show older
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
 export function CommentTimeline({
   recordUid,
   state,
@@ -103,7 +190,7 @@ export function CommentTimeline({
 
   const [pageSize, setPageSize] = useState<number>(5);
   const [page, setPage] = useState<number>(1);
-  const q = useRecordComments(recordUid, {
+  const q = useRecordCommentRuns(recordUid, {
     limit: pageSize,
     offset: (page - 1) * pageSize,
   });
@@ -129,8 +216,10 @@ export function CommentTimeline({
     return <p className={styles.empty}>Open an alert to see its timeline.</p>;
   }
 
+  // Pages walk the runs; the entry count is what the timeline holds.
   const total = q.data?.meta.total ?? 0;
-  const items = q.data?.data ?? [];
+  const entryCount = q.data?.meta.comments ?? 0;
+  const runs = q.data?.data ?? [];
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
 
   // Comment is always allowed; ack/esc only when the backend accepts them from
@@ -244,10 +333,11 @@ export function CommentTimeline({
             <span />
           </div>
         ))
-      ) : items.length === 0 ? (
+      ) : runs.length === 0 ? (
         <p className={styles.empty}>No comments yet.</p>
       ) : (
-        items.map((c) => {
+        runs.map((run) => {
+          const c = run.latest;
           // Read auto defensively: the OpenAPI schema does not yet describe this field.
           // Auto-comments (from the housekeeper or aggregaterule plugin) are attributed
           // as "System (auto)" and cannot be edited or deleted.
@@ -257,9 +347,10 @@ export function CommentTimeline({
           const canEdit = !isAuto && (isOwn || canModerate);
           return (
             <div
-              key={c.uid ?? `${c.date_epoch}-${c.user ?? ""}`}
+              key={run.key || c.uid || `${c.date_epoch}-${c.user ?? ""}`}
               className={styles.row}
               data-auto={isAuto || undefined}
+              data-run={run.count > 1 || undefined}
             >
               {/* The author's face, where the bare dot used to be; the name is
                   in the meta line beside the badge, so the face is decoration. */}
@@ -319,6 +410,7 @@ export function CommentTimeline({
                       <AssigneeLine name={c.assignee} method={c.assignee_method} />
                     ) : null}
                     {c.message ? <p className={styles.message}>{c.message}</p> : null}
+                    {run.count > 1 ? <RunLine run={run} recordUid={recordUid} /> : null}
                   </>
                 )}
               </div>
@@ -354,7 +446,7 @@ export function CommentTimeline({
       {total > pageSize ? (
         <div className={styles.controls}>
           <span>
-            Page {page} / {pageCount} · {total} total
+            Page {page} / {pageCount} · {entryCount} {entryCount === 1 ? "entry" : "entries"}
           </span>
           <span className={styles.controlButtons}>
             {PAGE_SIZE_OPTIONS.map((n) => (

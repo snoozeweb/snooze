@@ -1,6 +1,6 @@
 /*
- * A round face. Size comes from the --avatar-size-* tokens; the initials scale
- * with it so one rule serves every size.
+ * A round face. Size comes from the --avatar-size-* tokens; the initials are
+ * an SVG that scales with it, so one rule serves every size.
  */
 .avatar {
   --avatar-size: var(--avatar-size-md);
@@ -17,8 +17,8 @@
   color: var(--avatar-fg);
   font-family: var(--font-sans);
   font-weight: var(--weight-semibold);
-  /* Two capitals fit a disc at ~42% of its diameter. */
-  font-size: calc(var(--avatar-size) * 0.42);
+  /* The initials are sized inside their SVG (Avatar.tsx); zero the inherited
+     spacing so a caller's letter-spacing cannot push them off centre. */
   line-height: 1;
   letter-spacing: 0;
   user-select: none;
@@ -63,9 +63,12 @@
   display: block;
 }
 
+/* The initials SVG fills the disc; its text is sized in viewBox units. */
 .initials {
-  /* Optical centring: capitals sit high in the line box. */
-  transform: translateY(0.02em);
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
 }
 
 /*

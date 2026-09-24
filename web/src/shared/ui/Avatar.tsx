@@ -32,6 +32,37 @@ export type AvatarProps = {
   className?: string | undefined;
 };
 
+// Initials are sized in the SVG's 100-unit box, so they scale with the disc.
+const INITIALS_FONT_SIZE = 42;
+// IBM Plex Sans' cap height (698/1000 em). The baseline sits half a cap height
+// below the centre so the capitals — not the font's ascender-to-descender line
+// box — are what gets centred.
+const CAP_HEIGHT_EM = 0.698;
+const INITIALS_BASELINE = 50 + (INITIALS_FONT_SIZE * CAP_HEIGHT_EM) / 2;
+
+/**
+ * Initials — one or two capitals centred on the disc. Drawn as SVG text, not
+ * an HTML span: flexbox centres a span's line box, which in most fonts puts
+ * the capitals off centre by a size-dependent amount, and HTML text snaps its
+ * baseline to whole pixels — up to a pixel off on a 20px disc. SVG places the
+ * glyphs geometrically, the same at every size.
+ */
+function Initials({ text }: { text: string }) {
+  return (
+    <svg className={styles.initials} viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+      <text
+        x="50"
+        y={INITIALS_BASELINE}
+        textAnchor="middle"
+        fontSize={INITIALS_FONT_SIZE}
+        fill="currentColor"
+      >
+        {text}
+      </text>
+    </svg>
+  );
+}
+
 /**
  * Avatar — a person's face: their uploaded picture when the directory says
  * they have one, their initials on a hashed colour otherwise.
@@ -75,7 +106,7 @@ export function Avatar({
       ) : picture ? (
         <img className={styles.img} src={picture} alt="" draggable={false} />
       ) : (
-        <span className={styles.initials}>{initialsOf(shown)}</span>
+        <Initials text={initialsOf(shown)} />
       )}
     </span>
   );

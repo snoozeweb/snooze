@@ -60,9 +60,7 @@ export function TimeConstraintsCell({ value }: TimeConstraintsCellProps) {
           <span className={styles.label}>Dates</span>
           <span className={styles.values}>
             {dates.map((d, i) => (
-              <span key={i} className={styles.lineMono}>
-                {formatDateRange(d.from, d.until)}
-              </span>
+              <DateRange key={i} from={d.from} until={d.until} />
             ))}
           </span>
         </span>
@@ -110,9 +108,30 @@ function formatDateTime(s: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function formatDateRange(from?: string, until?: string): string {
-  if (from && until) return `${formatDateTime(from)} → ${formatDateTime(until)}`;
-  if (from) return `from ${formatDateTime(from)}`;
-  if (until) return `until ${formatDateTime(until)}`;
-  return "any date";
+/**
+ * One date window. A bounded range breaks after its start, the arrow trailing
+ * the first line so both dates start in the same column and compare digit by
+ * digit: on one line a
+ * full "2026-07-02 09:00 → 2026-07-09 17:00" is ~290px of mono, wider than the
+ * tables' Window column, whose single-line cells ellipsize — the end date was
+ * the part cut off. The space between the halves keeps it one sentence for a
+ * screen reader and in the cell's text (it is collapsed in the flex column).
+ */
+function DateRange({ from, until }: { from?: string | undefined; until?: string | undefined }) {
+  if (from && until) {
+    return (
+      <span className={styles.range}>
+        <span>{formatDateTime(from)} →</span> <span>{formatDateTime(until)}</span>
+      </span>
+    );
+  }
+  return (
+    <span className={styles.lineMono}>
+      {from
+        ? `from ${formatDateTime(from)}`
+        : until
+          ? `until ${formatDateTime(until)}`
+          : "any date"}
+    </span>
+  );
 }

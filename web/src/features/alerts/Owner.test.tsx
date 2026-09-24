@@ -8,7 +8,7 @@ import { mswServer } from "@/tests/msw/server";
 import { TooltipProvider } from "@/shared/ui/Tooltip";
 import { CONSOLE_FALLBACK } from "@/features/config/types";
 import { alertColumns } from "./columns";
-import { OwnerSummary } from "./Owner";
+import { OwnerFact } from "./Owner";
 import { recordOwnership, sincePhrase } from "./ownership";
 import type { Record_ } from "./types";
 
@@ -88,7 +88,7 @@ describe("sincePhrase", () => {
   });
 });
 
-describe("OwnerSummary", () => {
+describe("OwnerFact", () => {
   it("names the owner and since-when", async () => {
     mswServer.use(
       http.get("/api/v1/people", () =>
@@ -98,23 +98,33 @@ describe("OwnerSummary", () => {
       ),
     );
     const { container } = wrap(
-      <OwnerSummary record={{ owner: "alice", owner_since: now() - 60 }} />,
+      <dl>
+        <OwnerFact record={{ owner: "alice", owner_since: now() - 60 }} />
+      </dl>,
     );
     await waitFor(() => expect(screen.getByText("Alice Martin")).toBeInTheDocument());
     expect(container.querySelector('[data-slot="owner"]')).toHaveTextContent(
-      /Owner Alice Martin · since/,
+      /Alice Martin · since/,
     );
   });
 
   it("names the previous owner of an unowned alert", () => {
-    const { container } = wrap(<OwnerSummary record={{ owner: "", previous_owner: "bob" }} />);
+    const { container } = wrap(
+      <dl>
+        <OwnerFact record={{ owner: "", previous_owner: "bob" }} />
+      </dl>,
+    );
     expect(container.querySelector('[data-slot="previous-owner"]')).toHaveTextContent(
       "Unowned · previously bob",
     );
   });
 
   it("renders nothing for an alert nobody ever owned", () => {
-    const { container } = wrap(<OwnerSummary record={{ uid: "r1" }} />);
-    expect(container).toBeEmptyDOMElement();
+    const { container } = wrap(
+      <dl>
+        <OwnerFact record={{ uid: "r1" }} />
+      </dl>,
+    );
+    expect(container.querySelector("dl")).toBeEmptyDOMElement();
   });
 });

@@ -1,4 +1,5 @@
-import { useCallback, useState } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { JsonViewer } from "@/shared/ui/JsonViewer";
 import { Tabs, TabList, TabTrigger, TabPanel } from "@/shared/ui/Tabs";
 import { Badge } from "@/shared/ui/Badge";
@@ -23,10 +24,19 @@ import { AnalysisTab } from "./analysis/AnalysisTab";
 import { VerdictChip } from "./analysis/VerdictChip";
 import { useAnalysis } from "./analysis/api";
 import { authorOf, isPlanStatus, planStatusLabel, splitSummary } from "./analysis/verdict";
-import { escalationLabel, severityDisplayLabel, stateBadgeVariant, stateLabel } from "./format";
+import {
+  escalationLabel,
+  severityDisplayLabel,
+  stateBadgeVariant,
+  stateDeadline,
+  stateLabel,
+} from "./format";
+import { formatAbsoluteTime, formatRelativeTime, trimDate } from "@/lib/format/time";
 import { lastDeliverySummary } from "./lastDelivery";
 import { CommentTimeline } from "./CommentTimeline";
-import { OwnerSummary } from "./Owner";
+import { OwnerFact } from "./Owner";
+import { recordHits } from "./columns";
+import { nameQuery } from "./nameQuery";
 import { AlertFlowChart } from "./AlertFlowChart";
 import type { AlertState, Record_ } from "./types";
 import styles from "./AlertRowDetail.module.css";
@@ -72,13 +82,122 @@ function stripPrivateKeys(row: Record<string, unknown>): Record<string, unknown>
 }
 
 /**
+ * The alert message, clamped to three lines. The Show more toggle appears only
+ * when the clamp actually hides something — measured, since a character
+ * budget offered "Show more" under messages that already fit — and stays once
+ * expanded so the operator can fold it back.
+ */
+function AlertMessage({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+  const ref = useRef<HTMLParagraphElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || expanded) return;
+    const measure = () => setOverflows(el.scrollHeight > el.clientHeight + 1);
+    measure();
+    // The drawer resizes (and fonts load) without the text changing.
+    const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    ro?.observe(el);
+    return () => ro?.disconnect();
+  }, [text, expanded]);
+  return (
+    <div className={styles.messageBlock}>
+      <p ref={ref} className={styles.message} data-clamped={expanded ? undefined : "true"}>
+        {text}
+      </p>
+      {overflows || expanded ? (
+        <button
+          type="button"
+          className={styles.messageToggle}
+          aria-expanded={expanded}
+          onClick={() => setExpanded((v) => !v)}
+        >
+          {expanded ? "Show less" : "Show more"}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+/** "9m ago" (or "just now") — the compact TimeCell's words, as plain text. */
+function relativeAgo(epoch: number): string {
+  const rel = formatRelativeTime(epoch);
+  return rel === "just now" ? rel : `${rel} ago`;
+}
+
+/** Labels shown before the "+N more" toggle. */
+const LABEL_PREVIEW = 6;
+
+/** Label keys that say where an alert lives, shown first in this order. */
+const LEADING_LABELS = ["alertname", "cluster", "namespace", "job", "service", "instance", "pod"];
+
+function labelRank(key: string): number {
+  const i = LEADING_LABELS.indexOf(key);
+  return i === -1 ? LEADING_LABELS.length : i;
+}
+
+/**
+ * The alert's `labels` as `key=value` pairs — where-it-lives keys first (see
+ * LEADING_LABELS), the rest alphabetically — with `severity` left out, as it
+ * is already the first badge. Tolerates a payload whose labels are not a flat
+ * string map (values are stringified).
+ */
+function alertLabels(row: Record_): [string, string][] {
+  const raw = (row as { labels?: unknown }).labels;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+  return Object.entries(raw as Record<string, unknown>)
+    .filter(([k, v]) => k !== "severity" && v !== null && v !== undefined && v !== "")
+    .map(([k, v]): [string, string] => [k, typeof v === "string" ? v : JSON.stringify(v)])
+    .sort(([a], [b]) => labelRank(a) - labelRank(b) || a.localeCompare(b));
+}
+
+function LabelList({ labels }: { labels: [string, string][] }) {
+  const [all, setAll] = useState(false);
+  const shown = all ? labels : labels.slice(0, LABEL_PREVIEW);
+  return (
+    <>
+      <ul className={styles.labels}>
+        {shown.map(([k, v]) => (
+          <li key={k} className={styles.label} title={`${k}=${v}`}>
+            <span className={styles.labelKey}>{k}</span>={v}
+          </li>
+        ))}
+      </ul>
+      {labels.length > LABEL_PREVIEW ? (
+        <button
+          type="button"
+          className={styles.messageToggle}
+          aria-expanded={all}
+          onClick={() => setAll((v) => !v)}
+        >
+          {all ? "Show fewer" : `+${labels.length - LABEL_PREVIEW} more`}
+        </button>
+      ) : null}
+    </>
+  );
+}
+
+/** An http(s) link from an alert payload, or "" — never a javascript: URL. */
+function safeHttpUrl(v: unknown): string {
+  if (typeof v !== "string" || v === "") return "";
+  try {
+    const u = new URL(v);
+    return u.protocol === "http:" || u.protocol === "https:" ? u.href : "";
+  } catch {
+    return "";
+  }
+}
+
+/**
  * AlertRowDetail — the body of the docked row inspector on the alerts list.
  *
- * A compact summary header (severity + state badges, an escalation badge when
- * the alert has been re-escalated, source chip, who owns it — or, faded, who
- * last did — the alert message, received
- * time, the last delivery, and — when the alert has been analysed — one line
- * pointing at the analysis) sits above five tabs:
+ * A compact summary header — the message, then severity/state (and an
+ * escalation badge once re-escalated), then one aligned list of facts: last
+ * seen and hit count, owner (or, faded, the previous one), the last delivery,
+ * the snooze that silenced it, and where it came from (with a link back to
+ * the source when the payload carries one); and, when the alert has been
+ * analysed, one line pointing at the analysis — sits above five tabs:
  *   - Timeline (default): comment/activity history + composer — the read-write
  *     action surface, given top billing since triage lives here.
  *   - Flow: the pipeline path the alert took (AlertFlowChart) — read-only.
@@ -113,6 +232,21 @@ export function AlertRowDetail({
     row.escalation_actor,
   );
 
+  const hits = recordHits(row);
+  const deadline = stateDeadline(row as Parameters<typeof stateDeadline>[0]);
+  // Shown only when it says something `date_epoch` does not: a first
+  // occurrence that is also the last is just "when".
+  const firstSeen = typeof row.first_seen === "number" ? row.first_seen : 0;
+  const showFirstSeen = firstSeen > 0 && firstSeen !== row.date_epoch;
+  const labels = alertLabels(row);
+  // `snoozed` names the filter that silenced the alert — but it is also kept
+  // on the recovery of a silenced alert, which the snooze plugin lets through
+  // to notification. Only a run that stopped before notification was
+  // silenced; the Flow tab draws the same distinction.
+  const silencedBy =
+    row.snoozed && !(row.plugins ?? []).includes("notification") ? row.snoozed : "";
+  const sourceUrl = safeHttpUrl((row as { generatorURL?: unknown }).generatorURL);
+
   // An alert row can legitimately have no uid (see AlertsPage's `recordKey`
   // comment — host+timestamp fallback), and an empty scope is not a narrower
   // query but a catastrophically wider one: the server evaluates CONTAINS as a
@@ -135,6 +269,14 @@ export function AlertRowDetail({
     live: true,
   });
   const lastDelivery = showDeliveries ? lastDeliverySummary(deliverySummary.latest) : null;
+  const notifiedText = lastDelivery
+    ? [
+        `${lastDelivery.variant === "error" ? "Failed " : "Notified "}${relativeAgo(lastDelivery.epoch)}`,
+        lastDelivery.via ? `via ${lastDelivery.via}` : "",
+      ]
+        .filter(Boolean)
+        .join(" ")
+    : "";
   const deliveriesTabLabel =
     deliverySummary.total !== undefined && deliverySummary.total > 0
       ? `Deliveries · ${deliverySummary.total}`
@@ -202,49 +344,128 @@ export function AlertRowDetail({
   };
 
   return (
-    <div className={styles.detail}>
+    // The Record pane fills the drawer down to its bottom edge and scrolls
+    // inside (see .detail[data-fill]); every other pane flows and the drawer
+    // body scrolls as before.
+    <div className={styles.detail} data-fill={activeTab === "record" || undefined}>
       <div className={styles.summary}>
+        {/* What it is, first: the message is the alert's sentence, the host
+            (the drawer title) its subject. */}
+        {row.message ? <AlertMessage text={row.message} /> : null}
         <div className={styles.badges}>
           <Badge color={severityColor(row.severity ?? "")} title={row.severity ?? "—"}>
             {row.severity ? severityDisplayLabel(row.severity) : "—"}
           </Badge>
-          <Badge variant={stateBadgeVariant(state)}>{stateLabel(state)}</Badge>
+          <Badge variant={stateBadgeVariant(state)}>
+            {deadline ? `${stateLabel(state)} · ${deadline}` : stateLabel(state)}
+          </Badge>
           {escalation ? <Badge variant="warning">{escalation}</Badge> : null}
-          {row.source ? <span className={styles.source}>{row.source}</span> : null}
         </div>
-        {/* Who is on it, right under the state it is in. */}
-        <OwnerSummary record={row} />
-        {row.message ? <p className={styles.message}>{row.message}</p> : null}
-        <div className={styles.received}>
-          <TimeCell epoch={row.date_epoch} />
-        </div>
-        {lastDelivery ? (
-          <div
-            className={
-              lastDelivery.variant === "error" ? styles.lastDeliveryError : styles.lastDelivery
-            }
-          >
-            {lastDelivery.variant === "error" ? (
-              <>
-                {"Last delivery failed "}
-                <TimeCell epoch={lastDelivery.epoch} compact />
-                {lastDelivery.via ? ` (${lastDelivery.via})` : null}
-              </>
-            ) : (
-              <>
-                {"Last notified "}
-                <TimeCell epoch={lastDelivery.epoch} compact />
-                {lastDelivery.via ? (
+        {/* The context, as one aligned label/value list rather than a stack
+            of differently-worded lines: when, who, did it page, was it
+            silenced, where from. Each entry only when it has something to
+            say. */}
+        <dl className={styles.facts}>
+          <div className={styles.fact}>
+            <dt>Seen</dt>
+            <dd>
+              {showFirstSeen || hits > 1 ? "last " : null}
+              <TimeCell epoch={row.date_epoch} compact />
+              {showFirstSeen ? (
+                <span className={styles.factMuted}>
+                  {" · first "}
+                  <time
+                    dateTime={new Date(firstSeen * 1000).toISOString()}
+                    title={formatAbsoluteTime(firstSeen)}
+                  >
+                    {trimDate(firstSeen)}
+                  </time>
+                </span>
+              ) : null}
+              {hits > 1 ? (
+                <span
+                  className={styles.factMuted}
+                >{` · ${hits.toLocaleString("en-US")} hits`}</span>
+              ) : null}
+            </dd>
+          </div>
+          <OwnerFact record={row} itemClassName={styles.fact} />
+          {lastDelivery ? (
+            <div className={styles.fact} data-tone={lastDelivery.variant}>
+              <dt>Notified</dt>
+              <dd>
+                {/* The whole value opens the Deliveries tab: the next question
+                    after "when was it last sent" is "and before that?". Plain
+                    text inside, not a TimeCell — its tooltip trigger would be
+                    an interactive element nested in this button. */}
+                <button
+                  type="button"
+                  className={styles.factButton}
+                  title={`${formatAbsoluteTime(lastDelivery.epoch)} — show deliveries`}
+                  aria-label={`${notifiedText}. Show deliveries`}
+                  onClick={() => handleTabChange("deliveries")}
+                >
+                  {lastDelivery.variant === "error" ? "Failed " : null}
+                  {relativeAgo(lastDelivery.epoch)}
+                  {lastDelivery.via ? (
+                    <span className={styles.factMuted}>{` via ${lastDelivery.via}`}</span>
+                  ) : null}
+                  {lastDelivery.batchCount ? (
+                    <span className={styles.factMuted}>
+                      {` · batch of ${lastDelivery.batchCount}`}
+                    </span>
+                  ) : null}
+                </button>
+              </dd>
+            </div>
+          ) : null}
+          {silencedBy ? (
+            <div className={styles.fact}>
+              <dt>Silenced</dt>
+              <dd>
+                <span className={styles.factMuted}>by </span>
+                <Link
+                  to="/web/snoozes"
+                  search={{ search: nameQuery(silencedBy) }}
+                  className={styles.factLink}
+                >
+                  {silencedBy}
+                </Link>
+              </dd>
+            </div>
+          ) : null}
+          {row.source || row.process || sourceUrl ? (
+            <div className={styles.fact}>
+              <dt>Source</dt>
+              <dd>
+                {[row.source, row.process].filter(Boolean).join(" · ")}
+                {sourceUrl ? (
                   <>
-                    {" via "}
-                    <span className={styles.lastDeliveryAction}>{lastDelivery.via}</span>
+                    {row.source || row.process ? (
+                      <span className={styles.factMuted}> · </span>
+                    ) : null}
+                    <a
+                      href={sourceUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className={styles.factLink}
+                    >
+                      Open ↗
+                    </a>
                   </>
                 ) : null}
-              </>
-            )}
-            {lastDelivery.batchCount ? ` · batch of ${lastDelivery.batchCount}` : null}
-          </div>
-        ) : null}
+              </dd>
+            </div>
+          ) : null}
+          {labels.length > 0 ? (
+            <div className={styles.fact}>
+              <dt>Labels</dt>
+              <dd className={styles.labelsValue}>
+                <LabelList labels={labels} />
+              </dd>
+            </div>
+          ) : null}
+        </dl>
         {/* A pointer to the Analysis tab, so it steps aside while that tab is
             open: the pane leads with the same verdict and headline. */}
         {rootCause && headline !== "" && activeTab !== "analysis" ? (
@@ -331,7 +552,7 @@ export function AlertRowDetail({
           </TabPanel>
         ) : null}
         <TabPanel value="record">
-          <JsonViewer value={cleaned} />
+          <JsonViewer value={cleaned} searchable fill />
         </TabPanel>
       </Tabs>
 

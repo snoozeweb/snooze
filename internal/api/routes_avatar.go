@@ -21,6 +21,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -155,7 +156,11 @@ func (rt *Router) handleGetAvatar(w http.ResponseWriter, r *http.Request) {
 	if _, ok := rt.requireCaller(w, r); !ok {
 		return
 	}
-	name, method := chi.URLParam(r, "name"), chi.URLParam(r, "method")
+	name, method, ok := avatarIdentityParams(r)
+	if !ok {
+		WriteError(w, r, ErrValidation.WithMessage("malformed name or method"))
+		return
+	}
 	doc, err := rt.DB.GetOne(r.Context(), avatarCollection, db.Document{"name": name, "method": method})
 	if errors.Is(err, db.ErrNotFound) || (err == nil && doc == nil) {
 		WriteError(w, r, ErrNotFound.WithMessage("no profile picture"))
@@ -177,6 +182,23 @@ func (rt *Router) handleGetAvatar(w http.ResponseWriter, r *http.Request) {
 		Version: version,
 		Data:    "data:image/png;base64," + data,
 	})
+}
+
+// avatarIdentityParams reads {method} and {name} unescaped. chi routes on
+// r.URL.RawPath whenever the client's escaping differs from Go's default, and
+// then hands URLParam the still-escaped segment: an email login sent as
+// "alice%40example.com" (what encodeURIComponent produces) would otherwise be
+// looked up verbatim and never match.
+// Only then: with no RawPath the segment is already decoded, and unescaping it
+// again would mangle a login that contains a literal "%".
+func avatarIdentityParams(r *http.Request) (name, method string, ok bool) {
+	name, method = chi.URLParam(r, "name"), chi.URLParam(r, "method")
+	if r.URL.RawPath == "" {
+		return name, method, true
+	}
+	name, errName := url.PathUnescape(name)
+	method, errMethod := url.PathUnescape(method)
+	return name, method, errName == nil && errMethod == nil
 }
 
 // avatarUploadRequest is the PUT /api/v1/user/me/avatar body.

@@ -160,6 +160,31 @@ export function formatShelveUntil(shelveUntilEpoch: number | undefined): string 
   return `returns in ${humanDuration(remaining)}`;
 }
 
+/**
+ * stateDeadline is when the alert's current state ends on its own, for the
+ * state badge: an acknowledgement with an `ack_until` reopens ("reopens in
+ * 2h"), a timed shelve returns ("returns in 30m"). "" for a state with no
+ * deadline. Past the deadline — the housekeeper's sweep has not run yet — it
+ * says "shortly" rather than a negative time.
+ */
+export function stateDeadline(r: {
+  state?: string | undefined;
+  ack_until?: unknown;
+  shelve_until?: unknown;
+}): string {
+  const deadline = (v: unknown) => (typeof v === "number" && v > 0 ? v : 0);
+  const verb = r.state === "ack" ? "reopens" : r.state === "shelved" ? "returns" : "";
+  const until =
+    r.state === "ack"
+      ? deadline(r.ack_until)
+      : r.state === "shelved"
+        ? deadline(r.shelve_until)
+        : 0;
+  if (!verb || !until) return "";
+  const remaining = until - Math.floor(Date.now() / 1000);
+  return remaining > 0 ? `${verb} in ${humanDuration(remaining)}` : `${verb} shortly`;
+}
+
 const TREND_LABEL: Record<string, string> = {
   moreSevere: "Severity escalated",
   lessSevere: "Severity decreased",

@@ -3,6 +3,11 @@ import { describe, expect, it } from "vitest";
 import { TimeConstraintsCell } from "./TimeConstraintsCell";
 import { summarizeTimeConstraints } from "./timeConstraintsUtils";
 
+/** Matches a bounded date range, which renders its two halves on two lines. */
+function dateRange(text: string) {
+  return (_: string, el: Element | null) => el?.textContent === text && el.children.length === 2;
+}
+
 describe("TimeConstraintsCell", () => {
   it("renders 'Always' for undefined value", () => {
     render(<TimeConstraintsCell value={undefined} />);
@@ -34,7 +39,7 @@ describe("TimeConstraintsCell", () => {
     expect(screen.getByText("Dates")).toBeInTheDocument();
     expect(screen.getByText("Mon · Tue · Wed · Thu · Fri")).toBeInTheDocument();
     expect(screen.getByText("09:00 – 17:00")).toBeInTheDocument();
-    expect(screen.getByText("2026-01-01 08:00 → 2026-01-02 18:00")).toBeInTheDocument();
+    expect(screen.getByText(dateRange("2026-01-01 08:00 → 2026-01-02 18:00"))).toBeInTheDocument();
 
     // Inline layout: each label sits in the same block as its value(s),
     // and label appears before value in DOM order (label-left, value-right).
@@ -140,8 +145,8 @@ describe("TimeConstraintsCell", () => {
         }}
       />,
     );
-    expect(screen.getByText("2026-01-01 08:00 → 2026-01-02 18:00")).toBeInTheDocument();
-    expect(screen.getByText("2026-02-10 00:00 → 2026-02-11 23:59")).toBeInTheDocument();
+    expect(screen.getByText(dateRange("2026-01-01 08:00 → 2026-01-02 18:00"))).toBeInTheDocument();
+    expect(screen.getByText(dateRange("2026-02-10 00:00 → 2026-02-11 23:59"))).toBeInTheDocument();
   });
 
   it("renders half-open date ranges with from/until prefix", () => {
@@ -162,7 +167,7 @@ describe("TimeConstraintsCell", () => {
     render(
       <TimeConstraintsCell value={{ datetime: [{ from: "2026-07-02", until: "2026-07-05" }] }} />,
     );
-    expect(screen.getByText("2026-07-02 → 2026-07-05")).toBeInTheDocument();
+    expect(screen.getByText(dateRange("2026-07-02 → 2026-07-05"))).toBeInTheDocument();
   });
 
   it("shows the Zone block when a named tz accompanies a recurring family", () => {
@@ -189,5 +194,25 @@ describe("summarizeTimeConstraints (unchanged contract)", () => {
         time: [{ from: "09:00", until: "18:00" }],
       }),
     ).toBe("Mon,Tue,Wed,Thu,Fri · 09:00-18:00");
+  });
+});
+
+describe("TimeConstraintsCell date ranges", () => {
+  it("breaks a date range after its start, so a full datetime range fits a table column", () => {
+    // "2026-01-01 08:00 → 2026-01-02 18:00" on one line is ~290px of mono: the
+    // Window column is 210px and its single-line cells ellipsize, which cut
+    // the end date off. The end goes on its own line, left-aligned with the start; the range still reads as
+    // one sentence.
+    render(
+      <TimeConstraintsCell
+        value={{ datetime: [{ from: "2026-01-01T08:00", until: "2026-01-02T18:00" }] }}
+      />,
+    );
+    // The arrow trails the first line, so the two dates share a left edge.
+    const start = screen.getByText("2026-01-01 08:00 →");
+    const end = screen.getByText("2026-01-02 18:00");
+    expect(start).not.toBe(end);
+    expect(start.parentElement).toBe(end.parentElement);
+    expect(start.parentElement).toHaveTextContent("2026-01-01 08:00 → 2026-01-02 18:00");
   });
 });

@@ -41,6 +41,16 @@
 .countsFailed {
   color: var(--severity-critical);
 }
+/* The one-line statement of what the fold merges and what it never does. */
+.foldNote {
+  margin: calc(-1 * var(--space-2)) 0 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+/* Cadence, first and last send — context for the count, in the muted voice. */
+.countsSummary {
+  color: var(--text-muted);
+}
 
 /* Segmented control. Same chip recipe as the paging size chips below so the
    two groups read as one control family. */

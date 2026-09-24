@@ -1,5 +1,7 @@
 .wrap {
   position: relative;
+  display: flex;
+  flex-direction: column;
   background: var(--bg-canvas);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -24,6 +26,62 @@
   overflow-y: auto;
   line-height: 1.5;
 }
+/*
+ * Fill mode: take the height the parent hands down and scroll inside it, so
+ * the tree reaches the bottom of the panel rather than stopping at 480px.
+ */
+.wrap[data-fill] {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.wrap[data-fill] .pre {
+  flex: 1 1 0;
+  min-height: 0;
+  max-height: none;
+}
+
+/* Find bar: pinned above the scrolling tree, so it never scrolls away. */
+.searchBar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-2);
+  border-bottom: 1px solid var(--border-muted);
+  background: var(--bg-surface);
+}
+.searchField {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.searchCount {
+  flex-shrink: 0;
+  min-width: 9ch;
+  padding-inline: var(--space-1);
+  text-align: right;
+  font-size: var(--text-xs);
+  font-feature-settings: var(--font-features-numeric);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+/* With the copy button in the bar there is nothing floating over line one. */
+.pre[data-searchable] {
+  padding-top: var(--space-3);
+}
+
+/* Every match gets a quiet wash; the current one the accent fill, the same
+   pair a browser's find-in-page uses. Ink stays readable on both. */
+.match {
+  background: var(--accent-bg);
+  color: var(--text-strong);
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px var(--accent-bg);
+}
+.match[data-current] {
+  background: var(--accent-solid);
+  color: var(--accent-solid-fg);
+  box-shadow: 0 0 0 1px var(--accent-solid);
+}
+
 .key {
   color: var(--accent);
 }

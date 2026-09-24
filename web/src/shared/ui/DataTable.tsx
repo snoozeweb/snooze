@@ -1,4 +1,4 @@
-import { Fragment, memo, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { Button } from "./Button";
 import { Checkbox } from "./Checkbox";
@@ -168,16 +168,6 @@ export type DataTableProps<T> = {
   /** Fires with the row key when the drawer opens / retargets, null on close.
    *  Write channel for controlled mode; notification for uncontrolled. */
   onDetailsKeyChange?: (key: string | null) => void;
-  /** Inline expansion rendered as a full-width row directly beneath its row —
-   *  the "read the detail without leaving the list" affordance, distinct from
-   *  `renderDetails` (which opens the modal drawer). Toggled by a per-row
-   *  chevron in the quick-actions cluster and by `F` on the focused row.
-   *  Several rows can be open at once. */
-  renderRowExpansion?: (row: T) => ReactNode;
-  /** Noun for the expander's accessible name and shortcut legend, e.g.
-   *  "pipeline flow" → "Show pipeline flow" / "F · Show pipeline flow".
-   *  Defaults to "inline detail". */
-  rowExpansionLabel?: string;
   /** Per-row keyboard shortcuts for the focused row, keyed by lowercase
    *  single key (e.g. `{ a: ackFn, c: commentFn }`). Bindings are ignored
    *  while the user is typing into an editable field, and when any modifier
@@ -224,14 +214,10 @@ export function DataTable<T>({
   detailsTitle,
   detailsKey,
   onDetailsKeyChange,
-  renderRowExpansion,
-  rowExpansionLabel = "inline detail",
   rowKeyBindings,
   keyboardHints,
 }: DataTableProps<T>) {
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
-  // Keys of the rows whose inline expansion is open (see renderRowExpansion).
-  const [expandedKeys, setExpandedKeys] = useState<ReadonlySet<string>>(() => new Set<string>());
   // The "?" shortcut legend is controlled so the `?` key can open it from the
   // grid, not only a click on the toolbar affordance.
   const [legendOpen, setLegendOpen] = useState(false);
@@ -283,18 +269,6 @@ export function DataTable<T>({
     (key: string) => `${instanceId}row-${key.replace(/[^a-zA-Z0-9_-]+/g, "-")}`,
     [instanceId],
   );
-
-  // Inline expansion (renderRowExpansion): several rows may be open at once,
-  // so this toggles one key without touching the rest. Stable identity — the
-  // row memo depends on it.
-  const toggleExpansion = useCallback((key: string) => {
-    setExpandedKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }, []);
 
   // Details write channel. `null` closes the drawer; a key opens exactly that
   // row (replacing whatever was open). Routes through the controlled/
@@ -523,12 +497,6 @@ export function DataTable<T>({
           e.preventDefault();
           openDetailsAt(rk(row), focused);
         }
-      } else if (!hasModifier && key === "f" && renderRowExpansion) {
-        const row = rows[focused];
-        if (row) {
-          e.preventDefault();
-          toggleExpansion(rk(row));
-        }
       } else if (!hasModifier && (key === "x" || e.key === "Escape")) {
         // Back out, one level at a time: drop the selection first (the state
         // that has consequences), then the focus ring. Escape with neither
@@ -556,15 +524,7 @@ export function DataTable<T>({
         }
       }
     },
-    [
-      renderDetails,
-      renderRowExpansion,
-      selectable,
-      openDetailsAt,
-      toggleOne,
-      toggleExpansion,
-      hintCount,
-    ],
+    [renderDetails, selectable, openDetailsAt, toggleOne, hintCount],
   );
 
   useEffect(() => {
@@ -595,18 +555,6 @@ export function DataTable<T>({
     }
   }, [loading, activeDetailsKey, allKeys, setDetailsKey]);
 
-  // Drop expansion keys for rows that are no longer in the data (page change,
-  // filter, a refetch that removed the row) so the set doesn't accumulate keys
-  // forever across a long triage session.
-  useEffect(() => {
-    if (loading) return;
-    setExpandedKeys((prev) => {
-      if (prev.size === 0) return prev;
-      const next = new Set([...prev].filter((k) => allKeys.includes(k)));
-      return next.size === prev.size ? prev : next;
-    });
-  }, [loading, allKeys]);
-
   const isEmpty = !loading && data.length === 0;
   const selectedRows = useMemo(
     () => data.filter((r) => selSet.has(rowKey(r))),
@@ -625,8 +573,7 @@ export function DataTable<T>({
   // per-row visual cue that the detail drawer exists. Kept in one place so
   // header / body / totalCols agree.
   const hasKebab = rowActions !== undefined || renderDetails !== undefined;
-  const hasQuickCol =
-    quickActions !== undefined || renderDetails !== undefined || renderRowExpansion !== undefined;
+  const hasQuickCol = quickActions !== undefined || renderDetails !== undefined;
 
   // Card-layout opt-in: a single column declaring `cardRole` switches the whole
   // table to the prioritised card (see ColumnDef.cardRole). Flagged on the <tr>
@@ -638,37 +585,6 @@ export function DataTable<T>({
   // the header stay in sync.
   const totalCols =
     columns.length + (selectable ? 1 : 0) + (hasQuickCol ? 1 : 0) + (hasKebab ? 1 : 0);
-
-  // …and the number actually PAINTED right now, which is smaller whenever a
-  // `hideBelow` column has been display:none'd by the container query. A
-  // table's column count is the maximum across its rows, so a full-width
-  // expansion cell spanning `totalCols` against fewer rendered columns invents
-  // a phantom one — and `table-layout: fixed` hands that phantom an equal
-  // share of the free space, visibly shrinking Message the instant a row is
-  // expanded. Counting painted header cells is ground truth: it needs no copy
-  // of the CSS breakpoints and cannot drift from them.
-  const [paintedCols, setPaintedCols] = useState(totalCols);
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const headRowRef = useRef<HTMLTableRowElement>(null);
-  useEffect(() => {
-    if (!renderRowExpansion) return;
-    if (typeof ResizeObserver === "undefined") return;
-    const wrap = wrapRef.current;
-    if (!wrap) return;
-    const recount = () => {
-      const head = headRowRef.current;
-      if (!head) return;
-      const painted = Array.from(head.children).filter(
-        (c) => c.getBoundingClientRect().width > 0,
-      ).length;
-      // 0 means nothing is laid out yet (or jsdom): keep the declared count.
-      setPaintedCols(painted > 0 ? painted : totalCols);
-    };
-    recount();
-    const ro = new ResizeObserver(recount);
-    ro.observe(wrap);
-    return () => ro.disconnect();
-  }, [renderRowExpansion, totalCols, columns]);
 
   // Keyboard-shortcut legend: only built (and only shown) when the page opts in
   // via `keyboardHints`. We prepend the table's own built-in bindings — derived
@@ -685,7 +601,6 @@ export function DataTable<T>({
     if (onRowOpen || renderDetails)
       builtin.push({ keys: "Enter · Click", label: "Open the focused row" });
     if (renderDetails) builtin.push({ keys: "E", label: "View details" });
-    if (renderRowExpansion) builtin.push({ keys: "F", label: `Show ${rowExpansionLabel} inline` });
     if (selectable) builtin.push({ keys: "Space", label: "Select / deselect row" });
     return [
       ...builtin,
@@ -693,7 +608,7 @@ export function DataTable<T>({
       ...(selectable ? [{ keys: "Esc · X", label: "Clear selection, then focus" }] : []),
       { keys: "?", label: "Show this list" },
     ];
-  }, [keyboardHints, onRowOpen, renderDetails, renderRowExpansion, rowExpansionLabel, selectable]);
+  }, [keyboardHints, onRowOpen, renderDetails, selectable]);
 
   // Resolve the open row for the detail drawer. When the key maps to a visible
   // row we render the modal drawer after the table.
@@ -742,7 +657,7 @@ export function DataTable<T>({
       : null;
 
   return (
-    <div ref={wrapRef} className={styles.wrap}>
+    <div className={styles.wrap}>
       {search || showToolbar ? (
         <div className={styles.toolbarRow}>
           {search ? (
@@ -827,7 +742,7 @@ export function DataTable<T>({
           {...(stale ? { "data-stale": "true", "aria-busy": "true" } : {})}
         >
           <thead>
-            <tr ref={headRowRef} className={styles.headerRow}>
+            <tr className={styles.headerRow}>
               {selectable ? (
                 <th className={styles.checkboxCell} scope="col">
                   <Checkbox
@@ -909,45 +824,32 @@ export function DataTable<T>({
             ) : (
               data.map((row, idx) => {
                 const key = rowKey(row);
-                const expanded = expandedKeys.has(key);
                 return (
-                  <Fragment key={key}>
-                    <DataTableRow<T>
-                      row={row}
-                      rowKeyValue={key}
-                      domId={rowDomId(key)}
-                      index={idx}
-                      columns={columns}
-                      cardRoles={hasCardRoles}
-                      selectable={selectable}
-                      isSelected={selSet.has(key)}
-                      isFocused={idx === focusedIndex}
-                      isDisabled={rowDisabled?.(row) ?? false}
-                      accent={rowAccent?.(row)}
-                      hasContextMenu={contextMenuItems !== undefined || renderDetails !== undefined}
-                      quickActions={quickActions}
-                      rowActions={rowActions}
-                      rowActionsBadge={rowActionsBadge}
-                      hasDetails={renderDetails !== undefined}
-                      clickOpens={onRowOpen !== undefined || renderDetails !== undefined}
-                      hasExpansion={renderRowExpansion !== undefined}
-                      expansionLabel={rowExpansionLabel}
-                      isExpanded={expanded}
-                      onToggleExpansion={toggleExpansion}
-                      onRowClick={handleRowClick}
-                      onRowContextMenu={handleRowContextMenu}
-                      onOpenDetails={openDetailsAt}
-                      onCheckboxCellClick={handleCheckboxClick}
-                      onCheckboxToggle={handleCheckboxToggle}
-                    />
-                    {renderRowExpansion && expanded ? (
-                      <tr className={styles.expansionRow}>
-                        <td colSpan={paintedCols} id={`${rowDomId(key)}-expansion`}>
-                          <div className={styles.expansionInner}>{renderRowExpansion(row)}</div>
-                        </td>
-                      </tr>
-                    ) : null}
-                  </Fragment>
+                  <DataTableRow<T>
+                    key={key}
+                    row={row}
+                    rowKeyValue={key}
+                    domId={rowDomId(key)}
+                    index={idx}
+                    columns={columns}
+                    cardRoles={hasCardRoles}
+                    selectable={selectable}
+                    isSelected={selSet.has(key)}
+                    isFocused={idx === focusedIndex}
+                    isDisabled={rowDisabled?.(row) ?? false}
+                    accent={rowAccent?.(row)}
+                    hasContextMenu={contextMenuItems !== undefined || renderDetails !== undefined}
+                    quickActions={quickActions}
+                    rowActions={rowActions}
+                    rowActionsBadge={rowActionsBadge}
+                    hasDetails={renderDetails !== undefined}
+                    clickOpens={onRowOpen !== undefined || renderDetails !== undefined}
+                    onRowClick={handleRowClick}
+                    onRowContextMenu={handleRowContextMenu}
+                    onOpenDetails={openDetailsAt}
+                    onCheckboxCellClick={handleCheckboxClick}
+                    onCheckboxToggle={handleCheckboxToggle}
+                  />
                 );
               })
             )}
@@ -1024,11 +926,6 @@ type DataTableRowProps<T> = {
    *  details drawer) — drives the pointer cursor so the row looks like what it
    *  is. Tables with neither keep the default cursor. */
   clickOpens: boolean;
-  /** Whether the table has an inline expansion — gates the chevron toggle. */
-  hasExpansion: boolean;
-  expansionLabel: string;
-  isExpanded: boolean;
-  onToggleExpansion: (key: string) => void;
   onRowClick: (index: number) => void;
   onRowContextMenu: (index: number, x: number, y: number) => void;
   onOpenDetails: (key: string, index: number) => void;
@@ -1038,7 +935,7 @@ type DataTableRowProps<T> = {
 
 // Controls that own their own click. A click that lands on (or inside) one of
 // these is that control's click, not the row's — pressing a link, a quick
-// action, the expansion chevron or a checkbox must never also open the row.
+// action or a checkbox must never also open the row.
 // The cells that host them already stopPropagation; this covers controls
 // rendered inside an ordinary data cell by a page's own `cell` renderer.
 const INTERACTIVE_IN_ROW =
@@ -1071,10 +968,6 @@ function DataTableRowInner<T>({
   rowActionsBadge,
   hasDetails,
   clickOpens,
-  hasExpansion,
-  expansionLabel,
-  isExpanded,
-  onToggleExpansion,
   onRowClick,
   onRowContextMenu,
   onOpenDetails,
@@ -1106,7 +999,6 @@ function DataTableRowInner<T>({
       {...(clickOpens ? { "data-clickable": "true" } : {})}
       {...(isFocused ? { "data-focused": "true" } : {})}
       {...(isSelected ? { "data-selected": "true" } : {})}
-      {...(isExpanded ? { "data-expanded": "true" } : {})}
       {...(isDisabled ? { "data-disabled": "true" } : {})}
       {...(accent
         ? {
@@ -1159,22 +1051,9 @@ function DataTableRowInner<T>({
           <CellTooltip>{col.cell(row)}</CellTooltip>
         </td>
       ))}
-      {quickActions || hasDetails || hasExpansion ? (
+      {quickActions || hasDetails ? (
         <td className={styles.quickActionsCell} onClick={(e) => e.stopPropagation()}>
           <div className={styles.quickActions}>
-            {/* Inline expander, when the table has one. Leads the cluster and
-                stays visible once open (see .quickActions CSS) so an expanded
-                row always shows the control that collapses it. */}
-            {hasExpansion ? (
-              <IconButton
-                icon={isExpanded ? "chevron-up" : "chevron-down"}
-                label={`${isExpanded ? "Hide" : "Show"} ${expansionLabel}`}
-                size="sm"
-                aria-expanded={isExpanded}
-                {...(isExpanded ? { "aria-controls": `${domId}-expansion` } : {})}
-                onClick={() => onToggleExpansion(key)}
-              />
-            ) : null}
             {/* Built-in hover-revealed "View details" — the per-row visual cue
                 that the detail drawer exists, leading the cluster so it sits in
                 the same spot on every table. */}

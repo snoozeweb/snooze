@@ -16,6 +16,7 @@ import type { AxeResults } from "axe-core";
 import { describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/shared/ui/Tooltip";
 import { mswServer } from "@/tests/msw/server";
+import { runsHandler } from "@/tests/msw/deliveryRuns";
 import type { Condition } from "@/lib/condition/types";
 import { DELIVERY_REFETCH_MS } from "./api";
 import { DeliveryTimeline, type DeliveryTimelineProps } from "./DeliveryTimeline";
@@ -49,6 +50,7 @@ function scopeOf(cond: Condition | undefined): string {
 function stubScoped(byScope: Record<string, DeliveryEntry[]>, listDelayMs = 0) {
   const requests: { limit: number; offset: number; cond: Condition | undefined }[] = [];
   mswServer.use(
+    runsHandler((uid) => byScope[uid] ?? []),
     http.get("/api/v1/notificationlog", async ({ request }) => {
       const url = new URL(request.url);
       const cond = decodeQ(url.searchParams.get("q"));
@@ -80,6 +82,7 @@ function stubScoped(byScope: Record<string, DeliveryEntry[]>, listDelayMs = 0) {
 function stubLog(rows: DeliveryEntry[], total = rows.length) {
   const seen: (Condition | undefined)[] = [];
   mswServer.use(
+    runsHandler(() => rows),
     http.get("/api/v1/notificationlog", ({ request }) => {
       const url = new URL(request.url);
       const cond = decodeQ(url.searchParams.get("q"));
@@ -690,5 +693,140 @@ describe("DeliveryTimeline", () => {
       console.error(JSON.stringify(result.violations, null, 2));
     }
     expect(result.violations).toHaveLength(0);
+  });
+
+  it("names a ticket key the notifier reported without a link", async () => {
+    stubLog([
+      { ...FANOUT[0]!, action: "jira-ops", notifier: "jira", ref: { issue_key: "CG-1898" } },
+      { ...FANOUT[0]!, uid: "f9", action: "teams" },
+    ]);
+    renderTimeline();
+    expect(await screen.findByText("CG-1898")).toBeInTheDocument();
+    expect(screen.getByText(/jira-ops:/)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /CG-1898/ })).toBeNull();
+  });
+
+  describe("runs (alert inspector)", () => {
+    const TEAMS: DeliveryEntry = {
+      ...SENT,
+      uid: "t1",
+      action: "Teams Kube Prod",
+      notifier: "teams",
+      queued_epoch: 1757340000,
+      notification_uids: ["n1"],
+      notification_names: ["Kube Prod"],
+    };
+    const JIRA: DeliveryEntry = {
+      ...TEAMS,
+      uid: "j1",
+      action: "Jira Escalation",
+      notifier: "jira",
+    };
+
+    function stubRun() {
+      const listed: (Condition | undefined)[] = [];
+      mswServer.use(
+        http.get("/api/v1/notificationlog/runs", () =>
+          HttpResponse.json({
+            data: [
+              {
+                key: "k1",
+                dispatches: 1420,
+                sends: 2840,
+                first_epoch: 1756000000,
+                last_epoch: 1757340000,
+                interval_s: 960,
+                latest: [TEAMS, JIRA],
+                truncated: false,
+              },
+            ],
+            meta: {
+              total: 1,
+              sends: 2840,
+              dispatches: 1420,
+              first_epoch: 1756000000,
+              last_epoch: 1757340000,
+              interval_s: 960,
+              truncated: false,
+            },
+          }),
+        ),
+        http.get("/api/v1/notificationlog", ({ request }) => {
+          const url = new URL(request.url);
+          const cond = decodeQ(url.searchParams.get("q"));
+          const limit = Number(url.searchParams.get("limit") ?? "10");
+          if (limit > 1) listed.push(cond);
+          const rows =
+            limit === 1
+              ? []
+              : [
+                  TEAMS,
+                  JIRA,
+                  { ...TEAMS, uid: "t0", queued_epoch: 1757339040, date_epoch: 1757339040 },
+                ];
+          const errorOnly = clauses(cond).some((c) => c.field === "status");
+          return HttpResponse.json({
+            data: rows,
+            meta: { count: rows.length, limit, offset: 0, total: errorOnly ? 0 : 2840 },
+          });
+        }),
+      );
+      return listed;
+    }
+
+    it("folds a repeat into one row with its count, cadence and start", async () => {
+      stubRun();
+      renderTimeline({ variant: "alert", filter: { kind: "alert", uid: "a1" } });
+      const row = await screen.findByRole("listitem", { name: /repeated 1420 times/ });
+      expect(within(row).getByText("×1,420")).toBeInTheDocument();
+      expect(within(row).getByText(/every ~16 min · since/)).toBeInTheDocument();
+      expect(within(row).getByText("Teams Kube Prod")).toBeInTheDocument();
+      expect(within(row).getByText("Jira Escalation")).toBeInTheDocument();
+      // The header counts sends and says how the alert has been notifying.
+      expect(screen.getByText("2840 deliveries")).toBeInTheDocument();
+      expect(screen.getByText(/· every ~16 min · since .* · last/)).toBeInTheDocument();
+      // The rule is stated, so the operator knows what a ×N hides — and doesn't.
+      expect(
+        screen.getByText(/A failed send or a new ticket always gets its own row/),
+      ).toBeInTheDocument();
+    });
+
+    it("lists a run's members on demand, scoped to its notification and window", async () => {
+      const listed = stubRun();
+      renderTimeline({ variant: "alert", filter: { kind: "alert", uid: "a1" } });
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole("button", { name: "Show all 1,420" }));
+      const members = await screen.findByRole("list", { name: "Every delivery in this run" });
+      await waitFor(() => expect(within(members).getAllByRole("listitem")).toHaveLength(2));
+      const cond = listed[listed.length - 1];
+      expect(clauses(cond)).toEqual(
+        expect.arrayContaining([
+          { type: "CONTAINS", field: "alert_uids", value: "a1" },
+          { type: "GE", field: "date_epoch", value: 1756000000 },
+          { type: "LE", field: "date_epoch", value: 1757340000 },
+          { type: "CONTAINS", field: "notification_uids", value: "n1" },
+        ]),
+      );
+      expect(screen.getByRole("button", { name: "Show older" })).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "Hide" }));
+      expect(screen.queryByRole("list", { name: "Every delivery in this run" })).toBeNull();
+    });
+
+    it("lists raw rows, not runs, under the Failed chip", async () => {
+      const listed = stubRun();
+      renderTimeline({ variant: "alert", filter: { kind: "alert", uid: "a1" } });
+      await screen.findByText("×1,420");
+      await userEvent.click(screen.getByRole("button", { name: "Failed" }));
+      await waitFor(() =>
+        expect(clauses(listed[listed.length - 1])).toContainEqual({
+          type: "EQUALS",
+          field: "status",
+          value: "error",
+        }),
+      );
+      expect(screen.queryByText("×1,420")).toBeNull();
+      // The summary is about the alert, not the chip: it stays.
+      expect(screen.getByText("2840 deliveries")).toBeInTheDocument();
+    });
   });
 });

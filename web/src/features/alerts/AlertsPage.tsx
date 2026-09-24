@@ -39,7 +39,6 @@ import {
 import { usePeople, findPerson, personLabel } from "@/shared/people/api";
 import type { AlertPane } from "@/app/alertsSearch";
 import { AlertRowDetail, DiscardAnalysisDraftDialog, type AlertDetailTab } from "./AlertRowDetail";
-import { AlertFlowChart } from "./AlertFlowChart";
 import { ActiveFilters } from "./ActiveFilters";
 import { AlertsFilters, type AlertFilters } from "./Filters";
 import { SavedSearches } from "./SavedSearches";
@@ -1155,7 +1154,7 @@ export function AlertsPage() {
   // quick-actions still ack/close inline with an Undo toast — a click lands on
   // a row the operator is pointing at, whereas a keystroke lands on whichever
   // row the focus ring happens to be on, so the keyboard path keeps its
-  // confirm. `e` (details), `f` (flow) and Space (select) are DataTable's own.
+  // confirm. `e` (details) and Space (select) are DataTable's own.
   // Bindings only fire when a row is focused and the user isn't typing.
   const rowKeyBindings = useCallback(
     (row: Record_): Record<string, () => void> => {
@@ -1896,12 +1895,6 @@ export function AlertsPage() {
     ),
     [pane, handlePaneChange, setDetailEditing],
   );
-  // The Flow trace — the one view that answers "why did this fire, and what
-  // did it wake up?" — was three interactions deep behind the drawer's Flow
-  // tab. Here it is the same component, hung inline under its row, so reading
-  // the pipeline path costs one keystroke and never loses the list. The drawer
-  // tab stays: it is where Flow sits next to the timeline and the raw record.
-  const renderRowExpansion = useCallback((row: Record_) => <AlertFlowChart row={row} />, []);
   // Drawer title: the alert's host in mono (falls back to uid). Host is not
   // repeated in the drawer body, so this is where the operator reads it.
   const detailsTitle = useCallback(
@@ -2231,10 +2224,6 @@ export function AlertsPage() {
           // and Enter all route through here.
           detailsKey={record ?? null}
           onDetailsKeyChange={handleDetailsKeyChange}
-          // Inline Flow expander — the chevron on each row, and `F` on the
-          // focused one.
-          renderRowExpansion={renderRowExpansion}
-          rowExpansionLabel="pipeline flow"
         />
       </div>
       <DiscardAnalysisDraftDialog

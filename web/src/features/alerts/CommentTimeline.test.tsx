@@ -8,6 +8,7 @@ import { mswServer } from "@/tests/msw/server";
 import { authStore } from "@/lib/auth/store";
 import { toastStore } from "@/shared/ui/toast/useToast";
 import { CommentTimeline } from "./CommentTimeline";
+import { TooltipProvider } from "@/shared/ui/Tooltip";
 
 function wrap() {
   const client = new QueryClient({
@@ -480,5 +481,98 @@ describe("CommentTimeline — ownership entries and faces", () => {
     await screen.findByText(/System \(auto\)/);
     expect(container.querySelector('[data-variant="bot"]')).not.toBeNull();
     expect(container.querySelector('[data-variant="normal"]')).toBeNull();
+  });
+});
+
+describe("CommentTimeline — folded runs", () => {
+  const ESC = {
+    uid: "c-new",
+    record_uid: "r1",
+    type: "comment" as const,
+    message: "New escalation",
+    date_epoch: 1757340000,
+    auto: true,
+  };
+
+  function stubRuns() {
+    const between: string[] = [];
+    mswServer.use(
+      http.get("/api/v1/comment/runs", () =>
+        HttpResponse.json({
+          data: [
+            {
+              key: "c-old",
+              count: 2100,
+              first_epoch: 1756000000,
+              last_epoch: 1757340000,
+              interval_s: 960,
+              latest: ESC,
+              truncated: false,
+            },
+            {
+              key: "c-human",
+              count: 1,
+              first_epoch: 1755999000,
+              last_epoch: 1755999000,
+              interval_s: 0,
+              latest: {
+                uid: "c-human",
+                record_uid: "r1",
+                type: "assign",
+                message: "Mine",
+                user: "alice",
+                assignee: "alice",
+                date_epoch: 1755999000,
+              },
+              truncated: false,
+            },
+          ],
+          meta: { total: 2, comments: 2101, truncated: false },
+        }),
+      ),
+      http.get("/api/v1/comment", ({ request }) => {
+        between.push(new URL(request.url).searchParams.get("q") ?? "");
+        const rows = [ESC, { ...ESC, uid: "c-2", date_epoch: 1757339040 }];
+        return HttpResponse.json({
+          data: rows,
+          meta: { count: 2, limit: 50, offset: 0, total: 2100 },
+        });
+      }),
+    );
+    return between;
+  }
+
+  it("shows a run of automatic repeats as one entry, and people's entries as themselves", async () => {
+    stubRuns();
+    const Wrapper = wrap();
+    render(
+      <Wrapper>
+        <TooltipProvider delay={0}>
+          <CommentTimeline recordUid="r1" />
+        </TooltipProvider>
+      </Wrapper>,
+    );
+    expect(await screen.findByText("×2,100")).toBeInTheDocument();
+    expect(screen.getByText(/every ~16 min · since/)).toBeInTheDocument();
+    expect(screen.getAllByText("New escalation")).toHaveLength(1);
+    expect(screen.getByText("Mine")).toBeInTheDocument();
+  });
+
+  it("lists every occurrence's time on demand", async () => {
+    const between = stubRuns();
+    const user = userEvent.setup();
+    const Wrapper = wrap();
+    render(
+      <Wrapper>
+        <TooltipProvider delay={0}>
+          <CommentTimeline recordUid="r1" />
+        </TooltipProvider>
+      </Wrapper>,
+    );
+    await user.click(await screen.findByRole("button", { name: "Show all 2,100" }));
+    const list = await screen.findByRole("list", { name: "Every occurrence in this run" });
+    await waitFor(() => expect(within(list).getAllByRole("listitem")).toHaveLength(2));
+    expect(between.length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Show older" })).toBeInTheDocument();
   });
 });

@@ -320,3 +320,21 @@ func TestAvatar_MeRouteWinsOverUserCRUD(t *testing.T) {
 	rec = peopleReq(t, r, http.MethodDelete, "/api/v1/user/me/avatar", nil, snoozetypes.DefaultTenant, "alice", "local")
 	require.Equal(t, http.StatusNoContent, rec.Code, rec.Body.String())
 }
+
+// TestAvatar_EscapedLogin covers an email login (the OIDC shape): the SPA
+// encodes it with encodeURIComponent, and chi matches — and hands URLParam —
+// the still-escaped raw path whenever the escaping differs from Go's default,
+// which "%40" for "@" does.
+func TestAvatar_EscapedLogin(t *testing.T) {
+	t.Parallel()
+	r, _ := peopleHarness(t)
+	def := snoozetypes.DefaultTenant
+	rec := peopleReq(t, r, http.MethodPut, "/api/v1/user/me/avatar", avatarBody(t, 16, 16), def, "alice@example.com", "oidc")
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+	for _, name := range []string{"alice@example.com", "alice%40example.com"} {
+		code, got := getAvatar(t, r, def, "oidc", name)
+		require.Equal(t, http.StatusOK, code, name)
+		require.Equal(t, "alice@example.com", got["name"], name)
+	}
+}

@@ -179,6 +179,55 @@
 
 ### Changed
 
+- **Repeats are folded on an alert's Deliveries and Timeline tabs.** An alert
+  that re-notified every quarter of an hour for weeks used to fill 143 pages
+  of identical deliveries and 400 pages of "New escalation" entries. Now
+  consecutive, successful dispatches of one notification to the same actions
+  are one row (`×1,420 · every ~16 min · since Sep 17th 10:46`), and a run of
+  identical automatic timeline entries is one entry. **Show all** lists the
+  members. Failures, a dispatch that opened a new ticket (its link stays on
+  its own row) and anything a person wrote are never folded, and they split
+  the run around them. A ticket key a notifier reports without a link (Jira
+  quoting an existing issue) is now shown too. The Deliveries header now also says how often
+  the alert has been notifying, since when, and when it last sent. New
+  endpoints: `GET /api/v1/notificationlog/runs?alert_uid=` and
+  `GET /api/v1/comment/runs?record_uid=`.
+
+- **Flow chart redrawn, and honest about where a run stopped.** The alert
+  details' Flow tab is now a line of stages with a marker per stage.
+  Using the record's `plugins` trail, it marks the stage where the last
+  occurrence stopped: the snooze that silenced it, or the aggregate that held a
+  throttled repeat. It then greys out everything after, on a dashed line.
+  Before, a throttled repeat was drawn as fully notified, showing an earlier
+  run's notifications. Those are now listed under **Last notified via** as
+  history. The notification stage turns green when it sent and red when an
+  action failed.
+
+- **The alerts table no longer expands a row into its Flow chart.** The
+  per-row chevron and the `F` shortcut are gone. The Flow chart is still in the
+  alert details' **Flow** tab, one click away, and the details header already
+  answers the questions it was opened for: **Silenced** and **Notified**.
+
+- **Alert details header reorganised.** The message now leads (clamped to
+  three lines, with Show more when it is longer), then severity and state, then one
+  aligned list of facts: **Seen** (last seen, first seen and the hit count),
+  **Owner**, **Notified** (in red when the last send failed; click it to open
+  the Deliveries tab), **Silenced** (the snooze that stopped it, linked),
+  **Source** (source, process, and a link back to the originating system from
+  `generatorURL`) and **Labels** (`key=value`, where-it-lives keys first). The
+  state badge says when the state ends on its own ("Acknowledged · reopens in
+  1h 59m", "Shelved · returns in 30m"). The unlabelled timestamp line and the
+  separate source chip are gone.
+- **`first_seen` on alert records.** The aggregate rule now stamps
+  `first_seen` (epoch seconds) when an alert is first seen and never changes
+  it; an alert payload cannot set or move it. Records created before the
+  upgrade have none.
+
+- **Record tab: full height and find.** The inspector's raw record now fills
+  the drawer down to its bottom edge, and a find box above it highlights every
+  match in keys and values; Enter / Shift+Enter (or the arrows) step through
+  them and a counter says where you are.
+
 - **Alert tabs reordered; the Re-escalated tab is gone.** The tabs are now
   Alerts, Acknowledged, Snoozed, Closed, Shelved, All. Re-escalated and
   re-opened alerts were already listed under Alerts (or Snoozed), so the
@@ -272,6 +321,24 @@
   than the number of notifications prevented.
 
 ### Fixed
+
+- **Profile pictures of email logins never showed.** Users whose login is an
+  email address (every OIDC/Entra user) uploaded a picture and still saw their
+  initials: the browser escapes `@` as `%40` in
+  `GET /api/v1/avatar/{method}/{name}` and the server looked the escaped name
+  up verbatim. The route now unescapes both path segments.
+
+- **Initials sat off centre in their disc** — high at 24px, low on the Profile
+  page's large avatar. They are now drawn as SVG text centred on the capitals,
+  the same at every size and pixel density.
+
+- **Snooze and notification tables cut off date windows.** A full datetime
+  range (`2026-07-02 09:00 → 2026-07-09 17:00`) was wider than the Window
+  column and lost its end date; it now breaks onto two lines (`start →`, then
+  the end), the two dates left-aligned. A long weekday list wraps instead of being cut mid-word.
+
+- **The owner and environment filters sat below the alert tabs' labels.** They
+  are now centred on the tab text.
 
 - **Back skipped URL changes.** Switching the dashboard view from the
   Overview and re-sorting the Analyses view replaced the history entry, so

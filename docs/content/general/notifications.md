@@ -111,11 +111,22 @@ Each processed alert records the path it took through the pipeline:
     `persist_action_outcomes` flag in [Notification configuration](../configuration/notifications.md#persist_action_outcomes)).
 
 Open an alert's detail drawer in the **Alerts** view (click the row, or pick
-**View details** from the row-actions menu) and open the **Flow** tab to see this as
-a flowchart: input → rules → aggregate, then a branch for each matched
-notification, each showing the actions it fired (boxes are green on success, red
-on error — click a red box for the message). When a snooze rule silenced the
-alert, the chart ends at the **Snooze** box (no notifications or actions).
+**View details** from the row-actions menu) and open the **Flow** tab. It draws the path the
+alert's **last occurrence** took as a line of stages: input → rules →
+aggregate → snooze → notifications. Each matched notification shows the actions
+it fired, with their outcome in colour; hover a failed action for the error.
+
+The chart shows where the run stopped, using the record's `plugins` trail:
+
+- **Silenced**: the **Snooze** stage is marked as the stop and names the snooze
+  that matched.
+- **Held as a repeat**: the **Aggregate** stage is marked as the stop. The
+  occurrence came in inside the aggregate's throttle window, or repeated an
+  already-closed alert, so it was counted but not notified.
+
+Stages after the stop are greyed out on a dashed line. When an earlier run did
+notify, what it sent is still listed under **Last notified via**, so you can see
+who has already been told.
 
 ## Delivery history
 
@@ -166,8 +177,9 @@ time — the `hash` is always present and is what the UI falls back to.
 - The notifications table has **Sent** (a count) and **Last sent** columns,
   stamped only by a *successful* delivery.
 - An alert's detail drawer (**Alerts** → click a row) has a **Deliveries** tab
-  and, in the summary header, a **"Last notified … via …"** line (or "Last
-  delivery failed …" when the most recent send for that alert errored).
+  and, in the summary header, a **Notified** entry — "8m ago via mail-oncall",
+  or in red "Failed 8m ago via …" when the most recent send for that alert
+  errored.
 - The dashboard's **Notifications** panel ranks notifications by send count
   for the current window and links each one into its Deliveries tab,
   pre-filtered to that same time window (shown as a dismissable **Window**
@@ -189,6 +201,34 @@ of delivery retention), an old delivery row keeps its alert snapshot forever,
 but its "View all" link can land on an empty alerts list once the alerts
 themselves have been cleaned up.
 
+### Repeats are folded on an alert
+
+An alert that stays open and re-notifies — every quarter of an hour for two
+weeks, say — leaves thousands of identical rows behind. On an alert's
+Deliveries tab they are folded: consecutive, all-successful dispatches of one
+notification to the same actions become **one row**, showing the newest
+dispatch plus `×1,420 · every ~16 min · since Sep 17th 10:46`. **Show all**
+lists every dispatch of that run, oldest ones on demand. A dispatch with a
+failed send is never folded, and it splits the run around it, so a failure
+always stands out. Neither is a dispatch that produced a **new ticket
+reference** — the Jira send that opened `AD-775`, or the first one quoting an
+issue key — so the link to the ticket is always on its own row; later sends
+repeating the same reference fold as usual. (A chat thread id is not a ticket
+reference and never splits a run.) Each notification is folded on its own, so two
+notifications routing the same alert do not break each other's runs.
+
+The line above the chips sums up the alert's whole history: the delivery
+count, the failures, how often it has been notifying, when it started and
+when it last sent. **Failed** and **Batched** list raw rows, not runs.
+
+The alert's **Timeline** tab folds the same way: a run of identical automatic
+entries (the "New escalation" written on each re-notification) is one entry
+with its count, cadence and start, and **Show all** lists their times.
+Anything a person wrote is never folded, and it splits the run around it.
+
+Folding reads at most 10,000 of the alert's rows, newest first. Past that the
+oldest run reads "since at least …".
+
 ### REST
 
 `GET /api/v1/notificationlog` supports the same list/search/`q=` surface as
@@ -198,6 +238,14 @@ purposes. Requires `ro_notificationlog`: the built-in admin role has it, and
 the seeded **notifications** role includes it too (an idempotent boot-time
 backfill grants it to any pre-existing `notifications` role that predates
 the delivery log). Custom roles need `ro_notificationlog` added explicitly.
+
+`GET /api/v1/notificationlog/runs?alert_uid=<uid>&limit&offset` returns one
+alert's log folded into runs (see above), newest first, with a `meta` block
+summing up the whole log: `sends`, `dispatches`, `first_epoch`, `last_epoch`,
+`interval_s` (the median gap between dispatches) and `truncated`. Each run
+carries its `dispatches`, `sends`, `first_epoch`, `last_epoch`, `interval_s` and
+the rows of its newest dispatch (`latest`). `GET /api/v1/comment/runs?record_uid=<uid>`
+does the same for the alert's timeline. Both are gated like the list they fold.
 
 Rows are written exclusively by the notification dispatcher — `POST`, `PUT`
 and `PATCH` on `/api/v1/notificationlog` are refused with `403` regardless of

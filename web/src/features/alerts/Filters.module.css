@@ -13,10 +13,14 @@
  * environment pills hug the right edge while the tabs anchor left.
  * The bottom border is on the row so it spans the full width even when
  * the environment list is empty.
+ *
+ * The slots stretch to the row's height and centre their pills in it, less
+ * the tabs' 2px underline, so the pill text lines up with the tab labels —
+ * bottom-aligning them instead sat every pill ~3px below the labels.
  */
 .tabRow {
   display: flex;
-  align-items: flex-end;
+  align-items: stretch;
   gap: var(--space-3);
   border-bottom: 1px solid var(--border);
 }
@@ -31,7 +35,7 @@
   margin-left: auto;
   display: flex;
   align-items: center;
-  padding-bottom: var(--space-1);
+  padding-bottom: 2px;
   padding-left: var(--space-3);
   border-left: 1px solid var(--border-muted);
 }
@@ -47,7 +51,7 @@
   align-items: center;
   flex: 0 1 auto;
   min-width: 0;
-  padding-bottom: var(--space-1);
+  padding-bottom: 2px;
   padding-left: var(--space-3);
   border-left: 1px solid var(--border-muted);
 }

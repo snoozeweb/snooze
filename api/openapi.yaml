@@ -1405,6 +1405,59 @@ paths:
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
 
+  /api/v1/notificationlog/runs:
+    get:
+      tags: [crud]
+      summary: One alert's delivery log, repeats folded into runs
+      description: |
+        Folds the delivery log of one alert into *runs*: consecutive dispatches
+        of the same notification, to the same actions, for the same alert set,
+        that all succeeded. A dispatch with a failed send is always a run of
+        its own. Runs are newest first and paged; `meta` sums up the whole log
+        of the alert. At most 10,000 rows are read, newest first; past that the
+        oldest run and `meta` carry `truncated: true`. Gated like the
+        `notificationlog` list (`ro_notificationlog`).
+      security:
+        - bearerAuth: []
+      parameters:
+        - {name: alert_uid, in: query, required: true, description: The alert (record uid)., schema: {type: string}}
+        - {name: limit, in: query, required: false, description: Runs per page (default 10, max 100)., schema: {type: integer, minimum: 1}}
+        - {name: offset, in: query, required: false, description: Runs to skip., schema: {type: integer, minimum: 0}}
+      responses:
+        '200':
+          description: A page of runs, newest first.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DeliveryRunsResponse'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+
+  /api/v1/comment/runs:
+    get:
+      tags: [crud]
+      summary: One alert's timeline, automatic repeats folded into runs
+      description: |
+        Folds the comments of one record into *runs*: consecutive automatic
+        comments (`auto: true`) with the same type and message. Anything a
+        person wrote is a run of one. Newest first and paged; at most 10,000
+        comments are read. Gated like the `comment` list.
+      security:
+        - bearerAuth: []
+      parameters:
+        - {name: record_uid, in: query, required: true, description: The alert (record uid)., schema: {type: string}}
+        - {name: limit, in: query, required: false, description: Runs per page (default 10, max 100)., schema: {type: integer, minimum: 1}}
+        - {name: offset, in: query, required: false, description: Runs to skip., schema: {type: integer, minimum: 0}}
+      responses:
+        '200':
+          description: A page of runs, newest first.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommentRunsResponse'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+
   /api/v1/record/{uid}/agentic:
     parameters:
       - name: uid
@@ -3469,6 +3522,15 @@ components:
           type: integer
           format: int64
           description: Epoch seconds the current owner took the alert; `0` when unowned.
+        first_seen:
+          type: integer
+          format: int64
+          readOnly: true
+          description: |
+            Epoch seconds of the occurrence that created this aggregate — when
+            the alert was first seen. Stamped once by the aggregate rule and
+            never changed; an alert payload cannot set it. Absent on records
+            created before the field existed.
         previous_owner:
           type: string
           description: |
@@ -3875,6 +3937,66 @@ components:
           readOnly: true
           description: Owning tenant slug (server-stamped).
 
+    DeliveryRun:
+      type: object
+      description: Consecutive, all-successful dispatches of one notification to the same actions for the same alerts.
+      required: [key, dispatches, sends, first_epoch, last_epoch, interval_s, latest, truncated]
+      properties:
+        key: {type: string, description: 'Stable while the run grows (its oldest dispatch).'}
+        dispatches: {type: integer, description: Times the notification fired in this run.}
+        sends: {type: integer, description: Log rows in the run (dispatches × actions).}
+        first_epoch: {type: integer, description: Oldest dispatch (epoch seconds).}
+        last_epoch: {type: integer, description: Newest dispatch (epoch seconds).}
+        interval_s: {type: integer, description: Median gap between consecutive dispatches; 0 for a single one.}
+        latest:
+          type: array
+          description: The log rows of the newest dispatch.
+          items: {$ref: '#/components/schemas/NotificationLogEntry'}
+        truncated: {type: boolean, description: The run reaches the scan cap and may be longer.}
+    DeliveryRunsResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: {$ref: '#/components/schemas/DeliveryRun'}
+        meta:
+          type: object
+          required: [total, sends, dispatches, first_epoch, last_epoch, interval_s, truncated]
+          properties:
+            total: {type: integer, description: Runs.}
+            sends: {type: integer, description: Delivery-log rows for the alert.}
+            dispatches: {type: integer}
+            first_epoch: {type: integer}
+            last_epoch: {type: integer}
+            interval_s: {type: integer, description: Median gap between consecutive dispatches.}
+            truncated: {type: boolean}
+    CommentRun:
+      type: object
+      description: Consecutive automatic comments of the same type and message; a person's comment is a run of one.
+      required: [key, count, first_epoch, last_epoch, interval_s, latest, truncated]
+      properties:
+        key: {type: string, description: The oldest member's uid.}
+        count: {type: integer}
+        first_epoch: {type: integer}
+        last_epoch: {type: integer}
+        interval_s: {type: integer}
+        latest: {$ref: '#/components/schemas/Comment'}
+        truncated: {type: boolean}
+    CommentRunsResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: {$ref: '#/components/schemas/CommentRun'}
+        meta:
+          type: object
+          required: [total, comments, truncated]
+          properties:
+            total: {type: integer, description: Runs.}
+            comments: {type: integer, description: Comments on the record.}
+            truncated: {type: boolean}
     NotificationLogEntry:
       type: object
       description: |

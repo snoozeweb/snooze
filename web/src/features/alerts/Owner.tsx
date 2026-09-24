@@ -59,47 +59,59 @@ export function OwnerCell({ record }: { record: Record_ }) {
 }
 
 /**
- * The row inspector's ownership line, beside the state badges: the owner with
- * their name and since-when, or the previous owner as a ghost. Renders
- * nothing for an alert nobody has ever owned — the Unowned state is the
- * default and earns no chrome.
+ * OwnerFact — the inspector header's "Owner" entry, a `<dt>`/`<dd>` pair for
+ * its facts list (see AlertRowDetail): the owner's face, name and since-when,
+ * or — faded — who last had an unowned alert. Nothing for an alert nobody
+ * ever owned: an "Owner —" line would be a row of nothing on most alerts.
  */
-export function OwnerSummary({ record }: { record: Record_ }) {
+export function OwnerFact({
+  record,
+  itemClassName,
+}: {
+  record: Record_;
+  /** The facts list's row wrapper class, so the pair joins its grid. */
+  itemClassName?: string | undefined;
+}) {
   const o = recordOwnership(record);
   const ownerPerson = usePerson(o.owner, o.ownerMethod || undefined);
   const previousPerson = usePerson(o.previous, o.previousMethod || undefined);
   if (o.owner !== "") {
     return (
-      <div className={styles.summary} data-slot="owner">
-        <Avatar name={o.owner} method={o.ownerMethod || undefined} size="sm" decorative />
-        <span className={styles.summaryText}>
-          <span className={styles.summaryLabel}>{OWNER_NOUN}</span>{" "}
-          <span className={styles.summaryName}>{personLabel(ownerPerson, o.owner)}</span>
-          {o.since ? (
-            <>
-              {" · since "}
-              <TimeCell epoch={o.since} compact />
-            </>
-          ) : null}
-        </span>
+      <div className={itemClassName}>
+        <dt>{OWNER_NOUN}</dt>
+        <dd className={styles.fact} data-slot="owner">
+          <Avatar name={o.owner} method={o.ownerMethod || undefined} size="sm" decorative />
+          <span className={styles.factText}>
+            <span className={styles.summaryName}>{personLabel(ownerPerson, o.owner)}</span>
+            {o.since ? (
+              <>
+                {" · since "}
+                <TimeCell epoch={o.since} compact />
+              </>
+            ) : null}
+          </span>
+        </dd>
       </div>
     );
   }
   if (o.previous !== "") {
     return (
-      <div className={styles.summary} data-slot="previous-owner">
-        <Avatar
-          name={o.previous}
-          method={o.previousMethod || undefined}
-          size="sm"
-          variant="ghost"
-          decorative
-        />
-        <span className={styles.summaryText}>
-          <span className={styles.summaryLabel}>{UNOWNED_NOUN}</span>
-          {" · previously "}
-          <span className={styles.summaryName}>{personLabel(previousPerson, o.previous)}</span>
-        </span>
+      <div className={itemClassName}>
+        <dt>{OWNER_NOUN}</dt>
+        <dd className={styles.fact} data-slot="previous-owner">
+          <Avatar
+            name={o.previous}
+            method={o.previousMethod || undefined}
+            size="sm"
+            variant="ghost"
+            decorative
+          />
+          <span className={styles.factText}>
+            {UNOWNED_NOUN}
+            {" · previously "}
+            <span className={styles.summaryName}>{personLabel(previousPerson, o.previous)}</span>
+          </span>
+        </dd>
       </div>
     );
   }

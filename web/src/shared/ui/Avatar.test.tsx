@@ -74,6 +74,19 @@ describe("Avatar", () => {
     expect(avatarRequests).toBe(0);
   });
 
+  it("draws the initials as SVG text centred on the cap height", () => {
+    // HTML text centres the font's line box, not its capitals, and snaps the
+    // baseline to whole pixels — up to a pixel off on a 20px disc. SVG text
+    // is placed geometrically: middle-anchored, baseline half a cap height
+    // below the centre.
+    const { container } = wrap(<Avatar name="bob" />);
+    const text = container.querySelector("svg text");
+    expect(text).toHaveTextContent("B");
+    expect(text).toHaveAttribute("text-anchor", "middle");
+    expect(text).toHaveAttribute("x", "50");
+    expect(container.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+  });
+
   it("falls back to the login when the person is not in the directory", () => {
     wrap(<Avatar name="bob" />);
     expect(screen.getByRole("img", { name: "bob" })).toHaveTextContent("B");
