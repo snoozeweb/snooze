@@ -302,6 +302,30 @@ func TestAutoLoginOn401(t *testing.T) {
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "re-login after 401")
 	})
+	t.Run("an API key is never swapped for a login", func(t *testing.T) {
+		var loginCalls atomic.Int32
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/api/v1/login/local" {
+				loginCalls.Add(1)
+				writeJSON(t, w, http.StatusOK, map[string]any{"token": "fresh-token"})
+				return
+			}
+			require.Equal(t, "Bearer snz_revoked", r.Header.Get("Authorization"))
+			writeJSON(t, w, http.StatusUnauthorized, errorBody("unauthorized", "api key revoked"))
+		}))
+		defer srv.Close()
+		opts := fastOpts(t, srv) // carries a username + password
+		opts.Token = "snz_revoked"
+		c, err := snoozeclient.New(opts)
+		require.NoError(t, err)
+		err = c.Get(context.Background(), "/api/v1/things", nil)
+		require.ErrorIs(t, err, snoozeclient.ErrAPIKeyRejected)
+		apiErr, ok := snoozeclient.IsAPIError(err)
+		require.True(t, ok, "the server's error stays reachable")
+		require.Equal(t, http.StatusUnauthorized, apiErr.Status)
+		require.Zero(t, loginCalls.Load())
+		require.Equal(t, "snz_revoked", c.Token())
+	})
 	t.Run("no relogin when credentials are absent", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			writeJSON(t, w, http.StatusUnauthorized, errorBody("unauthorized", "expired"))

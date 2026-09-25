@@ -138,6 +138,9 @@ func NewRootCmd(rt *runtime) *cobra.Command {
 	//   2. matching SNOOZE_* env var.
 	//   3. /etc/snooze/client.yaml (via rt.fileConfig — see LoadClientConfig).
 	//   4. hard-coded fallback.
+	//
+	// A token from any of these (credentials.token in the file) replaces the
+	// username/password login altogether.
 	f := rt.flags
 	cfg := rt.fileConfig
 	pf := cmd.PersistentFlags()
@@ -151,8 +154,8 @@ func NewRootCmd(rt *runtime) *cobra.Command {
 		nonEmpty(f.Password, envOrDefault("SNOOZE_PASSWORD", cfg.Credentials.Password)),
 		"Password for login (prompts if empty)")
 	pf.StringVar(&f.Token, "token",
-		nonEmpty(f.Token, os.Getenv("SNOOZE_TOKEN")),
-		"Bearer token (skips login flow)")
+		nonEmpty(f.Token, os.Getenv("SNOOZE_TOKEN"), cfg.Credentials.Token),
+		"Bearer token or API key (skips the login flow; also $SNOOZE_TOKEN or credentials.token in client.yaml)")
 	insecureDefault := f.Insecure || cfg.Insecure
 	pf.BoolVar(&f.Insecure, "insecure", insecureDefault, "Skip TLS certificate verification")
 	pf.StringVar(&f.Cache, "cache",
@@ -187,6 +190,8 @@ func NewRootCmd(rt *runtime) *cobra.Command {
 		newMigrateCmd(),
 		newPeopleCmd(),
 		newAvatarCmd(),
+		newWhoAmICmd(),
+		newAPIKeyCmd(),
 	)
 	return cmd
 }
@@ -196,6 +201,9 @@ func NewRootCmd(rt *runtime) *cobra.Command {
 // code with a stderr message.
 func Execute() int {
 	rt := defaultRuntime()
+	if w := rt.fileConfig.PermissionWarning(); w != "" {
+		_, _ = fmt.Fprintln(rt.errOut, "snooze: warning:", w)
+	}
 	root := NewRootCmd(rt)
 	if err := root.ExecuteContext(root.Context()); err != nil {
 		_, _ = fmt.Fprintln(rt.errOut, "snooze:", err)

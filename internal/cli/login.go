@@ -10,6 +10,8 @@ import (
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
+
+	"github.com/snoozeweb/snooze/pkg/snoozeclient"
 )
 
 // newLoginCmd implements `snooze login`. It accepts username via --user, prompts
@@ -39,7 +41,9 @@ func newLoginCmd() *cobra.Command {
 			}
 
 			// Password is required for local/ldap when no Token override is set.
-			if f.Token == "" && f.Method != "anonymous" && f.Password == "" {
+			// An API key is not a login: `snooze login` mints a session for the
+			// user regardless, so it asks for the password as usual.
+			if (f.Token == "" || snoozeclient.IsAPIKey(f.Token)) && f.Method != "anonymous" && f.Password == "" {
 				password, err := promptPassword(cmd, rt)
 				if err != nil {
 					return fmt.Errorf("read password: %w", err)
@@ -47,6 +51,9 @@ func newLoginCmd() *cobra.Command {
 				f.Password = password
 			}
 
+			if snoozeclient.IsAPIKey(f.Token) {
+				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "note: an API key is configured; it keeps taking precedence over the cached session (pass --token= to use the session)")
+			}
 			c, err := rt.buildClient()
 			if err != nil {
 				return err

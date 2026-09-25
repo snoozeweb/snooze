@@ -234,7 +234,7 @@ func isSelf(claims snoozetypes.Claims, prior map[string]any) bool {
 	if ct == "" {
 		ct = snoozetypes.DefaultTenant
 	}
-	return claims.Subject == name && claims.Method == method && ct == tenant
+	return claims.Subject == name && auth.IdentityMethod(claims) == method && ct == tenant
 }
 
 // disablesUser reports whether the write turns a previously-enabled user off.

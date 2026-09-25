@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -18,7 +20,9 @@ import (
 //	server: https://snooze.egerie.eu
 //	credentials:
 //	  username: snooze
-//	  password: ziH6...
+//	  password: example-password
+//	  token: snz_...      # optional: an API key (or any bearer token); when set,
+//	                      # username/password are not needed
 //	method: local         # optional (1.x called this `auth_method` — also accepted)
 //	insecure: false       # optional (1.x used `ca_bundle: false` — also accepted)
 //	timeout: 30s          # optional
@@ -43,6 +47,11 @@ type ClientConfig struct {
 	//                  the Go CLI cannot honour, so we ignore those.)
 	AuthMethod string `yaml:"auth_method,omitempty"`
 	CABundle   any    `yaml:"ca_bundle,omitempty"`
+
+	// path / mode record where the file was read from and its permission
+	// bits, for PermissionWarning. Zero for configs built in code.
+	path string
+	mode os.FileMode
 }
 
 // ClientConfigCredentials groups the username/password pair under the
@@ -50,6 +59,10 @@ type ClientConfig struct {
 type ClientConfigCredentials struct {
 	Username string `yaml:"username"`
 	Password string `yaml:"password"`
+	// Token is a bearer credential used instead of a username/password login:
+	// normally a personal API key (`snz_…`, from `snooze apikey create` or
+	// Profile → API Keys). Precedence: --token > $SNOOZE_TOKEN > this.
+	Token string `yaml:"token,omitempty"`
 }
 
 // LoadClientConfig reads the first client config it finds, in priority
@@ -90,7 +103,29 @@ func readClientConfig(path string) ClientConfig {
 	if err != nil {
 		return ClientConfig{}
 	}
-	return parseClientConfig(data)
+	cfg := parseClientConfig(data)
+	cfg.path = path
+	if st, err := os.Stat(path); err == nil { //nolint:gosec // operator-controlled path, already read above
+		cfg.mode = st.Mode().Perm()
+	}
+	return cfg
+}
+
+// PermissionWarning returns a one-line warning when the file this config was
+// read from holds a secret (password or token) and is readable by its group
+// or by others, and "" otherwise. Windows permission bits are not meaningful,
+// so it never warns there.
+func (c ClientConfig) PermissionWarning() string {
+	if c.path == "" || goruntime.GOOS == "windows" {
+		return ""
+	}
+	if c.Credentials.Password == "" && c.Credentials.Token == "" {
+		return ""
+	}
+	if c.mode&0o077 == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%s holds credentials and is readable by other users (mode %04o); run: chmod 600 %s", c.path, c.mode, c.path)
 }
 
 // parseClientConfig decodes YAML bytes into a ClientConfig, swallowing

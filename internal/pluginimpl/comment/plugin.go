@@ -462,7 +462,8 @@ func (p *Plugin) applyOwnership(ctx context.Context, patch db.Document, commentT
 		if user, _ := doc["user"].(string); user != "" {
 			method := ""
 			if claims, ok := auth.ClaimsFrom(ctx); ok {
-				method = claims.Method
+				// The owner is the key's owner, not the "apikey" channel.
+				method = auth.IdentityMethod(claims)
 			}
 			change = ownership.Take(user, method, now)
 		}

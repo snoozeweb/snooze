@@ -106,8 +106,15 @@ type ErrBody struct {
 
 // Claims are the JWT claims a logged-in user carries.
 type Claims struct {
-	Subject     string   `json:"sub"`
-	Method      string   `json:"method"`
+	Subject string `json:"sub"`
+	Method  string `json:"method"`
+	// OwnerMethod is set only on API-key requests (Method == "apikey"): the
+	// login method of the key's owner, so the (Subject, OwnerMethod) pair
+	// names the owner's user record. Empty for session tokens.
+	OwnerMethod string `json:"owner_method,omitempty"`
+	// KeyID is the uid of the API key that authenticated the request; empty
+	// for session tokens.
+	KeyID       string   `json:"key_id,omitempty"`
 	TenantID    string   `json:"tenant_id,omitempty"` // tenant slug (D3); empty on legacy tokens
 	Roles       []string `json:"roles,omitempty"`
 	Permissions []string `json:"permissions,omitempty"`

@@ -1013,3 +1013,24 @@ func TestOwnershipActionsAreNotTransitions(t *testing.T) {
 		}
 	}
 }
+
+// An ack made with an API key takes ownership under the key owner's login
+// method, not the "apikey" channel — (owner, owner_method) must name a user.
+func TestAfterCreate_APIKeyAckUsesOwnerMethod(t *testing.T) {
+	host := newTestHost(t)
+	p := &Plugin{clock: func() time.Time { return time.Unix(4_000_000, 0).UTC() }}
+	require.NoError(t, p.PostInit(guardCtx(), host))
+
+	uid := seedRecord(t, host, "")
+	ctx := auth.WithClaims(guardCtx(), snoozetypes.Claims{
+		Subject: "alice", Method: auth.APIKeyMethod, OwnerMethod: "ldap", KeyID: "k1",
+	})
+	doc := map[string]any{"record_uid": uid, "type": "ack", "message": "mine"}
+	require.NoError(t, p.TransformWrite(ctx, doc))
+	require.NoError(t, p.AfterCreate(ctx, []map[string]any{doc}))
+
+	require.Equal(t, auth.APIKeyMethod, doc["method"], "the comment still records the channel")
+	rec := recordDoc(t, host, uid)
+	require.Equal(t, "alice", rec["owner"])
+	require.Equal(t, "ldap", rec["owner_method"])
+}

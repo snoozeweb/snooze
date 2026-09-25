@@ -62,6 +62,10 @@ type Options struct {
 	// Token, when non-empty, is used as the bearer token without contacting
 	// the /login endpoint. The token cache is still updated on Login so a
 	// later session can reuse the value.
+	//
+	// A user API key (APIKeyPrefix, "snz_…") is accepted here too. It is a
+	// standing credential: a 401 on it returns ErrAPIKeyRejected instead of
+	// re-logging in with Username/Password.
 	Token string
 
 	// IngestToken, when non-empty, is sent as `Authorization: Bearer <IngestToken>`

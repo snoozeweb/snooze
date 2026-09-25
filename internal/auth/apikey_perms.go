@@ -1,6 +1,10 @@
 package auth
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
+)
 
 // Constants shared by the APIKeyStore, the apikey plugin, and the auth
 // middleware. APIKeyCollection MUST equal the apikey plugin's Name() so the
@@ -14,6 +18,19 @@ const (
 	// checking Method, and so audit logs show the request came via a key.
 	APIKeyMethod = "apikey"
 )
+
+// IdentityMethod is the login method that, with claims.Subject, names the
+// caller's user record: the key owner's method for an API-key request, the
+// session's method otherwise. Use it wherever a (name, method) user identity
+// is stamped or matched (ownership, self checks, own-key listing). Keep
+// claims.Method where the channel matters (audit, comment `method`, refusals
+// of key-authenticated requests).
+func IdentityMethod(claims snoozetypes.Claims) string {
+	if claims.Method == APIKeyMethod && claims.OwnerMethod != "" {
+		return claims.OwnerMethod
+	}
+	return claims.Method
+}
 
 // permits reports whether a permission set grants want, honoring the rw_all
 // wildcard and the rw_X ⇒ ro_X implication used across the authorizer.

@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"sort"
 	"testing"
+
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 func TestAPIKeyPerms_ValidateGrant(t *testing.T) {
@@ -50,5 +52,25 @@ func TestAPIKeyPerms_IntersectGrant(t *testing.T) {
 	got = IntersectGrant([]string{"rw_all"}, []string{"rw_tenant"})
 	if len(got) != 0 {
 		t.Fatalf("IntersectGrant kept reserved perm: %v", got)
+	}
+}
+
+func TestIdentityMethod(t *testing.T) {
+	cases := []struct {
+		name   string
+		claims snoozetypes.Claims
+		want   string
+	}{
+		{"session", snoozetypes.Claims{Method: "ldap"}, "ldap"},
+		{"api key", snoozetypes.Claims{Method: APIKeyMethod, OwnerMethod: "local"}, "local"},
+		// A key row without owner_method keeps the channel rather than inventing one.
+		{"api key without owner method", snoozetypes.Claims{Method: APIKeyMethod}, APIKeyMethod},
+		// OwnerMethod on a session claim set is ignored.
+		{"session with stray owner method", snoozetypes.Claims{Method: "oidc", OwnerMethod: "local"}, "oidc"},
+	}
+	for _, c := range cases {
+		if got := IdentityMethod(c.claims); got != c.want {
+			t.Errorf("%s: IdentityMethod = %q, want %q", c.name, got, c.want)
+		}
 	}
 }

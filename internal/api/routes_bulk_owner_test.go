@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/ownership"
@@ -79,6 +81,29 @@ func TestBulkState_AckTakesOwnership(t *testing.T) {
 			require.False(t, has, "a non-match is untouched")
 		})
 	}
+}
+
+// A bulk ack made with an API key stamps the key owner's login method.
+func TestBulkState_APIKeyAckUsesOwnerMethod(t *testing.T) {
+	t.Parallel()
+	r, d := bulkHarness(t, false)
+	uids := seedOwnerRecords(t, d, db.Document{"host": "h1"})
+
+	q := encodeQ(t, condition.Equals("host", "h1"))
+	body, err := json.Marshal(map[string]any{"state": "ack"})
+	require.NoError(t, err)
+	req := authReq("POST", "/api/v1/record/bulk_state?q="+q, body, "rw_record")
+	req = req.WithContext(auth.WithClaims(req.Context(), snoozetypes.Claims{
+		Subject: "tester", Method: auth.APIKeyMethod, OwnerMethod: "ldap",
+		Permissions: []string{"rw_record"},
+	}))
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+	doc := getRecord(t, d, uids[0])
+	require.Equal(t, "tester", doc["owner"])
+	require.Equal(t, "ldap", doc["owner_method"])
 }
 
 // A bulk open/esc clears ownership PER ROW: each record's own owner becomes

@@ -277,6 +277,11 @@ func (c *Client) Do(ctx context.Context, method, path string, body, dest any) er
 		}
 		defer httpResp.Body.Close() //nolint:errcheck
 
+		if httpResp.StatusCode == http.StatusUnauthorized && IsAPIKey(c.Token()) && c.opts.IngestToken == "" {
+			// An API key is a standing credential: logging in again would
+			// silently swap identities, so a rejected key is final.
+			return backoff.Permanent(fmt.Errorf("%w: %w", ErrAPIKeyRejected, decodeAPIError(httpResp)))
+		}
 		if httpResp.StatusCode == http.StatusUnauthorized && !retriedAuth && c.canRelogin() {
 			retriedAuth = true
 			// Drain and discard the body so the connection can be reused.
@@ -303,6 +308,19 @@ func (c *Client) Do(ctx context.Context, method, path string, body, dest any) er
 	}
 	return backoff.Retry(op, newBackoff(ctx, c.opts.InitialBackoff, c.opts.MaxRetries))
 }
+
+// APIKeyPrefix marks a Snooze user API key. It mirrors auth.APIKeyPrefix in
+// the server (internal/auth), which this public package cannot import; keep
+// the two in sync.
+const APIKeyPrefix = "snz_"
+
+// ErrAPIKeyRejected is returned (wrapped around the server's error) when the
+// server answers 401 to a request authenticated with an API key.
+var ErrAPIKeyRejected = errors.New("snoozeclient: API key rejected (expired, revoked, or its owner is disabled) — create a new one with `snooze apikey create` or Profile → API Keys")
+
+// IsAPIKey reports whether tok is a Snooze user API key rather than a session
+// token.
+func IsAPIKey(tok string) bool { return strings.HasPrefix(tok, APIKeyPrefix) }
 
 // canRelogin reports whether the client has credentials to re-authenticate.
 func (c *Client) canRelogin() bool {

@@ -30,12 +30,58 @@ curl -sS -X POST https://snooze.example/api/v1/user/me/apikeys \
 `expires_at` is optional (defaults to the cap); `permissions` must be a subset
 of your own. You cannot create a key while authenticated with a key.
 
+## Create a key (CLI)
+
+```console
+$ snooze apikey create --name laptop --perm rw_record,rw_protected --expires 90d
+Created API key "laptop" (uid 6f1…, expires 2026-12-24T12:00:00Z).
+
+Key — shown once, copy it now:
+
+  snz_…
+```
+
+`--perm` is required (repeat it or comma-separate): run it without one and the
+CLI lists the permissions you hold to choose from — there is no "grant
+everything" default. `--expires` takes `90d`, a Go duration (`720h`) or an
+RFC3339 time; omitted, the server's cap applies. Minting needs a password
+session, so if your CLI is already configured with a key, override it for this
+one call: `snooze --token= --user <login> apikey create …`.
+
+`snooze apikey list` shows your keys (never their secrets) with expiry and last
+use; `snooze apikey revoke <uid>` revokes one. Both work from a key.
+
+A key used for [agentic analyses](agentic_analysis.md) needs `rw_protected`,
+which `rw_all` does not imply.
+
 ## Use a key
 
 ```bash
 curl -sS https://snooze.example/api/v1/rule \
   -H "Authorization: Bearer snz_…"
 ```
+
+With the CLI, put it in `~/.config/snooze/client.yaml` (or
+`/etc/snooze/client.yaml`) — it replaces the username/password login:
+
+```yaml
+server: https://snooze.example
+credentials:
+  token: snz_…
+```
+
+`chmod 600` the file (the CLI warns when a file holding a secret is readable by
+other users). `$SNOOZE_TOKEN` and `--token` override it, in that order of
+precedence: `--token` > `$SNOOZE_TOKEN` > `credentials.token`. `snooze whoami`
+shows who the server sees behind the configured credential, and
+`snooze record list --owner me` resolves "me" through the key. A rejected key
+(expired, revoked, owner disabled) fails outright — the CLI never falls back to
+a password login from the same file.
+
+Actions taken with a key are attributed to its owner: acknowledging or closing
+an alert makes the key's owner the alert's owner, under the owner's own login
+method. `GET /api/v1/user/me` returns the identity behind any credential
+(`via: apikey`, the key's uid, name, prefix and expiry).
 
 The server recognizes the `snz_` prefix, looks the key up, re-resolves the
 owner's current permissions, intersects them with the key's grant, and authorizes

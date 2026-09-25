@@ -57,6 +57,19 @@ func TestGuardWrite_RemovePlatformAdmin_RequiresRwTenant_AndBlocksSelfAndLast(t 
 	require.Error(t, p.GuardWrite(defCtx(rwTenant), root, map[string]any{"roles": []any{}}, false)) // self-removal blocked
 }
 
+// The self-removal guard also recognises the caller behind an API key.
+func TestGuardWrite_RemovePlatformAdmin_SelfViaAPIKeyBlocked(t *testing.T) {
+	p, host := newGuardPlugin(t)
+	uids := seedUsers(t, host,
+		db.Document{"tenant_id": "default", "name": "root", "method": "local", "enabled": true, "roles": []any{"platform_admin"}},
+		db.Document{"tenant_id": "default", "name": "two", "method": "local", "enabled": true, "roles": []any{"platform_admin"}},
+	)
+	viaKey := rwTenant
+	viaKey.Method = auth.APIKeyMethod
+	viaKey.OwnerMethod = "local"
+	require.Error(t, p.GuardWrite(defCtx(viaKey), uids[0], map[string]any{"roles": []any{}}, false))
+}
+
 func TestGuardWrite_RemoveLastPlatformAdmin_Blocked(t *testing.T) {
 	p, host := newGuardPlugin(t)
 	uids := seedUsers(t, host, db.Document{"tenant_id": "default", "name": "root", "method": "local", "enabled": true, "roles": []any{"platform_admin"}})

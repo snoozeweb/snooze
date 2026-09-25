@@ -574,6 +574,23 @@ paths:
         '204':
           description: Logout acknowledged (idempotent).
 
+  /api/v1/user/me:
+    get:
+      tags: [auth]
+      summary: Who am I
+      description: >
+        The verified identity of the caller, for a session token or an API key.
+        `method` is the caller's login method (for an API key, its owner's), so
+        `(name, method)` always names a user record; `via` says how the request
+        authenticated. Never returns secrets.
+      responses:
+        '200':
+          description: The caller's identity.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/WhoAmI'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+
   /api/v1/user/me/password:
     post:
       tags: [auth]
@@ -3229,6 +3246,33 @@ components:
         tenant_id:
           type: string
           description: Owning tenant slug (server-stamped).
+    WhoAmI:
+      type: object
+      required: [name, method, via, roles, permissions]
+      properties:
+        name: {type: string}
+        method:
+          type: string
+          description: Login method; for an API key, the key owner's.
+        via:
+          type: string
+          enum: [session, apikey]
+        tenant_id: {type: string}
+        roles:
+          type: array
+          items: {type: string}
+        permissions:
+          type: array
+          description: Effective permissions (for a key, its grant bounded by the owner's live permissions).
+          items: {type: string}
+        key:
+          type: object
+          description: Present when `via` is `apikey`.
+          properties:
+            uid: {type: string}
+            name: {type: string}
+            key_prefix: {type: string}
+            expires_at: {type: integer, format: int64, description: Unix epoch seconds.}
     APIKey:
       type: object
       properties:

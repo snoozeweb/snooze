@@ -105,7 +105,7 @@ func TestRecordListRejectsBadFilters(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			rt, _, _ := newTestRuntime(t, srv)
-			rt.flags.Token = "not-a-jwt"
+			// No credential at all: an opaque token would be asked about.
 			_, _, err := executeCmd(t, rt, append([]string{"record", "list"}, tc.args...)...)
 			require.Error(t, err)
 			require.Contains(t, err.Error(), tc.want)

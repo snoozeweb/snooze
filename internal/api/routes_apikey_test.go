@@ -166,3 +166,94 @@ func TestSelfAPIKeys_KeyCannotMint(t *testing.T) {
 	r.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusForbidden, rec.Code, "body=%s", rec.Body.String())
 }
+
+// mintAndResolve mints a key for alice and resolves it the way the Auth
+// middleware does, returning the key-request claims.
+func mintAndResolve(t *testing.T, r chi.Router, rt *Router, name string) snoozetypes.Claims {
+	t.Helper()
+	req := withClaims(httptest.NewRequest(http.MethodPost, "/api/v1/user/me/apikeys",
+		bytes.NewBufferString(`{"name":"`+name+`","permissions":["ro_rule"]}`)), aliceClaims())
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusCreated, rec.Code, "body=%s", rec.Body.String())
+	var created map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &created))
+	claims, err := rt.APIKeys.Resolve(context.Background(), created["key"].(string))
+	require.NoError(t, err)
+	return claims
+}
+
+func TestWhoAmI_Session(t *testing.T) {
+	r, _ := newAPIKeyTestRouter(t)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, withClaims(httptest.NewRequest(http.MethodGet, "/api/v1/user/me", nil), aliceClaims()))
+	require.Equal(t, http.StatusOK, rec.Code, "body=%s", rec.Body.String())
+	var got whoAmIResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	require.Equal(t, "alice", got.Name)
+	require.Equal(t, auth.LocalMethod, got.Method)
+	require.Equal(t, "session", got.Via)
+	require.Equal(t, []string{"rw_record", "ro_rule"}, got.Permissions)
+	require.Nil(t, got.Key)
+}
+
+// A key-authenticated caller sees its owner's real method, the key's own
+// permission grant, and which key it used.
+func TestWhoAmI_APIKey(t *testing.T) {
+	r, rt := newAPIKeyTestRouter(t)
+	claims := mintAndResolve(t, r, rt, "ci")
+	require.Equal(t, auth.APIKeyMethod, claims.Method)
+	require.Equal(t, auth.LocalMethod, claims.OwnerMethod)
+	require.NotEmpty(t, claims.KeyID)
+
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, withClaims(httptest.NewRequest(http.MethodGet, "/api/v1/user/me", nil), claims))
+	require.Equal(t, http.StatusOK, rec.Code, "body=%s", rec.Body.String())
+	var got whoAmIResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	require.Equal(t, "alice", got.Name)
+	require.Equal(t, auth.LocalMethod, got.Method, "the owner's method, not apikey")
+	require.Equal(t, "apikey", got.Via)
+	require.Equal(t, []string{"ro_rule"}, got.Permissions)
+	require.NotNil(t, got.Key)
+	require.Equal(t, claims.KeyID, got.Key.UID)
+	require.Equal(t, "ci", got.Key.Name)
+	require.NotEmpty(t, got.Key.KeyPrefix)
+	require.NotZero(t, got.Key.ExpiresAt)
+}
+
+func TestWhoAmI_Unauthenticated(t *testing.T) {
+	r, _ := newAPIKeyTestRouter(t)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/user/me", nil))
+	require.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
+// A key can list and revoke its owner's keys (it used to match nothing: the
+// store was queried with owner_method "apikey").
+func TestSelfAPIKeys_KeyListsAndRevokesOwnersKeys(t *testing.T) {
+	r, rt := newAPIKeyTestRouter(t)
+	claims := mintAndResolve(t, r, rt, "new")
+	_ = mintAndResolve(t, r, rt, "old")
+
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, withClaims(httptest.NewRequest(http.MethodGet, "/api/v1/user/me/apikeys", nil), claims))
+	require.Equal(t, http.StatusOK, rec.Code, "body=%s", rec.Body.String())
+	var listed struct {
+		Data []map[string]any `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &listed))
+	require.Len(t, listed.Data, 2)
+	var oldUID string
+	for _, d := range listed.Data {
+		if d["name"] == "old" {
+			oldUID, _ = d["uid"].(string)
+		}
+	}
+	require.NotEmpty(t, oldUID)
+
+	del := httptest.NewRecorder()
+	r.ServeHTTP(del, withClaims(httptest.NewRequest(http.MethodDelete, "/api/v1/user/me/apikeys/"+oldUID, nil), claims))
+	require.Equal(t, http.StatusNoContent, del.Code, "body=%s", del.Body.String())
+}

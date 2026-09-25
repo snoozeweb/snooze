@@ -168,9 +168,12 @@ func (s *APIKeyStore) Resolve(ctx context.Context, raw string) (snoozetypes.Clai
 		// (which is cancelled the moment Resolve returns).
 		go s.touchLastUsed(raw) //nolint:gosec // intentional detached write; see touchLastUsed
 	}
+	keyID, _ := doc["uid"].(string)
 	return snoozetypes.Claims{
 		Subject:     owner,
 		Method:      APIKeyMethod,
+		OwnerMethod: method,
+		KeyID:       keyID,
 		TenantID:    tenant,
 		Roles:       roles,
 		Permissions: IntersectGrant(livePerms, stored),

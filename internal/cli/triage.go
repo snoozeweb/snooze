@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -60,7 +61,7 @@ func unowned() condition.Cond {
 	return condition.Or(condition.Not(condition.Exists("owner")), condition.Equals("owner", ""))
 }
 
-func (f *recordListFilter) build(rt *runtime, cl *snoozeclient.Client) (condition.Cond, error) {
+func (f *recordListFilter) build(ctx context.Context, rt *runtime, cl *snoozeclient.Client) (condition.Cond, error) {
 	var parts []condition.Cond
 	if f.active {
 		parts = append(parts, activeAlerts())
@@ -92,7 +93,7 @@ func (f *recordListFilter) build(rt *runtime, cl *snoozeclient.Client) (conditio
 	case "none":
 		parts = append(parts, unowned())
 	case "me":
-		login, err := currentLogin(rt, cl)
+		login, err := currentLogin(ctx, rt, cl)
 		if err != nil {
 			return condition.Cond{}, err
 		}
@@ -113,20 +114,42 @@ func (f *recordListFilter) build(rt *runtime, cl *snoozeclient.Client) (conditio
 	return condition.And(parts...), nil
 }
 
-// currentLogin is the login the CLI acts as: --user / the configured username
-// when set, else the subject of the bearer token. The token is only decoded,
-// not verified — it is our own credential and the server verifies it on every
+// currentLogin is the login the CLI acts as. An API key is asked about
+// (GET /api/v1/user/me): the key, not a username that may sit next to it in
+// client.yaml, is who the server sees. Otherwise --user / the configured
+// username when set, else the subject of the bearer token, else — for any
+// other opaque token — the server again. The JWT is only decoded, not
+// verified — it is our own credential and the server verifies it on every
 // call; all we need is the name to filter on.
-func currentLogin(rt *runtime, cl *snoozeclient.Client) (string, error) {
+func currentLogin(ctx context.Context, rt *runtime, cl *snoozeclient.Client) (string, error) {
+	tok := ""
+	if cl != nil {
+		tok = cl.Token()
+	}
+	if snoozeclient.IsAPIKey(tok) {
+		return loginFromServer(ctx, cl)
+	}
 	if rt.flags != nil && rt.flags.User != "" {
 		return rt.flags.User, nil
 	}
-	if cl != nil {
-		if sub := jwtSubject(cl.Token()); sub != "" {
-			return sub, nil
-		}
+	if sub := jwtSubject(tok); sub != "" {
+		return sub, nil
+	}
+	if tok != "" {
+		return loginFromServer(ctx, cl)
 	}
 	return "", errors.New("--owner me: cannot tell who you are; set --user (or SNOOZE_USER) or log in first")
+}
+
+func loginFromServer(ctx context.Context, cl *snoozeclient.Client) (string, error) {
+	me, err := fetchWhoAmI(ctx, cl)
+	if err != nil {
+		return "", fmt.Errorf("--owner me: %w", err)
+	}
+	if me.Name == "" {
+		return "", errors.New("--owner me: the server did not say who you are")
+	}
+	return me.Name, nil
 }
 
 // jwtSubject returns the `sub` claim of a JWT, or "" when tok is not one.

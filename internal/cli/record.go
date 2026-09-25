@@ -95,7 +95,7 @@ func newRecordListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			cond, err := filter.build(rt, cl)
+			cond, err := filter.build(cmd.Context(), rt, cl)
 			if err != nil {
 				return err
 			}

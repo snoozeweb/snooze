@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -17,12 +18,12 @@ func TestParseClientConfig_BasicShape(t *testing.T) {
 server: https://snooze.egerie.eu
 credentials:
   username: snooze
-  password: ziH6NcmbXwlJCePMq2YfDbkx
+  password: example-password
 `)
 	cfg := parseClientConfig(data)
 	require.Equal(t, "https://snooze.egerie.eu", cfg.Server)
 	require.Equal(t, "snooze", cfg.Credentials.Username)
-	require.Equal(t, "ziH6NcmbXwlJCePMq2YfDbkx", cfg.Credentials.Password)
+	require.Equal(t, "example-password", cfg.Credentials.Password)
 	require.Empty(t, cfg.Method)
 	require.False(t, cfg.Insecure)
 	require.Zero(t, cfg.Timeout)
@@ -164,4 +165,63 @@ func TestNewRootCmd_EnvOverridesFileConfig(t *testing.T) {
 	root.SetContext(withRuntime(context.Background(), rt))
 	require.NoError(t, root.Execute())
 	require.Equal(t, "https://from-env", rt.flags.Server)
+}
+
+func TestParseClientConfig_Token(t *testing.T) {
+	cfg := parseClientConfig([]byte(`
+server: https://x
+credentials:
+  token: snz_abc
+`))
+	require.Equal(t, "snz_abc", cfg.Credentials.Token)
+	require.Empty(t, cfg.Credentials.Username)
+}
+
+// Token precedence: --token > $SNOOZE_TOKEN > credentials.token.
+func TestNewRootCmd_TokenPrecedence(t *testing.T) {
+	file := ClientConfig{Server: "https://x", Credentials: ClientConfigCredentials{Token: "snz_file"}}
+	run := func(t *testing.T, args ...string) string {
+		t.Helper()
+		rt := &runtime{flags: &globalFlags{}, fileConfig: file, out: &bytes.Buffer{}, errOut: &bytes.Buffer{}}
+		root := NewRootCmd(rt)
+		root.SetArgs(append(args, "--help"))
+		root.SetContext(withRuntime(context.Background(), rt))
+		require.NoError(t, root.Execute())
+		return rt.flags.Token
+	}
+	t.Run("file", func(t *testing.T) {
+		t.Setenv("SNOOZE_TOKEN", "")
+		require.Equal(t, "snz_file", run(t))
+	})
+	t.Run("env beats file", func(t *testing.T) {
+		t.Setenv("SNOOZE_TOKEN", "snz_env")
+		require.Equal(t, "snz_env", run(t))
+	})
+	t.Run("flag beats env", func(t *testing.T) {
+		t.Setenv("SNOOZE_TOKEN", "snz_env")
+		require.Equal(t, "snz_flag", run(t, "--token", "snz_flag"))
+	})
+}
+
+func TestClientConfig_PermissionWarning(t *testing.T) {
+	if goruntime.GOOS == "windows" {
+		t.Skip("permission bits are not meaningful on Windows")
+	}
+	write := func(t *testing.T, body string, mode os.FileMode) ClientConfig {
+		t.Helper()
+		p := filepath.Join(t.TempDir(), "client.yaml")
+		require.NoError(t, os.WriteFile(p, []byte(body), 0o600))
+		require.NoError(t, os.Chmod(p, mode))
+		return readClientConfig(p)
+	}
+	secret := "credentials: {username: u, password: p}\n"
+	token := "credentials: {token: snz_x}\n"
+
+	w := write(t, secret, 0o644).PermissionWarning()
+	require.Contains(t, w, "chmod 600")
+	require.Contains(t, w, "client.yaml")
+	require.NotEmpty(t, write(t, token, 0o640).PermissionWarning())
+	require.Empty(t, write(t, secret, 0o600).PermissionWarning())
+	require.Empty(t, write(t, "server: https://x\n", 0o644).PermissionWarning(), "no secret, no warning")
+	require.Empty(t, ClientConfig{Credentials: ClientConfigCredentials{Password: "p"}}.PermissionWarning(), "not read from a file")
 }

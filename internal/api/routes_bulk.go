@@ -204,7 +204,7 @@ func (rt *Router) handleBulkState(w http.ResponseWriter, r *http.Request) {
 	claims, hasClaims := auth.ClaimsFrom(ctx)
 	human := hasClaims && claims.Subject != ""
 	if human && bulkStateTakes[req.State] {
-		for k, v := range ownership.Take(claims.Subject, claims.Method, time.Now().Unix()) {
+		for k, v := range ownership.Take(claims.Subject, auth.IdentityMethod(claims), time.Now().Unix()) {
 			set[k] = v
 		}
 	}

@@ -33,6 +33,7 @@ type passwordChangeRequest struct {
 // that the caller has `any` permission and that the method is local.
 func (rt *Router) mountUser(r chi.Router) {
 	r.Route("/api/v1/user/me", func(sub chi.Router) {
+		sub.Get("/", rt.handleWhoAmI)
 		sub.Post("/password", rt.handleSelfPasswordChange)
 		sub.Get("/apikeys", rt.handleListMyAPIKeys)
 		sub.Post("/apikeys", rt.handleCreateMyAPIKey)
@@ -127,6 +128,87 @@ func (rt *Router) handleSelfPasswordChange(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// whoAmIResponse is the body of GET /api/v1/user/me.
+type whoAmIResponse struct {
+	Name string `json:"name"`
+	// Method is the caller's login method — for an API key, its owner's, so
+	// (name, method) always names a user record.
+	Method string `json:"method"`
+	// Via is how the request authenticated: "session" or "apikey".
+	Via         string     `json:"via"`
+	TenantID    string     `json:"tenant_id,omitempty"`
+	Roles       []string   `json:"roles"`
+	Permissions []string   `json:"permissions"`
+	Key         *whoAmIKey `json:"key,omitempty"`
+}
+
+// whoAmIKey describes the API key behind a key-authenticated request.
+type whoAmIKey struct {
+	UID       string `json:"uid"`
+	Name      string `json:"name,omitempty"`
+	KeyPrefix string `json:"key_prefix,omitempty"`
+	ExpiresAt int64  `json:"expires_at,omitempty"`
+}
+
+// handleWhoAmI GET /api/v1/user/me returns the verified identity of the caller,
+// whether it authenticated with a session token or an API key. It needs no
+// permission beyond being authenticated, and never returns secrets.
+func (rt *Router) handleWhoAmI(w http.ResponseWriter, r *http.Request) {
+	claims, ok := auth.ClaimsFrom(r.Context())
+	if !ok || claims.Subject == "" {
+		WriteError(w, r, ErrUnauthorized.WithMessage("authentication required"))
+		return
+	}
+	resp := whoAmIResponse{
+		Name:        claims.Subject,
+		Method:      auth.IdentityMethod(claims),
+		Via:         "session",
+		TenantID:    claims.TenantID,
+		Roles:       nonNilStrings(claims.Roles),
+		Permissions: nonNilStrings(claims.Permissions),
+	}
+	if claims.Method == auth.APIKeyMethod {
+		resp.Via = "apikey"
+		key := &whoAmIKey{UID: claims.KeyID}
+		// Best effort: the key's name / prefix / expiry come from its row.
+		if rt.APIKeys != nil && claims.KeyID != "" {
+			if keys, err := rt.APIKeys.ListByOwner(r.Context(), claims.Subject, resp.Method); err == nil {
+				for _, d := range keys {
+					if uid, _ := d["uid"].(string); uid == claims.KeyID {
+						key.Name, _ = d["name"].(string)
+						key.KeyPrefix, _ = d["key_prefix"].(string)
+						key.ExpiresAt = epochOf(d["expires_at"])
+						break
+					}
+				}
+			}
+		}
+		resp.Key = key
+	}
+	WriteJSON(w, http.StatusOK, resp)
+}
+
+// epochOf reads a stored epoch that the driver may return as float64 or int.
+func epochOf(v any) int64 {
+	switch n := v.(type) {
+	case float64:
+		return int64(n)
+	case int64:
+		return n
+	case int:
+		return int64(n)
+	}
+	return 0
+}
+
+// nonNilStrings keeps JSON arrays as [] rather than null.
+func nonNilStrings(in []string) []string {
+	if in == nil {
+		return []string{}
+	}
+	return in
+}
+
 // apiKeyCreateRequest is the body for POST /api/v1/user/me/apikeys.
 type apiKeyCreateRequest struct {
 	Name        string   `json:"name"`
@@ -198,7 +280,7 @@ func (rt *Router) handleListMyAPIKeys(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	keys, err := rt.APIKeys.ListByOwner(r.Context(), claims.Subject, claims.Method)
+	keys, err := rt.APIKeys.ListByOwner(r.Context(), claims.Subject, auth.IdentityMethod(claims))
 	if err != nil {
 		WriteError(w, r, ErrInternal.WithCause(err))
 		return
@@ -214,7 +296,7 @@ func (rt *Router) handleDeleteMyAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := chi.URLParam(r, "id")
-	deleted, err := rt.APIKeys.DeleteByID(r.Context(), claims.Subject, claims.Method, id)
+	deleted, err := rt.APIKeys.DeleteByID(r.Context(), claims.Subject, auth.IdentityMethod(claims), id)
 	if err != nil {
 		WriteError(w, r, ErrInternal.WithCause(err))
 		return

@@ -120,11 +120,23 @@ $ sudo pip3 install snooze-client
 
 ## Server address
 
-All CLI commands read the server URL from `/etc/snooze/client.yaml`:
+All CLI commands read the server URL — and, optionally, credentials — from
+`$SNOOZE_CONFIG`, else `~/.config/snooze/client.yaml`, else
+`/etc/snooze/client.yaml`:
 
 ``` yaml
 server: https://snooze.example.com:5200
+credentials:
+  # Either a personal API key (preferred; see API keys) ...
+  token: snz_…
+  # ... or a username / password login:
+  # username: alice
+  # password: …
 ```
+
+A `token` replaces the username/password login. Flags and environment variables
+override the file (`--token` > `$SNOOZE_TOKEN` > `credentials.token`); keep the
+file `chmod 600` — the CLI warns otherwise. See [API keys](../api_keys.md).
 
 ## Usage
 

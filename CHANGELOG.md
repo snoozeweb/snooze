@@ -22,6 +22,19 @@
   timeline and never undoes the close; a close that came from JIRA itself is not
   echoed back. Other notifiers can opt in through the new
   `plugins.CloseNotifier` interface.
+- **API keys in the CLI.** `client.yaml` takes a `credentials.token` (a
+  personal `snz_…` API key, or any bearer token) that replaces the
+  username/password login; precedence is `--token` > `$SNOOZE_TOKEN` > the file.
+  New `snooze apikey create|list|revoke` manage your keys (create shows the key
+  once, with the `client.yaml` snippet, and makes you choose the permissions —
+  there is no "grant everything" default), `snooze whoami` shows who the server
+  sees, and `--owner me` asks the server when the credential is an API key. The
+  CLI warns when a `client.yaml` holding a secret is readable by other users. A
+  rejected API key is final (`snoozeclient.ErrAPIKeyRejected`): the client no
+  longer falls back to logging in with a username/password from the same file.
+- **`GET /api/v1/user/me`** returns the verified caller identity — name, login
+  method, `via` (`session` / `apikey`), tenant, roles, effective permissions,
+  and for a key its uid, name, prefix and expiry.
 - **Tool attribution on the timeline.** Comments accept an optional `source`
   (the tool or agent acting on the user's behalf, ≤ 64 characters), shown next
   to the author in the web timeline (*snooze via snooze-skill*) and in
@@ -356,6 +369,15 @@
   than the number of notifications prevented.
 
 ### Fixed
+
+- **API-key actions are owned by the key's owner.** Acknowledging or closing an
+  alert with an API key (single or `bulk_state`) stamped `owner_method: apikey`,
+  which names no user — the owner showed no picture and `--owner` / assignment
+  matching treated it as a stranger. It now stamps the owner's login method
+  (claims carry `owner_method` / `key_id` for key requests). The same identity
+  fix applies to listing and revoking your own keys with a key (both matched
+  nothing) and to the "cannot remove platform_admin from yourself" guard. The
+  comment's `method` still records the `apikey` channel.
 
 - **Profile pictures of email logins never showed.** Users whose login is an
   email address (every OIDC/Entra user) uploaded a picture and still saw their
