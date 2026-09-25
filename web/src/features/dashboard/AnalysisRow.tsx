@@ -38,6 +38,7 @@ import { RiskBadge } from "@/features/alerts/analysis/RiskBadge";
 import { VerdictChip } from "@/features/alerts/analysis/VerdictChip";
 import { groupSteps, stepWhenLabel, type IndexedStep } from "@/features/alerts/analysis/verdict";
 import {
+  isClosed,
   openAlertSearch,
   riskyStepCount,
   type AnalysedRow,
@@ -268,6 +269,10 @@ export const AnalysisRow = memo(function AnalysisRow({
       // accent — so a tall row still carries its urgency down its whole side.
       style={accent ? ({ "--row-accent": accent } as CSSProperties) : undefined}
       data-accent={accent ? "true" : undefined}
+      // A closed alert is finished work: the row keeps its severity badge but
+      // its rail goes quiet (AnalysisRow.module.css), so the list's urgency
+      // down its left edge is only the alerts still in play.
+      data-closed={isClosed(row) ? "true" : undefined}
     >
       {/* Focusable so J/K can land on the row itself (the list's roving tab
           stop); the heading names it. See AnalysesView for the keys. */}

@@ -29,6 +29,7 @@ import { setUnauthorizedHandler } from "@/lib/api/client";
 import { ensureFreshToken, startSessionRefresh } from "@/lib/auth/session";
 import { loginRedirectSearch } from "@/lib/auth/return-to";
 import { validateAlertsSearch, type AlertsSearchParams } from "./alertsSearch";
+import { validateDashboardSearch } from "./dashboardSearch";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -700,23 +701,8 @@ const notificationsRoute = createRoute({
   },
 });
 
-// Dashboard deep-link. `view` picks which of the page's two views is on
-// screen; `range` is the time picker's preset key and, for the "custom"
-// preset, `from`/`to` carry the window bounds as epoch milliseconds.
-// `sort` is the Analyses view's order: omitted means "most urgent", the one
-// alternative is `recent` (newest analysis first).
-// All optional — no params means the Overview on its default 1d range,
-// exactly as before. Types are validated defensively (numeric strings coerced
-// to number, an unknown `view` or `sort` dropped) so a hand-edited URL can't
-// poison the page.
-type DashboardSearchParams = {
-  view?: "overview" | "analyses";
-  sort?: "recent";
-  range?: "1d" | "1w" | "1m" | "1y" | "custom";
-  from?: number;
-  to?: number;
-};
-
+// Dashboard deep-link: the view, the time range and the Analyses view's sort
+// and filters. The contract (and its validator) lives in dashboardSearch.ts.
 const dashboardRoute = createRoute({
   getParentRoute: () => webLayoutRoute,
   path: "/web/dashboard",
@@ -724,37 +710,7 @@ const dashboardRoute = createRoute({
     () => import("@/features/dashboard/DashboardPage"),
     "DashboardPage",
   ),
-  validateSearch: (raw): DashboardSearchParams => {
-    const out: Record<string, unknown> = {};
-    // Anything but the one named view falls through to the Overview — the
-    // param is omitted from the URL in that case, so `?view=overview` and no
-    // param at all are the same state.
-    if (raw["view"] === "analyses") out["view"] = "analyses";
-    // Same rule for the sort: the default ("most urgent") is the absence of
-    // the param, so only the one alternative is ever kept.
-    if (raw["sort"] === "recent") out["sort"] = "recent";
-    const rangeRaw = raw["range"];
-    if (
-      rangeRaw === "1d" ||
-      rangeRaw === "1w" ||
-      rangeRaw === "1m" ||
-      rangeRaw === "1y" ||
-      rangeRaw === "custom"
-    ) {
-      out["range"] = rangeRaw;
-    }
-    const num = (k: string) => {
-      const v = raw[k];
-      if (typeof v === "number" && Number.isFinite(v)) return v;
-      if (typeof v === "string" && /^\d+$/.test(v)) return Number(v);
-      return undefined;
-    };
-    const from = num("from");
-    if (from !== undefined) out["from"] = from;
-    const to = num("to");
-    if (to !== undefined) out["to"] = to;
-    return out as DashboardSearchParams;
-  },
+  validateSearch: validateDashboardSearch,
 });
 
 const profileRoute = createRoute({

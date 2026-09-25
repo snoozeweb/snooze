@@ -213,23 +213,43 @@ title: **Overview** and **Analyses**. The switch shows the analysed count. The
 "Right now" tile strip also counts analysed alerts, on an **Analysed** tile
 ("17 of 42 open") that opens the view when clicked.
 
-The view and the list's order ride in the URL, so
-`/web/dashboard?view=analyses&sort=recent` is a deep link and Back undoes a
-view switch or a re-sort.
+The view, the list's order and its filters ride in the URL, so
+`/web/dashboard?view=analyses&sort=recent&verdict=resolved,self_resolved` is a
+deep link and Back undoes a view switch, a re-sort or a filter change. A
+parameter at its default is left out of the URL.
 Both surfaces read the record collection, so they are offered only to an
 identity holding `ro_record` (or `rw_record`). A stats-only role gets the
 Overview, with no switch and no tile.
 
-The view lists **every** analysed open alert as a work queue. A safety ceiling
-of 500 rows applies, and the view says so when it bites. Rows sort **most
-urgent first**: severity, then unacknowledged before acknowledged, then
-fired time. *Newest analysis* is the alternative sort (`?sort=recent`).
+The view lists **every** analysed alert as a work queue: the ones still in
+play (acknowledged and snoozed included) and the **closed** ones, which stay
+listed until the housekeeper deletes them at the end of their TTL
+(`housekeeping.record_ttl`, 48h by default). A closed alert is where a
+`resolved` verdict lives, and its analysis is the record of what happened. The
+Analysed tile still counts open alerts only. A safety ceiling of 500 rows
+applies, and the view says so when it bites. Rows sort **most urgent first**:
+alerts still in play before closed ones, then severity, then unacknowledged
+before acknowledged, then fired time. *Newest analysis* is the alternative sort
+(`?sort=recent`). A closed row says *Closed* and its severity rail is drawn in
+the closed-state colour.
 
 Filters narrow the list in place:
 
-- **Confidence:** *Any*, *Medium+*, *High*.
-- **Automatable:** *Any*, *Yes*, *No*.
-- **Verdict:** shown once some analysis states one.
+- **Confidence** (`?confidence=`): *Any*, *Medium+*, *High* — a threshold.
+- **Automatable** (`?automatable=`): *Any*, *Yes*, *No*.
+- **Verdict** (`?verdict=`, comma-separated): a set of checkboxes — *Action
+  required*, *Monitoring*, *Self-resolved*, *Resolved* and *No verdict* (an
+  analysis that states none, such as one written before the field existed).
+  It opens on **Action required + Monitoring + No verdict**, the analyses that
+  still ask something of a person; *All* ticks every verdict. The group is
+  shown once some analysis states a verdict.
+- **Closed** (`?closed=hide`): *Show* (the default) or *Hide*, offered once a
+  closed alert is listed.
+
+**Reset to default** appears once a filter is off its default. When the
+filters leave nothing, the empty list offers the way out: *Reset to default*,
+or *Show all verdicts* when the default itself hides every row (all of them
+finished).
 
 Each row names the alert: severity, host and message as a heading that links
 to it, with its state and when it fired on the right. Collapsed, the row shows:

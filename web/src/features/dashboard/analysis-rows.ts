@@ -11,10 +11,20 @@
 // the generic Record schema does not declare (records are dynamic and the
 // subtree is only ever written through its own route), so it arrives as an
 // untyped extra field. It is parsed leniently rather than strictly: the panel
-// lists what the server counted, so a record dropped here would be counted by
-// the Analysed tile and then missing from the list under it. Anything carrying
+// lists what the server counted, so a record dropped here would be counted in
+// the view's total (and, while open, by the Analysed tile) and then missing
+// from the list under it. Anything carrying
 // an `agentic` subtree becomes a row; the parts that are missing degrade to an
 // em-dash cause, an em-dash plan and an absent badge.
+import {
+  DEFAULT_VERDICT_IDS,
+  VERDICT_IDS,
+  canonicalVerdicts,
+  isDefaultVerdicts,
+  parseVerdictParam,
+  type DashboardSearchParams,
+  type VerdictId,
+} from "@/app/dashboardSearch";
 import type { Condition } from "@/lib/condition/types";
 import { encodeText } from "@/lib/condition/text";
 import { severityRank } from "@/lib/format/severity-color";
@@ -34,7 +44,7 @@ import {
 } from "@/features/alerts/analysis/verdict";
 
 /**
- * The alerts this view is about, as one population expressed two ways.
+ * Two populations, built from one shared set of clauses.
  *
  * `OPEN_CLAUSES` is the alerts page's ACTIVE_ALERTS preset minus two of its
  * clauses:
@@ -48,38 +58,67 @@ import {
  *     exactly when it starts being useful.
  *
  * What is left is "not finished with": not closed, not shelved, and not
- * permanently shelved through the legacy negative TTL.
+ * permanently shelved through the legacy negative TTL. That is the Right-now
+ * tile's population: its numerator (`ANALYSED_OPEN_ALERTS`) and denominator
+ * (`OPEN_ALERTS`) are both built from this one array, because they are read
+ * against each other. Measuring the denominator with a different predicate is
+ * how "7 analysed of 6 open" — the ordinary end state, since ACTIVE_ALERTS
+ * drops the acked and snoozed rows the numerator deliberately keeps — used to
+ * be printed as a ratio.
  *
- * The list (`ANALYSED_OPEN_ALERTS`) and the tile's denominator (`OPEN_ALERTS`)
- * are both built from this one array, because they are read against each
- * other. Measuring the denominator with a different predicate is how
- * "7 analysed of 6 open" — the ordinary end state, since ACTIVE_ALERTS drops
- * the acked and snoozed rows the numerator deliberately keeps — used to be
- * printed as a ratio.
+ * The LIST is wider: `LISTED_CLAUSES` also admits closed alerts
+ * (`ANALYSED_LISTED_ALERTS`). Closing is the normal end of a resolved alert,
+ * so an open-only list could never show a `resolved` verdict at all, and the
+ * closed analyses are the post-mortem record — what fired, what the cause
+ * was, what fixed it. The population stays bounded without a clause of its
+ * own: the housekeeper deletes a record once its TTL runs out
+ * (`housekeeping.record_ttl`, 48h by default), and its analysis goes with it.
+ * Shelved alerts and the legacy negative TTL stay out of both populations.
  */
-const OPEN_CLAUSES: Condition[] = [
-  { type: "NOT", arg: { type: "EQUALS", field: "state", value: "close" } },
+const LISTED_CLAUSES: Condition[] = [
   { type: "NOT", arg: { type: "EQUALS", field: "state", value: "shelved" } },
   { type: "NOT", arg: { type: "LT", field: "ttl", value: 0 } },
 ];
 
-/** The population: every alert still in play, acknowledged and snoozed included. */
+const OPEN_CLAUSES: Condition[] = [
+  { type: "NOT", arg: { type: "EQUALS", field: "state", value: "close" } },
+  ...LISTED_CLAUSES,
+];
+
+/** The tile's population: every alert still in play, acknowledged and snoozed included. */
 export const OPEN_ALERTS: Condition = { type: "AND", args: [...OPEN_CLAUSES] };
 
 /**
- * Its analysed share.
+ * The tile's numerator: the open alerts carrying an analysis.
  *
- * Deliberately NOT narrowed to rows carrying `agentic.analysis.at`: the list is
- * sorted by that path, and the three backends disagree on where a missing value
- * sorts (Postgres puts NULLs first on DESC, SQLite and Mongo last), so a
- * subtree written without a timestamp can lead the list. Excluding it would fix
- * the ordering by hiding rows the count still counts — the divergence this
- * module exists to prevent. The row parser degrades them instead.
+ * Deliberately NOT narrowed to rows carrying `agentic.analysis.at` — see
+ * `ANALYSED_LISTED_ALERTS`; the same reasoning holds for the count.
  */
 export const ANALYSED_OPEN_ALERTS: Condition = {
   type: "AND",
   args: [{ type: "EXISTS", field: "agentic" }, ...OPEN_CLAUSES],
 };
+
+/**
+ * The view's list: every analysed alert not shelved, closed ones included
+ * until the housekeeper expires them.
+ *
+ * Deliberately NOT narrowed to rows carrying `agentic.analysis.at`: the list is
+ * sorted by that path, and the three backends disagree on where a missing value
+ * sorts (Postgres puts NULLs first on DESC, SQLite and Mongo last), so a
+ * subtree written without a timestamp can lead the list. Excluding it would fix
+ * the ordering by hiding rows the view's own total still counts. The row
+ * parser degrades them instead.
+ */
+export const ANALYSED_LISTED_ALERTS: Condition = {
+  type: "AND",
+  args: [{ type: "EXISTS", field: "agentic" }, ...LISTED_CLAUSES],
+};
+
+/** Whether a row's alert has been closed (the view can hide those). */
+export function isClosed(row: Pick<AnalysedRow, "state">): boolean {
+  return row.state === "close";
+}
 
 /**
  * The search text that pins the alerts table to one record.
@@ -103,9 +142,9 @@ export function uidSearch(uid: string): string {
  */
 export const ALERTS_PAGE_SIZE = 50;
 
-/** The analysed population, in the alerts page's search DSL. */
+/** The listed population (closed included), in the alerts page's search DSL. */
 export function analysedSetSearch(): string {
-  return encodeText(ANALYSED_OPEN_ALERTS);
+  return encodeText(ANALYSED_LISTED_ALERTS);
 }
 
 /**
@@ -121,8 +160,10 @@ export function analysedSetSearch(): string {
  * it, fall back to pinning the one uid — a working drawer with no neighbours
  * beats a neighbourly one that never opens.
  *
- * `analysedTotal` is the server's `meta.total` for the population, not the
- * length of the list on screen: a filtered view still lands on the full set.
+ * `analysedTotal` is the server's `meta.total` for the listed population
+ * (`ANALYSED_LISTED_ALERTS`, closed alerts included — the row links land on
+ * the All tab, which shows them), not the length of the list on screen: a
+ * filtered view still lands on the full set.
  */
 export function openAlertSearch(uid: string, analysedTotal: number): string {
   return analysedTotal <= ALERTS_PAGE_SIZE ? analysedSetSearch() : uidSearch(uid);
@@ -244,8 +285,8 @@ const EM_DASH = "—";
  *
  * It returns undefined only for a record this view was never counting — no
  * uid to link, or no `agentic` subtree at all. Everything else becomes a row,
- * however malformed: the Analysed tile counts the server's `meta.total` over
- * the same `EXISTS agentic` predicate, so dropping a parsed-but-odd record here
+ * however malformed: the view's total is the server's `meta.total` over the
+ * same `EXISTS agentic` predicate, so dropping a parsed-but-odd record here
  * would print a number larger than the list it opens. A degraded row says what
  * it knows and leaves the rest blank, which is at least a link to the alert.
  *
@@ -344,24 +385,86 @@ export type AutomatableFilter = "any" | "yes" | "no";
  */
 export type ConfidenceFilter = "any" | "medium" | "high";
 
-/** The verdict filter: one plan status, or all of them. */
-export type VerdictFilter = "any" | PlanStatus;
+/**
+ * The verdict filter: a SET, unlike confidence. The verdicts are not a ladder —
+ * "what still needs a person" is Action required AND Monitoring, and a
+ * post-mortem read is Resolved AND Self-resolved — so a threshold cannot ask
+ * either question. `no_verdict` is the option for analyses that state none.
+ */
+export type VerdictFilter = readonly VerdictId[];
+
+/** Whether closed alerts are listed. */
+export type ClosedFilter = "show" | "hide";
 
 export type AnalysisFilters = {
   confidence: ConfidenceFilter;
   automatable: AutomatableFilter;
   verdict: VerdictFilter;
+  closed: ClosedFilter;
 };
 
-/** Nothing narrowed — every row the server counted. */
-export const ANY_FILTERS: AnalysisFilters = {
+/**
+ * What the view opens on (and what "Reset to default" returns to): no
+ * threshold, closed alerts listed, and the verdicts that still ask something of
+ * a person (`DEFAULT_VERDICT_IDS`). Each of these is also the absence of its
+ * URL param.
+ */
+export const DEFAULT_FILTERS: AnalysisFilters = {
   confidence: "any",
   automatable: "any",
-  verdict: "any",
+  verdict: DEFAULT_VERDICT_IDS,
+  closed: "show",
 };
 
+/** Every verdict ticked. */
+export const ALL_VERDICTS: VerdictFilter = VERDICT_IDS;
+
+/** Whether the filters differ from the default — i.e. whether "Reset" means anything. */
 export function filtersActive(f: AnalysisFilters): boolean {
-  return f.confidence !== "any" || f.automatable !== "any" || f.verdict !== "any";
+  return (
+    f.confidence !== "any" ||
+    f.automatable !== "any" ||
+    f.closed !== "show" ||
+    !isDefaultVerdicts(f.verdict)
+  );
+}
+
+/** The dashboard search keys the filters own. */
+export const FILTER_SEARCH_KEYS = ["confidence", "automatable", "verdict", "closed"] as const;
+type FilterSearchKey = (typeof FILTER_SEARCH_KEYS)[number];
+
+/**
+ * The filters a dashboard URL carries.
+ *
+ * Validated here, not trusted: the view reads its search non-strictly
+ * (`useSearch({ strict: false })`), which also merges the params of routes
+ * above the dashboard that validate nothing — a hand-edited `?automatable=bogus`
+ * reaches this function as-is. Anything unreadable is its default.
+ */
+export function filtersFromSearch(search: { [K in FilterSearchKey]?: unknown }): AnalysisFilters {
+  const { confidence, automatable, closed } = search;
+  return {
+    confidence: confidence === "medium" || confidence === "high" ? confidence : "any",
+    automatable: automatable === "yes" || automatable === "no" ? automatable : "any",
+    verdict: parseVerdictParam(search.verdict) ?? DEFAULT_VERDICT_IDS,
+    closed: closed === "hide" ? "hide" : "show",
+  };
+}
+
+/**
+ * The URL params for a set of filters, only the non-default ones present —
+ * every default is the absence of its param. The caller replaces the
+ * {@link FILTER_SEARCH_KEYS} of the previous search with this.
+ */
+export function searchFromFilters(
+  f: AnalysisFilters,
+): Pick<DashboardSearchParams, FilterSearchKey> {
+  const out: Pick<DashboardSearchParams, FilterSearchKey> = {};
+  if (f.confidence !== "any") out.confidence = f.confidence;
+  if (f.automatable !== "any") out.automatable = f.automatable;
+  if (!isDefaultVerdicts(f.verdict)) out.verdict = canonicalVerdicts(f.verdict).join(",");
+  if (f.closed === "hide") out.closed = "hide";
+  return out;
 }
 
 const CONFIDENCE_FLOOR: Record<Exclude<ConfidenceFilter, "any">, readonly Confidence[]> = {
@@ -369,15 +472,21 @@ const CONFIDENCE_FLOOR: Record<Exclude<ConfidenceFilter, "any">, readonly Confid
   high: ["high"],
 };
 
+/** Which verdict option a row answers to: its status, or `no_verdict`. */
+export function verdictOf(row: Pick<AnalysedRow, "status">): VerdictId {
+  return row.status ?? "no_verdict";
+}
+
 /**
  * matchesFilters applies the view's local filters to one row.
  *
- * A degraded row (no level, no verdict) survives only the "Any" position of
- * the question it cannot answer: an operator who asked for "Medium+" is asking
- * something this row does not say, and one who has not narrowed at all should
- * see everything the count counted.
+ * A degraded row (no level) survives only the "Any" position of the confidence
+ * question it cannot answer: an operator who asked for "Medium+" is asking
+ * something this row does not say. A row with no verdict is not degraded for
+ * the verdict question — it answers `no_verdict`, which the default includes.
  */
 export function matchesFilters(row: AnalysedRow, f: AnalysisFilters): boolean {
+  if (f.closed === "hide" && isClosed(row)) return false;
   if (f.confidence !== "any") {
     if (row.confidence === undefined || !CONFIDENCE_FLOOR[f.confidence].includes(row.confidence)) {
       return false;
@@ -385,7 +494,7 @@ export function matchesFilters(row: AnalysedRow, f: AnalysisFilters): boolean {
   }
   if (f.automatable === "yes" && !row.automatable) return false;
   if (f.automatable === "no" && row.automatable) return false;
-  if (f.verdict !== "any" && row.status !== f.verdict) return false;
+  if (!f.verdict.includes(verdictOf(row))) return false;
   return true;
 }
 
@@ -410,6 +519,10 @@ function desc(a: number | undefined, b: number | undefined): number {
 }
 
 function compareUrgent(a: AnalysedRow, b: AnalysedRow): number {
+  // A closed alert is finished work, whatever it fired at: it sorts after
+  // every alert still in play, so a closed Critical never heads the queue.
+  const closed = Number(isClosed(a)) - Number(isClosed(b));
+  if (closed !== 0) return closed;
   // The severity ladder is the app's own (server-installed, with the built-in
   // syslog fallback): LOWER is worse. An unrecognised label is not evidence of
   // urgency, so it sorts after every known one.
@@ -427,11 +540,12 @@ function compareRecent(a: AnalysedRow, b: AnalysedRow): number {
 /**
  * sortRows orders the fetched rows client-side.
  *
- * "Most urgent" is the default because the view is a work queue: the severity
- * the alert fired at, then whether anybody has it in hand, then how recently it
- * fired. "Newest analysis" is the question "what did the agent just write".
- * Ties fall back to the uid so a 30-second refetch never shuffles equal rows
- * under the reader's eye.
+ * "Most urgent" is the default because the view is a work queue: alerts still
+ * in play before closed ones, then the severity the alert fired at, then
+ * whether anybody has it in hand, then how recently it fired. "Newest
+ * analysis" is the question "what did the agent just write". Ties fall back to
+ * the uid so a 30-second refetch never shuffles equal rows under the reader's
+ * eye.
  */
 export function sortRows(rows: readonly AnalysedRow[], sort: AnalysesSort): AnalysedRow[] {
   const compare = sort === "recent" ? compareRecent : compareUrgent;

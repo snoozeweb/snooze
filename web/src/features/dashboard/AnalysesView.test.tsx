@@ -17,6 +17,7 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/shared/ui/Tooltip";
 import { mswServer } from "@/tests/msw/server";
+import { validateDashboardSearch } from "@/app/dashboardSearch";
 import { AnalysesView } from "./AnalysesView";
 
 type StepFixture = {
@@ -130,14 +131,6 @@ function alertsValidateSearch(raw: Record<string, unknown>): {
   return out;
 }
 
-/** Mirrors the dashboard route's allowlist (router.tsx) for the keys the view reads. */
-function dashboardValidateSearch(raw: Record<string, unknown>): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  if (raw["view"] === "analyses") out["view"] = "analyses";
-  if (raw["sort"] === "recent") out["sort"] = "recent";
-  return out;
-}
-
 function setup(initialEntry = "/web/dashboard?view=analyses") {
   const root = createRootRoute({ component: () => <Outlet /> });
   const alertsRoute = createRoute({
@@ -150,7 +143,8 @@ function setup(initialEntry = "/web/dashboard?view=analyses") {
     getParentRoute: () => root,
     path: "/web/dashboard",
     component: () => <AnalysesView />,
-    validateSearch: dashboardValidateSearch,
+    // The real contract (app/dashboardSearch.ts), not a copy of it.
+    validateSearch: validateDashboardSearch,
   });
   const tree = root.addChildren([alertsRoute, dashboardRoute]);
   /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
@@ -300,7 +294,8 @@ describe("AnalysesView", () => {
           status: "self_resolved",
         }),
       ]);
-      setup();
+      // Self-resolved is a finished verdict, which the default leaves out.
+      setup("/web/dashboard?view=analyses&verdict=self_resolved");
 
       const row = within((await rows())[0]!);
       expect(row.getByText("Self-resolved")).toBeInTheDocument();
@@ -612,7 +607,7 @@ describe("AnalysesView", () => {
       expect(screen.queryAllByRole("article")).toHaveLength(0);
       expect(screen.getByText("Nothing matches these filters")).toBeInTheDocument();
 
-      await user.click(screen.getByRole("button", { name: "Clear filters" }));
+      await user.click(screen.getByRole("button", { name: "Reset to default" }));
       expect(screen.getAllByRole("article")).toHaveLength(2);
       expect(within(confidence).getByRole("radio", { name: "Any" })).toHaveAttribute(
         "aria-checked",
@@ -624,23 +619,169 @@ describe("AnalysesView", () => {
       mockRecords([DISK, OOM]);
       const { unmount } = setup();
       await rows();
-      expect(screen.queryByRole("radiogroup", { name: "Verdict" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("group", { name: "Verdict" })).not.toBeInTheDocument();
       unmount();
 
       mockRecords([
         analysedRecord({ uid: "r-act", host: "srv-act", summary: "a", status: "action_required" }),
+        analysedRecord({ uid: "r-mon", host: "srv-mon", summary: "m", status: "monitoring" }),
+        analysedRecord({ uid: "r-fix", host: "srv-fix", summary: "f", status: "resolved" }),
+        OOM,
+      ]);
+      setup();
+      await rows();
+      expect(screen.getByRole("group", { name: "Verdict" })).toBeInTheDocument();
+    });
+
+    it("opens on the verdicts that still need a person, as a set of checkboxes", async () => {
+      mockRecords([
+        analysedRecord({ uid: "r-act", host: "srv-act", summary: "a", status: "action_required" }),
+        analysedRecord({ uid: "r-mon", host: "srv-mon", summary: "m", status: "monitoring" }),
+        analysedRecord({ uid: "r-self", host: "srv-self", summary: "s", status: "self_resolved" }),
         analysedRecord({ uid: "r-fix", host: "srv-fix", summary: "f", status: "resolved" }),
         OOM,
       ]);
       const user = userEvent.setup();
+      const { router } = setup();
+      await rows();
+
+      const verdict = screen.getByRole("group", { name: "Verdict" });
+      const box = (name: string) => within(verdict).getByRole("checkbox", { name });
+      expect(box("Action required")).toHaveAttribute("aria-checked", "true");
+      expect(box("Monitoring")).toHaveAttribute("aria-checked", "true");
+      expect(box("No verdict")).toHaveAttribute("aria-checked", "true");
+      expect(box("Self-resolved")).toHaveAttribute("aria-checked", "false");
+      expect(box("Resolved")).toHaveAttribute("aria-checked", "false");
+      // The finished ones are left out; the one with no verdict is not.
+      expect(order(screen.getAllByRole("article")).sort()).toEqual([
+        "srv-act",
+        "srv-legacy2",
+        "srv-mon",
+      ]);
+      expect(screen.getByText("3 of 5 analyses")).toBeInTheDocument();
+      // The default is not "narrowed": nothing to reset.
+      expect(screen.queryByRole("button", { name: "Reset to default" })).not.toBeInTheDocument();
+
+      // Ticking adds to the set, and the URL says so.
+      await user.click(box("Resolved"));
+      expect(order(screen.getAllByRole("article"))).toContain("srv-fix");
+      expect(router.state.location.search).toMatchObject({
+        verdict: "action_required,monitoring,resolved,no_verdict",
+      });
+
+      // "All" ticks everything, then disappears — it would change nothing.
+      await user.click(within(verdict).getByRole("button", { name: "All" }));
+      expect(screen.getAllByRole("article")).toHaveLength(5);
+      expect(within(verdict).queryByRole("button", { name: "All" })).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "Reset to default" }));
+      expect(screen.getAllByRole("article")).toHaveLength(3);
+      expect(router.state.location.search).not.toHaveProperty("verdict");
+    });
+
+    it("moves focus with the arrows without ticking anything on the way", async () => {
+      mockRecords([
+        analysedRecord({ uid: "r-act", host: "srv-act", summary: "a", status: "action_required" }),
+      ]);
+      const user = userEvent.setup();
       setup();
       await rows();
-      const verdict = screen.getByRole("radiogroup", { name: "Verdict" });
-      await user.click(within(verdict).getByRole("radio", { name: "Action required" }));
-      expect(order(screen.getAllByRole("article"))).toEqual(["srv-act"]);
-      // A fix somebody applied is its own verdict, not folded into "Self-resolved".
-      await user.click(within(verdict).getByRole("radio", { name: "Resolved" }));
-      expect(order(screen.getAllByRole("article"))).toEqual(["srv-fix"]);
+
+      const verdict = screen.getByRole("group", { name: "Verdict" });
+      const [first, second] = within(verdict).getAllByRole("checkbox");
+      expect(first).toHaveAttribute("tabindex", "0");
+      expect(second).toHaveAttribute("tabindex", "-1");
+      act(() => first!.focus());
+      await user.keyboard("{ArrowRight}");
+      expect(second).toHaveFocus();
+      // Monitoring stays ticked: focus moved, nothing toggled.
+      expect(second).toHaveAttribute("aria-checked", "true");
+      await user.keyboard(" ");
+      expect(second).toHaveAttribute("aria-checked", "false");
+    });
+
+    it("offers every verdict when the default itself leaves nothing", async () => {
+      mockRecords([
+        analysedRecord({ uid: "r-fix", host: "srv-fix", summary: "f", status: "resolved" }),
+      ]);
+      const user = userEvent.setup();
+      setup();
+      expect(await screen.findByText("Nothing matches these filters")).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "Show all verdicts" }));
+      expect(order(await rows())).toEqual(["srv-fix"]);
+    });
+
+    it("opens on the filters a shared link carries, and ignores what it cannot read", async () => {
+      mockRecords([DISK, OOM]);
+      setup("/web/dashboard?view=analyses&confidence=high&automatable=bogus&verdict=nonsense");
+      await rows();
+      const confidence = screen.getByRole("radiogroup", { name: "Confidence" });
+      expect(within(confidence).getByRole("radio", { name: "High" })).toHaveAttribute(
+        "aria-checked",
+        "true",
+      );
+      expect(
+        within(screen.getByRole("radiogroup", { name: "Automatable" })).getByRole("radio", {
+          name: "Any",
+        }),
+      ).toHaveAttribute("aria-checked", "true");
+      expect(order(screen.getAllByRole("article"))).toEqual(["srv-victoria1"]);
+    });
+
+    it("makes a filter change a history step, so Back undoes it", async () => {
+      mockRecords([DISK, OOM]);
+      const user = userEvent.setup();
+      const { router } = setup();
+      await rows();
+      const confidence = screen.getByRole("radiogroup", { name: "Confidence" });
+      await user.click(within(confidence).getByRole("radio", { name: "High" }));
+      expect(router.state.location.search).toMatchObject({ confidence: "high" });
+      act(() => router.history.back());
+      await waitFor(() => expect(router.state.location.search).not.toHaveProperty("confidence"));
+      expect(screen.getAllByRole("article")).toHaveLength(2);
+    });
+  });
+
+  describe("closed alerts", () => {
+    const CLOSED = analysedRecord({
+      uid: "r-closed",
+      host: "srv-closed",
+      severity: "critical",
+      state: "close",
+      summary: "Backup upload failed; re-run succeeded",
+      status: "action_required",
+    });
+
+    it("lists them, marked closed, after every alert still in play", async () => {
+      mockRecords([CLOSED, OOM]);
+      setup();
+      const listed = await rows();
+      // A closed Critical sorts after an open Warning: finished work.
+      expect(order(listed)).toEqual(["srv-legacy2", "srv-closed"]);
+      expect(within(listed[1]!).getByText("Closed")).toBeInTheDocument();
+      expect(listed[1]!.closest("li")).toHaveAttribute("data-closed", "true");
+    });
+
+    it("hides them on request, and keeps that in the URL", async () => {
+      mockRecords([CLOSED, OOM]);
+      const user = userEvent.setup();
+      const { router } = setup();
+      await rows();
+      const closed = screen.getByRole("radiogroup", { name: "Closed" });
+      expect(within(closed).getByRole("radio", { name: "Show" })).toHaveAttribute(
+        "aria-checked",
+        "true",
+      );
+      await user.click(within(closed).getByRole("radio", { name: "Hide" }));
+      expect(order(screen.getAllByRole("article"))).toEqual(["srv-legacy2"]);
+      expect(router.state.location.search).toMatchObject({ closed: "hide" });
+    });
+
+    it("offers the toggle only when there is a closed alert to hide", async () => {
+      mockRecords([DISK, OOM]);
+      setup();
+      await rows();
+      expect(screen.queryByRole("radiogroup", { name: "Closed" })).not.toBeInTheDocument();
     });
   });
 
@@ -696,7 +837,7 @@ describe("AnalysesView", () => {
     });
   });
 
-  it("asks for the analysed population and nothing else", async () => {
+  it("asks for the listed population — closed alerts included — and nothing else", async () => {
     // The ratio against the open backlog belongs to the Right-now tile. A
     // second population fetched here would be a denominator with no numerator
     // on screen — and it is what used to print "7 analysed of 6 open".
@@ -714,7 +855,11 @@ describe("AnalysesView", () => {
 
     await rows();
     expect(conditions.length).toBeGreaterThan(0);
-    for (const cond of conditions) expect(cond).toContain('"agentic"');
+    for (const cond of conditions) {
+      expect(cond).toContain('"agentic"');
+      // Closed alerts are listed until the housekeeper expires them.
+      expect(cond).not.toContain('"close"');
+    }
   });
 
   it("does not hide a record it counted just because the subtree is malformed", async () => {
@@ -775,8 +920,9 @@ describe("AnalysesView", () => {
         expect(href).toContain("record=r-disk");
         expect(href).toContain("pane=analysis");
         // The whole analysed set fits on one alerts page, so the table shows
-        // all of it and the drawer's prev/next walks the analysed alerts.
-        expect(href).toContain('search=agentic? AND (NOT state = "close")');
+        // all of it and the drawer's prev/next walks the analysed alerts —
+        // closed ones included, as on the view.
+        expect(href).toContain('search=agentic? AND (NOT state = "shelved")');
       }
     });
 

@@ -20,6 +20,12 @@
 .row[data-accent] > .article {
   box-shadow: inset 3px 0 0 0 var(--row-accent);
 }
+/* Closed: the rail in the closed-state hue instead of the severity, so a
+   closed Critical no longer shouts down the side of the list. The state badge
+   in the header says "Closed" in words. */
+.row[data-closed] > .article {
+  box-shadow: inset 3px 0 0 0 var(--state-closed);
+}
 /* J/K land focus on the article itself. Drawn inside the row so the hairlines
    either side never clip it; mouse focus (a click on the row's text) does not
    match :focus-visible, so reading with a mouse paints nothing. */

@@ -5,10 +5,14 @@
 // whole time the Overview is, so it asks for one row and reads `meta.total`;
 // pulling 50 full alert records every 30 seconds to print that integer is what
 // the tile used to cost. The list is the view's own, and only mounts with it.
-// Both are the SAME predicate (`ANALYSED_OPEN_ALERTS`), so their totals agree —
-// they are two page sizes over one population, not two questions.
+// They are NOT the same predicate: the tile counts the analysed alerts still in
+// play (`ANALYSED_OPEN_ALERTS`), the list also keeps the closed ones until the
+// housekeeper expires them (`ANALYSED_LISTED_ALERTS`) — a closed alert is no
+// longer part of the backlog the tile measures, but its analysis is still the
+// record of what happened. Their totals may differ by exactly the closed
+// analysed alerts.
 //
-// The third is the denominator: the same population minus the analysis clause.
+// The third is the tile's denominator: its population minus the analysis clause.
 // It has to be measured here rather than borrowed from the alerts page's
 // ACTIVE_ALERTS probe, which drops the acknowledged and snoozed rows this
 // numerator deliberately keeps — the two together printed "7 analysed of
@@ -19,7 +23,7 @@ import type { ListResponse } from "@/lib/api/resource";
 import { encodeConditionQ } from "@/lib/condition/serialize";
 import { Records } from "@/features/alerts/api";
 import type { Record_ } from "@/features/alerts/types";
-import { ANALYSED_OPEN_ALERTS, OPEN_ALERTS } from "./analysis-rows";
+import { ANALYSED_LISTED_ALERTS, ANALYSED_OPEN_ALERTS, OPEN_ALERTS } from "./analysis-rows";
 
 /**
  * How many rows the view fetches.
@@ -64,7 +68,8 @@ export function useOpenAlertCount(enabled: boolean): CountQuery {
 }
 
 /**
- * The rows themselves: open alerts carrying an analysis, newest analysis first.
+ * The rows themselves: every analysed alert not shelved — closed ones included —
+ * newest analysis first.
  *
  * The server order is NOT the order on screen — the view sorts client-side
  * (`sortRows`: most urgent by default, newest analysis on request). It still
@@ -75,7 +80,7 @@ export function useOpenAlertCount(enabled: boolean): CountQuery {
  * passed through to the driver untouched. They disagree on where a MISSING
  * `analysis.at` sorts (Postgres puts NULLs first on DESC), which no longer
  * reaches the screen but can decide what a capped fetch keeps — see
- * `ANALYSED_OPEN_ALERTS` for why that is preferred to filtering those rows out.
+ * `ANALYSED_LISTED_ALERTS` for why that is preferred to filtering those rows out.
  *
  * Only called from the view, which is only mounted on `?view=analyses`.
  */
@@ -83,7 +88,7 @@ export function useAnalysedOpenAlerts(): UseQueryResult<ListResponse<Record_>, A
   return Records.useList(
     {
       limit: ANALYSES_ROW_CAP,
-      q: encodeConditionQ(ANALYSED_OPEN_ALERTS),
+      q: encodeConditionQ(ANALYSED_LISTED_ALERTS),
       orderby: "agentic.analysis.at",
       asc: false,
     },

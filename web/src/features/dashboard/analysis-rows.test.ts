@@ -1,10 +1,10 @@
 // The parsing and predicate layer behind the Analyses view. Four things are
 // worth pinning down here rather than through the rendered view:
 //
-//   - the three conditions are ONE population — the tile's denominator, the
-//     list's numerator and the "what is left" link have to be the same set of
-//     alerts minus/plus the analysis clause, or the view states a ratio whose
-//     halves were measured differently;
+//   - the tile's two conditions are ONE population — its numerator and
+//     denominator have to be the same set of alerts minus/plus the analysis
+//     clause, or it states a ratio whose halves were measured differently —
+//     and the list is that population widened by exactly the closed alerts;
 //   - every DSL string this module hands to a link round-trips through the
 //     parser that will read it back;
 //   - a row degrades rather than disappears (the prod analysis predates every
@@ -17,12 +17,16 @@ import { parseText } from "@/lib/condition/text";
 import type { Record_ } from "@/features/alerts/types";
 import {
   ALERTS_PAGE_SIZE,
+  ALL_VERDICTS,
+  ANALYSED_LISTED_ALERTS,
   ANALYSED_OPEN_ALERTS,
-  ANY_FILTERS,
+  DEFAULT_FILTERS,
   OPEN_ALERTS,
   analysedSetSearch,
   filtersActive,
+  filtersFromSearch,
   matchesFilters,
+  searchFromFilters,
   openAlertSearch,
   riskyStepCount,
   sortRows,
@@ -31,19 +35,30 @@ import {
   type AnalysedRow,
 } from "./analysis-rows";
 
-/** The "not finished with" clauses every one of the three conditions carries. */
-const OPEN_CLAUSES = [
-  { type: "NOT", arg: { type: "EQUALS", field: "state", value: "close" } },
+/** What every population leaves out: shelved alerts and the legacy negative TTL. */
+const LISTED_CLAUSES = [
   { type: "NOT", arg: { type: "EQUALS", field: "state", value: "shelved" } },
   { type: "NOT", arg: { type: "LT", field: "ttl", value: 0 } },
 ];
+/** The tile's "not finished with": the listed clauses, closed alerts out too. */
+const OPEN_CLAUSES = [
+  { type: "NOT", arg: { type: "EQUALS", field: "state", value: "close" } },
+  ...LISTED_CLAUSES,
+];
 
-describe("one population", () => {
-  it("measures the list and the tile's denominator over the same clauses", () => {
+describe("the populations", () => {
+  it("measures the tile's numerator and denominator over the same clauses", () => {
     expect(OPEN_ALERTS).toEqual({ type: "AND", args: OPEN_CLAUSES });
     expect(ANALYSED_OPEN_ALERTS).toEqual({
       type: "AND",
       args: [{ type: "EXISTS", field: "agentic" }, ...OPEN_CLAUSES],
+    });
+  });
+
+  it("lists the same analysed alerts plus the closed ones, nothing else", () => {
+    expect(ANALYSED_LISTED_ALERTS).toEqual({
+      type: "AND",
+      args: [{ type: "EXISTS", field: "agentic" }, ...LISTED_CLAUSES],
     });
   });
 });
@@ -69,9 +84,9 @@ describe("uidSearch", () => {
 });
 
 describe("the search an opened row lands on", () => {
-  it("serialises the analysed population itself, and it round-trips", () => {
+  it("serialises the listed population itself (closed included), and it round-trips", () => {
     const parsed = parseText(analysedSetSearch());
-    expect(parsed.ok && parsed.value).toEqual(ANALYSED_OPEN_ALERTS);
+    expect(parsed.ok && parsed.value).toEqual(ANALYSED_LISTED_ALERTS);
   });
 
   it("selects the whole analysed set while it fits on one alerts page", () => {
@@ -289,16 +304,37 @@ describe("riskyStepCount", () => {
 describe("matchesFilters", () => {
   const base = toAnalysedRow(WELL_FORMED)!;
   const row = (patch: Partial<AnalysedRow>): AnalysedRow => ({ ...base, ...patch });
+  const everything = { ...DEFAULT_FILTERS, verdict: ALL_VERDICTS };
 
-  it("lets everything through when nothing is narrowed, degraded rows included", () => {
-    expect(filtersActive(ANY_FILTERS)).toBe(false);
-    expect(matchesFilters(row({ confidence: undefined }), ANY_FILTERS)).toBe(true);
+  it("opens on the verdicts that still ask something of a person", () => {
+    expect(filtersActive(DEFAULT_FILTERS)).toBe(false);
+    expect(matchesFilters(row({ status: "action_required" }), DEFAULT_FILTERS)).toBe(true);
+    expect(matchesFilters(row({ status: "monitoring" }), DEFAULT_FILTERS)).toBe(true);
+    // No verdict has not said it is finished: kept, never hidden silently.
+    expect(matchesFilters(row({ status: undefined }), DEFAULT_FILTERS)).toBe(true);
+    expect(matchesFilters(row({ status: "resolved" }), DEFAULT_FILTERS)).toBe(false);
+    expect(matchesFilters(row({ status: "self_resolved" }), DEFAULT_FILTERS)).toBe(false);
+  });
+
+  it("lets everything through with every verdict ticked, degraded rows included", () => {
+    expect(filtersActive(everything)).toBe(true);
+    for (const status of [
+      "action_required",
+      "monitoring",
+      "self_resolved",
+      "resolved",
+      undefined,
+    ]) {
+      expect(matchesFilters(row({ status: status as AnalysedRow["status"] }), everything)).toBe(
+        true,
+      );
+    }
+    expect(matchesFilters(row({ confidence: undefined }), everything)).toBe(true);
   });
 
   it("reads confidence as a threshold, not a set", () => {
-    const mediumUp = { ...ANY_FILTERS, confidence: "medium" as const };
-    const highOnly = { ...ANY_FILTERS, confidence: "high" as const };
-    expect(filtersActive(mediumUp)).toBe(true);
+    const mediumUp = { ...everything, confidence: "medium" as const };
+    const highOnly = { ...everything, confidence: "high" as const };
     expect(matchesFilters(row({ confidence: "high" }), mediumUp)).toBe(true);
     expect(matchesFilters(row({ confidence: "medium" }), mediumUp)).toBe(true);
     expect(matchesFilters(row({ confidence: "low" }), mediumUp)).toBe(false);
@@ -308,19 +344,61 @@ describe("matchesFilters", () => {
   });
 
   it("answers the automatable question both ways", () => {
-    expect(matchesFilters(row({ automatable: true }), { ...ANY_FILTERS, automatable: "yes" })).toBe(
+    expect(matchesFilters(row({ automatable: true }), { ...everything, automatable: "yes" })).toBe(
       true,
     );
-    expect(matchesFilters(row({ automatable: true }), { ...ANY_FILTERS, automatable: "no" })).toBe(
+    expect(matchesFilters(row({ automatable: true }), { ...everything, automatable: "no" })).toBe(
       false,
     );
   });
 
-  it("filters on the verdict, and a plan with none matches only Any", () => {
-    const monitoring = { ...ANY_FILTERS, verdict: "monitoring" as const };
-    expect(matchesFilters(row({ status: "monitoring" }), monitoring)).toBe(true);
-    expect(matchesFilters(row({ status: "action_required" }), monitoring)).toBe(false);
-    expect(matchesFilters(row({ status: undefined }), monitoring)).toBe(false);
+  it("filters on a set of verdicts", () => {
+    const finished = { ...everything, verdict: ["self_resolved", "resolved"] as const };
+    expect(matchesFilters(row({ status: "resolved" }), finished)).toBe(true);
+    expect(matchesFilters(row({ status: "self_resolved" }), finished)).toBe(true);
+    expect(matchesFilters(row({ status: "monitoring" }), finished)).toBe(false);
+    expect(matchesFilters(row({ status: undefined }), finished)).toBe(false);
+    // Nothing ticked is a real state: nothing matches.
+    expect(matchesFilters(row({ status: "resolved" }), { ...everything, verdict: [] })).toBe(false);
+  });
+
+  it("shows closed alerts unless asked not to", () => {
+    const closedRow = row({ state: "close" });
+    expect(matchesFilters(closedRow, everything)).toBe(true);
+    const hide = { ...everything, closed: "hide" as const };
+    expect(filtersActive({ ...DEFAULT_FILTERS, closed: "hide" })).toBe(true);
+    expect(matchesFilters(closedRow, hide)).toBe(false);
+    expect(matchesFilters(row({ state: "ack" }), hide)).toBe(true);
+  });
+});
+
+describe("the filters in the URL", () => {
+  it("omits every param at its default", () => {
+    expect(searchFromFilters(DEFAULT_FILTERS)).toEqual({});
+    expect(filtersFromSearch({})).toEqual(DEFAULT_FILTERS);
+  });
+
+  it("round-trips every non-default filter", () => {
+    const f = {
+      confidence: "high" as const,
+      automatable: "no" as const,
+      verdict: ["resolved", "action_required"] as const,
+      closed: "hide" as const,
+    };
+    const search = searchFromFilters(f);
+    // One canonical spelling, whatever order the chips were ticked in.
+    expect(search).toEqual({
+      confidence: "high",
+      automatable: "no",
+      verdict: "action_required,resolved",
+      closed: "hide",
+    });
+    expect(filtersFromSearch(search)).toEqual({ ...f, verdict: ["action_required", "resolved"] });
+  });
+
+  it("keeps an empty verdict set as an empty string", () => {
+    expect(searchFromFilters({ ...DEFAULT_FILTERS, verdict: [] })).toEqual({ verdict: "" });
+    expect(filtersFromSearch({ verdict: "" }).verdict).toEqual([]);
   });
 });
 
@@ -330,6 +408,19 @@ describe("sortRows", () => {
     ...base,
     uid,
     ...patch,
+  });
+
+  it("puts a closed alert after every alert still in play, whatever it fired at", () => {
+    const rows = [
+      row("critical-closed", { severity: "critical", state: "close", firedAt: 999 }),
+      row("warning-open", { severity: "warning", firedAt: 100 }),
+      row("warning-closed", { severity: "warning", state: "close", firedAt: 500 }),
+    ];
+    expect(sortRows(rows, "urgent").map((r) => r.uid)).toEqual([
+      "warning-open",
+      "critical-closed",
+      "warning-closed",
+    ]);
   });
 
   it("puts the most urgent first: severity, then unacknowledged, then newest fire", () => {

@@ -2,10 +2,11 @@
 //
 // A radio group, with the whole contract one implies — `radiogroup` +
 // `aria-checked`, one tab stop (the checked option), arrow keys that move the
-// selection and wrap. Every group here is single-select, and the chips used to
-// be a row of `aria-pressed` toggles that looked identical to the multi-select
-// beside them while behaving differently; the role now says which kind of
-// control it is, and so does the picture.
+// selection and wrap. The chips used to be a row of `aria-pressed` toggles
+// that looked identical to the multi-select beside them while behaving
+// differently; the role now says which kind of control it is. The one
+// multi-select (Verdict) is its own component, MultiChoiceGroup: a group of
+// checkboxes drawn in the same vocabulary.
 //
 // The picture: the chosen chip is outlined in the accent with a check and
 // stronger ink; the rest are quiet. Never a solid fill — when every chip of a

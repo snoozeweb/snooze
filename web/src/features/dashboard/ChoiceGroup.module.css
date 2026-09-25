@@ -63,6 +63,24 @@
   color: var(--accent);
 }
 
+/* A one-click selection after a multi-select's options ("All"): a text
+   button, not a chip, so it never reads as one more option to tick. */
+.preset {
+  background: transparent;
+  border: none;
+  padding: var(--space-1) var(--space-2);
+  font: inherit;
+  font-size: var(--text-xs);
+  line-height: var(--leading-tight);
+  color: var(--text-muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.preset:hover {
+  color: var(--text-strong);
+}
+
 /* Phone-width toolbar (AnalysesView's .toolbar is the container): one line
    per group, label then options, the options scrolling sideways instead of
    wrapping. Wrapped, four groups of 44px chips stacked ~300px of controls
@@ -92,14 +110,16 @@
     margin: calc(-1 * var(--space-1));
     mask-image: linear-gradient(to right, #000 calc(100% - var(--space-6)), transparent);
   }
-  .option {
+  .option,
+  .preset {
     flex: none;
     white-space: nowrap;
   }
 }
 
 @media (pointer: coarse) {
-  .option {
+  .option,
+  .preset {
     justify-content: center;
     min-width: var(--touch-target);
     min-height: var(--touch-target);

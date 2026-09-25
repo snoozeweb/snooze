@@ -221,6 +221,17 @@
 
 ### Changed
 
+- **The dashboard's Analyses view keeps closed alerts, and opens on what still
+  needs a person.** Closed analysed alerts stay listed until the housekeeper
+  expires them (`housekeeping.record_ttl`), so `resolved` verdicts and
+  post-mortems are visible; they sort after every alert still in play, say
+  *Closed*, and a new **Closed** filter (*Show* / *Hide*) hides them. The
+  Analysed tile still counts open alerts only. The **Verdict** filter is now a
+  multi-select with a *No verdict* option, opening on Action required +
+  Monitoring + No verdict, with *All* and **Reset to default**. The filters
+  ride in the URL (`confidence`, `automatable`, `verdict`, `closed`, omitted at
+  their default), so a filtered view is a shareable link and Back undoes a
+  change.
 - **`snooze record agentic get` is readable.** It now prints the analysis for a
   human: provenance, verdict and confidence, scope, summary, wrapped detail,
   caveats, evidence, and the plan as numbered Now / Follow-up / Rollback steps

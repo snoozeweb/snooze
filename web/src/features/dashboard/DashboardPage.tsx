@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import type { DashboardSearchParams } from "@/app/dashboardSearch";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Button } from "@/shared/ui/Button";
 import { Card } from "@/shared/ui/Card";
@@ -47,18 +48,11 @@ const LINE_SERIES_KEYS = [
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 const WEEKDAY_KEYS = ["1", "2", "3", "4", "5", "6", "0"] as const;
 
-// Search params backing the view switch and the time-range picker. Mirrors the
-// dashboard route's validateSearch (router.tsx): `view` names the view on
-// screen, `range` is the preset key, plus epoch-ms `from`/`to` for the custom
-// window.
-type DashboardSearch = {
-  view?: DashboardView;
-  /** The Analyses view's order; AnalysesView reads and writes it. */
-  sort?: "recent";
-  range?: TimeRange["range"];
-  from?: number;
-  to?: number;
-};
+// Search params backing the view switch and the time-range picker — the
+// dashboard route's contract (app/dashboardSearch.ts), which also carries the
+// Analyses view's sort and filters. This page only rewrites its own keys and
+// spreads the rest through, so switching views or ranges never resets them.
+type DashboardSearch = DashboardSearchParams;
 
 // TanStack Router's navigate types are locked to the registered route tree at
 // build time. Casting through unknown avoids type errors when the route is
