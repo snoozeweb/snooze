@@ -97,6 +97,13 @@ snooze record agentic status <uid> resolved       # change only the verdict
 snooze record agentic clear <uid>
 ```
 
+`get` prints the analysis for a human — provenance, the verdict chip and
+confidence, scope, summary, detail, caveats before evidence, then the plan as
+numbered **Now** / **Follow-up** / **Rollback** steps with each step's risk and
+its command on a line of its own. `--json` prints the raw subtree. In
+`snooze record show <uid>` the analysis is one digest line (verdict ·
+confidence · summary) pointing at `agentic get`.
+
 The same surface over HTTP:
 
 | Verb | Path | Permission |

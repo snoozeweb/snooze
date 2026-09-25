@@ -226,6 +226,24 @@ The Go schema lives in `internal/config/schema/housekeeper.go`.
 > before the shelve expires — keep `shelve_timeout` below `record_ttl` if you need
 > the alert to survive its shelve.
 
+### resolution_hold
+
+> Type  
+> string (Go duration)
+>
+> Default  
+> `"2h"`
+>
+> How long, after a person closes an alert whose analysis verdict is `resolved`
+> or `self_resolved`, a re-fire of the same aggregate keeps it closed — no
+> re-open, no owner clear, no notification — instead of re-opening it. Covers a
+> source that keeps firing for a while after the fix (a rule over a look-back
+> window). The source reporting recovery ends the hold early; a re-fire after
+> the window, or at a higher severity, re-opens as usual. `0` disables the hold.
+> The window is stamped on the record (`resolution_hold_until`) at close time,
+> so a change applies to the next close. Editable at runtime in **Settings →
+> Housekeeping**. See [Resolution hold](../general/alerts.md#resolution-hold).
+
 ## Ack expiry & auto-escalation
 
 A minute-cadence housekeeper sweep (`escalate_timeout`) enforces the

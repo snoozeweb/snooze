@@ -2,6 +2,35 @@
 
 ### Added
 
+- **Resolution hold.** When a person closes an alert whose analysis verdict is
+  `resolved` or `self_resolved`, a re-fire of the same alert within
+  `housekeeping.resolution_hold` (default 2h, `0` disables, live-editable in
+  Settings) keeps it closed instead of re-opening it, clearing its owner and
+  notifying again — a rule over a look-back window no longer pages for a
+  problem that is already fixed. The occurrence is still counted and the
+  timeline notes the hold once; the source reporting recovery ends it early, and
+  a re-fire at a higher severity is never held. Stored on the record as
+  `resolution_hold_until` / `resolution_hold_noted`; bulk close and open follow
+  the single-record rules.
+- **JIRA tickets hear about the close.** When an alert the `jira` notifier
+  opened a ticket for closes (by a person, a chat command, or automatically),
+  the ticket gets a comment saying who closed it — or that the source
+  recovered — with the latest `Resolved: …` note from the alert timeline, and
+  optionally a transition (new action fields `on_close`: `comment` (default) /
+  `skip`, and `close_transition`: a status, transition name or id; blank by
+  default). Runs in the background: a JIRA failure is written to the alert
+  timeline and never undoes the close; a close that came from JIRA itself is not
+  echoed back. Other notifiers can opt in through the new
+  `plugins.CloseNotifier` interface.
+- **Tool attribution on the timeline.** Comments accept an optional `source`
+  (the tool or agent acting on the user's behalf, ≤ 64 characters), shown next
+  to the author in the web timeline (*snooze via snooze-skill*) and in
+  `snooze record comments` (`snooze (snooze-skill)`); `bulk_state` and
+  `bulk_owner` accept it for the audit summary. Every CLI command that writes to
+  an alert (`ack`, `close`, `reopen`, `escalate`, `comment`, `assign`,
+  `release`, `bulk …`) gains `--source`, defaulting to the new
+  `$SNOOZE_SOURCE`, which `record agentic set|status` also fall back to.
+
 - **Alert ownership.** Every alert can now have an owner, so you can see at a
   glance who is working on what. Acknowledging or closing an alert makes you
   its owner (from the UI, chat commands, the MCP server or `bulk_state`), and
@@ -179,6 +208,12 @@
 
 ### Changed
 
+- **`snooze record agentic get` is readable.** It now prints the analysis for a
+  human: provenance, verdict and confidence, scope, summary, wrapped detail,
+  caveats, evidence, and the plan as numbered Now / Follow-up / Rollback steps
+  with each command on its own line. `--json` keeps the raw subtree. `snooze
+  record show` replaces the one-line JSON blob with a digest (verdict ·
+  confidence · summary) pointing at `agentic get`.
 - **Repeats are folded on an alert's Deliveries and Timeline tabs.** An alert
   that re-notified every quarter of an hour for weeks used to fill 143 pages
   of identical deliveries and 400 pages of "New escalation" entries. Now

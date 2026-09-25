@@ -137,7 +137,32 @@ Used to let people know that the issue related to the alert is resolved. It is n
 
 Alerts can get closed automatically if their **severity** field is in the list of defined **OK Severities** in [Settings](../configuration/index.md)
 
-Closed alerts will stop getting [notified](./notifications.md#frequency) if a frequency has been set. They can be re-opened automatically on a new hit regardless of their [throttle period](./aggregaterules.md).
+Closed alerts will stop getting [notified](./notifications.md#frequency) if a frequency has been set. They can be re-opened automatically on a new hit regardless of their [throttle period](./aggregaterules.md) — except during a resolution hold (below).
+
+Closing an alert also tells the ticketing actions that opened a ticket for it:
+the [JIRA](./integrations/jira.md#on-alert-close) notifier comments on its
+ticket and can transition it.
+
+#### Resolution hold {#resolution-hold}
+
+A fix often outruns the monitoring that raised the alert: a rule over a
+look-back window (a restart count over the last hour, say) keeps firing for a
+while after the problem is gone. Without a hold, the first such occurrence
+re-opens the alert, clears its owner and notifies again — paging for a problem
+that is already fixed.
+
+So when **a person** closes an alert whose [analysis](./agentic_analysis.md)
+verdict is `resolved` or `self_resolved`, the close arms a hold of
+[`housekeeping.resolution_hold`](../configuration/housekeeping.md#resolution_hold)
+(default 2h). While it runs, a re-fire of the same aggregate keeps the alert
+closed: the occurrence is counted (`duplicates`), nothing is notified, the owner
+stays, and the timeline says once *"Source still firing after resolution — kept
+closed (hold until …)"*. The hold ends early when the source reports recovery (a
+close / OK severity arrives), and a re-fire after it ends re-opens as usual. A
+re-fire at a **higher** severity than the stored one is never held — the alert
+got worse than what was fixed. An automatic close, a close without such a
+verdict, a re-open and an escalation arm or keep no hold. The deadline is
+stored on the record as `resolution_hold_until`.
 
 ### Re-open
 
@@ -228,6 +253,14 @@ snooze record list --host db-1 --severity critical -c '["CONTAINS","message","di
 there too: `snooze record reopen <uid>`, `snooze record escalate <uid>`,
 `snooze record comment <uid> -m "…"` (a note, no state change) and
 `snooze record comments <uid>` (the timeline, oldest first).
+
+Every command that writes to an alert (`ack`, `close`, `reopen`, `escalate`,
+`comment`, `assign`, `release`, `bulk …`) takes `--source <tag>`, defaulting to
+`$SNOOZE_SOURCE`: the tool or agent acting for you. It is recorded on the
+timeline entry (and in the bulk audit summary) and shown as
+`snooze (snooze-skill)` in `record comments`. Your login stays the actor. An
+agent sets `SNOOZE_SOURCE` once instead of tagging every call; `record agentic
+set|status` fall back to it for `analysis.source` as well.
 
 Alerts created before ownership existed get an owner from their history with a
 one-shot migration: run `snooze-server migrate owners` once after upgrading
@@ -442,7 +475,11 @@ and **Record** tabs.
 
 By clicking on the grey arrow on an alert, a timeline appears. It contains a history of all events and user interactions related to the alert. There is a possibility to leave a comment as well. An admin can edit or delete any event. By deleting a state event (for example an acknowledgement), the alert goes back to its previous state.
 
-Comments and state changes you make are recorded against your username. The dashboard's **Recent activity** pane lists these attributed user actions, excluding automatic system entries such as escalations and auto-close.
+Comments and state changes you make are recorded against your username. A
+comment may also carry a `source` — the tool or agent that posted it on your
+behalf (the CLI sends `--source` / `$SNOOZE_SOURCE`) — shown next to the name,
+e.g. *snooze via snooze-skill*, so a person and an agent sharing one account
+stay distinguishable. The dashboard's **Recent activity** pane lists these attributed user actions, excluding automatic system entries such as escalations and auto-close.
 
 ## Ingest provenance
 

@@ -347,6 +347,22 @@ func (r *RuntimeSettings) ShelveTimeout(ctx context.Context) time.Duration {
 	return fallback
 }
 
+// ResolutionHold returns the current housekeeping.resolution_hold window — how
+// long a re-fire keeps an alert an operator closed as fixed closed (see
+// internal/resolutionhold). Unlike ShelveTimeout a zero is meaningful: it
+// disables the hold. Falls back to the file-config baseline on a read error.
+func (r *RuntimeSettings) ResolutionHold(ctx context.Context) time.Duration {
+	fallback := schema.DefaultHousekeeper().ResolutionHold.AsDuration()
+	if r == nil {
+		return fallback
+	}
+	hk, err := r.Housekeeper(ctx)
+	if err != nil {
+		return fallback
+	}
+	return hk.ResolutionHold.AsDuration()
+}
+
 // Notification returns the current notification-dispatcher configuration: the
 // file-config baseline with any DB-stored “notification.*“ keys overlaid. Same
 // layering as Housekeeper. The returned value is a copy.
@@ -745,6 +761,7 @@ func applyHousekeeperOverrides(out *HousekeeperConfig, values map[string]any) {
 	overlayDuration(values, "housekeeping.ack_timeout", &out.AckTimeout)
 	overlayDuration(values, "housekeeping.escalate_after", &out.EscalateAfter)
 	overlayDuration(values, "housekeeping.shelve_timeout", &out.ShelveTimeout)
+	overlayDuration(values, "housekeeping.resolution_hold", &out.ResolutionHold)
 }
 
 // overlayDuration writes the value at key into dst, parsing the

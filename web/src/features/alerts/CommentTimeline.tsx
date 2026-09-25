@@ -342,7 +342,10 @@ export function CommentTimeline({
           // Auto-comments (from the housekeeper or aggregaterule plugin) are attributed
           // as "System (auto)" and cannot be edited or deleted.
           const isAuto = (c as { auto?: unknown }).auto === true;
-          const attribution = isAuto ? "System (auto)" : (c.user ?? "system");
+          // A tool acting on the user's behalf is named beside them, so a person
+          // and an agent sharing one account read differently.
+          const author = isAuto ? "System (auto)" : (c.user ?? "system");
+          const attribution = c.source ? `${author} via ${c.source}` : author;
           const isOwn = !!c.user && c.user === currentUser;
           const canEdit = !isAuto && (isOwn || canModerate);
           return (

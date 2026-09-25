@@ -216,6 +216,23 @@ func TestRuntimeSettings_ShelveTimeout(t *testing.T) {
 	require.Equal(t, 90*time.Minute, rs2.ShelveTimeout(ctx))
 }
 
+// TestRuntimeSettings_ResolutionHold verifies the resolution-hold window
+// overlays from the DB, falls back to the 2h baseline, and that an explicit 0
+// (disable) is surfaced as 0 rather than replaced by the default.
+func TestRuntimeSettings_ResolutionHold(t *testing.T) {
+	d := newDriver(t)
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+
+	rs := NewRuntimeSettings(d, Default(), time.Minute)
+	require.Equal(t, 2*time.Hour, rs.ResolutionHold(ctx))
+
+	writeSetting(ctx, t, d, "housekeeping.resolution_hold", "45m")
+	require.Equal(t, 45*time.Minute, NewRuntimeSettings(d, Default(), time.Minute).ResolutionHold(ctx))
+
+	writeSetting(ctx, t, d, "housekeeping.resolution_hold", "0s")
+	require.Equal(t, time.Duration(0), NewRuntimeSettings(d, Default(), time.Minute).ResolutionHold(ctx))
+}
+
 // TestRuntimeSettingsLifecycleTimeoutDefaults checks the cold-start fallback:
 // ack_timeout defaults to 24h, escalate_after to 0 (disabled).
 func TestRuntimeSettingsLifecycleTimeoutDefaults(t *testing.T) {

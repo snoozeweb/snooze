@@ -369,6 +369,34 @@ describe("CommentTimeline", () => {
     expect(screen.queryByText(/System \(auto\)/)).toBeNull();
   });
 
+  it("comment_source_shown_beside_user — a tool acting for the user is named", async () => {
+    mswServer.use(
+      http.get("/api/v1/comment", () =>
+        HttpResponse.json({
+          data: [
+            {
+              uid: "c-src",
+              record_uid: "r1",
+              type: "close",
+              message: "Resolved via the snooze skill",
+              date_epoch: 1000,
+              user: "snooze",
+              source: "snooze-skill",
+            },
+          ],
+          meta: { count: 1, limit: 5, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const Wrapper = wrap();
+    render(
+      <Wrapper>
+        <CommentTimeline recordUid="r1" />
+      </Wrapper>,
+    );
+    await waitFor(() => expect(screen.getByText(/snooze via snooze-skill/)).toBeInTheDocument());
+  });
+
   it("renders one row per comment", async () => {
     mswServer.use(
       http.get("/api/v1/comment", () =>

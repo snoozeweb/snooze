@@ -2035,6 +2035,11 @@ export interface paths {
                         state: "ack" | "close" | "open" | "esc";
                         /** @description Recorded once in the audit summary. */
                         message?: string;
+                        /** @description Optional tag naming the tool or agent acting on the
+                         *     caller's behalf (e.g. `snooze-skill`); recorded in the audit
+                         *     summary as ` [<source>]`.
+                         *      */
+                        source?: string;
                     };
                 };
             };
@@ -2106,6 +2111,11 @@ export interface paths {
                         assignee_method?: string;
                         /** @description Recorded once in the audit summary. */
                         message?: string;
+                        /** @description Optional tag naming the tool or agent acting on the
+                         *     caller's behalf (e.g. `snooze-skill`); recorded in the audit
+                         *     summary as ` [<source>]`.
+                         *      */
+                        source?: string;
                     };
                 };
             };
@@ -5065,6 +5075,23 @@ export interface components {
             previous_owner?: string;
             /** @description Auth method of `previous_owner`. */
             previous_owner_method?: string;
+            /**
+             * Format: int64
+             * @description Resolution-hold deadline (epoch seconds). Stamped by a human close
+             *     as `now + housekeeping.resolution_hold`. While it has not passed and
+             *     the analysis verdict (`agentic.remediation_plan.status`) is
+             *     `resolved` or `self_resolved`, a re-fire of the same aggregate keeps
+             *     the record closed — no re-open, no owner clear, no notification.
+             *     Written `0` by an automatic close, a re-open, an escalation, and the
+             *     source reporting recovery during the hold. An alert payload cannot
+             *     set it.
+             *
+             */
+            readonly resolution_hold_until?: number;
+            /** @description Whether the timeline already carries the "kept closed" note for the
+             *     current hold (one note per hold).
+             *      */
+            readonly resolution_hold_noted?: boolean;
             /** @description Names of the rule-plugin rules this alert matched, in match order.
              *     Stamped by the `rule` plugin.
              *      */
@@ -5151,6 +5178,13 @@ export interface components {
             assignee_method?: string;
             /** @description Free-form note. Must not be empty when present. */
             message?: string;
+            /** @description Optional tag naming the tool or agent that posted the comment on the
+             *     user's behalf (e.g. `snooze-skill`, `alert-rca`), like
+             *     `agentic.analysis.source`. Informational: `user` stays the
+             *     authoritative actor. The CLI sends it from `--source` /
+             *     `$SNOOZE_SOURCE`.
+             *      */
+            source?: string;
             /**
              * Format: int64
              * @description Shelve window in seconds. Only meaningful on a `type: "shelve"`

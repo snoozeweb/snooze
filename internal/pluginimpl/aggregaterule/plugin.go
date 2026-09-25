@@ -46,6 +46,7 @@ import (
 	"github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/ownership"
 	"github.com/snoozeweb/snooze/internal/plugins"
+	"github.com/snoozeweb/snooze/internal/resolutionhold"
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
@@ -381,6 +382,7 @@ func (p *Plugin) matchAggregate(
 	if host == nil || host.DB() == nil {
 		// In tests with no DB the plugin is a no-op pass-through.
 		stripOwnership(rec)
+		stripResolutionHold(rec)
 		rec["duplicates"] = int64(1)
 		rec[fieldFirstSeen] = now.Unix()
 		newSeverity, _ := rec["severity"].(string)
@@ -397,6 +399,7 @@ func (p *Plugin) matchAggregate(
 	if existing == nil {
 		// First occurrence: mark and pass through.
 		stripOwnership(rec)
+		stripResolutionHold(rec)
 		rec["duplicates"] = int64(1)
 		rec[fieldFirstSeen] = now.Unix()
 		newSeverity, _ := rec["severity"].(string)
@@ -450,6 +453,9 @@ func (p *Plugin) matchAggregate(
 	// naming a team, say) must not reassign an alert somebody has taken. The
 	// transitions below that drop the owner overwrite these with a clear.
 	carryOwnership(rec, existing)
+	// The resolution hold is server state on the same terms: the stored value
+	// wins, so an alert payload can neither arm nor lift a hold.
+	carryResolutionHold(rec, existing)
 	// first_seen: the stored value, always — or none, for a row that predates
 	// the field (inventing a start would claim a history we do not have).
 	if v, ok := existing[fieldFirstSeen]; ok {
@@ -502,13 +508,50 @@ func (p *Plugin) matchAggregate(
 			// clear the escalation lifecycle rather than letting the next
 			// delivery inherit a count (and comment on a resolved ticket).
 			resetEscalation(rec)
-			p.queueAutoComment(afterPersist, host, prevUID, "close",
-				fmt.Sprintf("Auto closed: Severity %s => %s", prevSeverity, newSeverity), now)
+			// An automatic close is not a claim that anybody fixed anything.
+			clearResolutionHold(rec)
+			reason := fmt.Sprintf("Severity %s => %s", prevSeverity, newSeverity)
+			p.queueAutoComment(afterPersist, host, prevUID, "close", "Auto closed: "+reason, now)
+			// Tell the notifiers that opened a ticket for this alert, once the
+			// close has been stored (plugins.CloseNotifier).
+			if afterPersist != nil && prevUID != "" {
+				*afterPersist = append(*afterPersist, func(ctx context.Context) {
+					plugins.DispatchClose(ctx, host, prevUID, plugins.CloseEvent{Reason: reason, At: now.UTC()})
+				})
+			}
 			return rec, plugins.ActionContinue, nil
 		}
-		// Already closed.
+		// Already closed. If an operator's resolution hold is running, the
+		// source has now caught up with the fix: end the hold quietly, so a
+		// later occurrence — a genuinely new incident — re-opens as usual.
 		rec["state"] = "close"
+		if resolutionhold.Until(existing) > 0 {
+			clearResolutionHold(rec)
+		}
 		return rec, plugins.ActionAbortUpdate, nil
+	}
+
+	// Resolution hold: an operator closed this alert as fixed (verdict
+	// resolved / self_resolved) and the source is still firing — typically a
+	// rule over a look-back window that has not caught up with the fix yet.
+	// Keep it closed: no re-open, no owner clear, no notification. The
+	// occurrence is still counted (the duplicates bump above) and persisted
+	// (ActionAbortUpdate), and the timeline says so once per hold. Checked
+	// before the watch-field and re-open paths below, both of which would
+	// otherwise re-open a closed aggregate. A severity RISE is not held: the
+	// alert got worse than what was fixed, which is news.
+	if prevState == "close" && trendCmp >= 0 {
+		if until, held := resolutionhold.Held(existing, now.Unix()); held {
+			rec["state"] = "close"
+			if !resolutionhold.Noted(existing) {
+				rec[resolutionhold.FieldNoted] = true
+				rec["comment_count"] = commentCount + 1
+				p.queueAutoComment(afterPersist, host, prevUID, "comment",
+					"Source still firing after resolution — kept closed (hold until "+
+						time.Unix(until, 0).UTC().Format(time.RFC3339)+")", now)
+			}
+			return rec, plugins.ActionAbortUpdate, nil
+		}
 	}
 
 	// Watch-field changes trigger re-escalation / flapping.
@@ -532,6 +575,7 @@ func (p *Plugin) matchAggregate(
 		case "close":
 			rec["state"] = "open"
 			clearOwnership(rec, existing)
+			clearResolutionHold(rec)
 			ctype, msg = "open", "Auto re-opened from watchlist: "+fields
 		case "ack":
 			rec["state"] = "esc"
@@ -563,6 +607,7 @@ func (p *Plugin) matchAggregate(
 		fc := nextFlappingCountdown(flappingCountdown, hasFlap, flapping, throttling)
 		rec["state"] = "open"
 		clearOwnership(rec, existing)
+		clearResolutionHold(rec)
 		rec["flapping_countdown"] = fc
 		rec["comment_count"] = commentCount + 1
 		msg := "Auto re-opened"
@@ -742,7 +787,37 @@ const fieldFirstSeen = "first_seen"
 
 // serverOwnedFields are the record keys an alert payload can never set: the
 // ownership keys and first_seen.
-var serverOwnedFields = append(append([]string{}, ownership.Fields...), fieldFirstSeen)
+var serverOwnedFields = append(append(append([]string{}, ownership.Fields...), resolutionhold.Fields...), fieldFirstSeen)
+
+// stripResolutionHold drops any resolution-hold key an alert payload carries on
+// its first occurrence: only an operator's close arms a hold.
+func stripResolutionHold(rec map[string]any) {
+	for _, k := range resolutionhold.Fields {
+		delete(rec, k)
+	}
+}
+
+// carryResolutionHold copies the stored resolution-hold keys onto a duplicate,
+// overwriting whatever the payload carried (see carryOwnership for the same
+// stored-wins rule). A key the stored row lacks is dropped from the payload.
+func carryResolutionHold(rec map[string]any, existing db.Document) {
+	for _, k := range resolutionhold.Fields {
+		if v, ok := existing[k]; ok {
+			rec[k] = v
+		} else {
+			delete(rec, k)
+		}
+	}
+}
+
+// clearResolutionHold ends any hold on an aggregate this occurrence closes
+// automatically or re-opens. Explicit zeros, never an unset — the pipeline's
+// merge write would leave an absent key untouched.
+func clearResolutionHold(rec map[string]any) {
+	for k, v := range resolutionhold.Clear() {
+		rec[k] = v
+	}
+}
 
 // stripOwnership drops any ownership key an alert payload carries on its first
 // occurrence. Only an operator action makes somebody the owner, so a monitoring

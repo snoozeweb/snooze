@@ -45,6 +45,8 @@ import (
 	"github.com/snoozeweb/snooze/internal/ownership"
 	"github.com/snoozeweb/snooze/internal/plugins"
 	"github.com/snoozeweb/snooze/internal/protected"
+	"github.com/snoozeweb/snooze/internal/resolutionhold"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // recordCollection is the collection the bulk_state endpoint mutates.
@@ -134,6 +136,9 @@ func (rt *Router) bulkUpdateFor(name string) http.HandlerFunc {
 type bulkStateRequest struct {
 	State   string `json:"state"`
 	Message string `json:"message"`
+	// Source is the optional tool tag (see the comment `source` field),
+	// recorded in the audit summary.
+	Source string `json:"source"`
 }
 
 // bulkStateResponse is the JSON envelope bulk_state returns.
@@ -196,8 +201,23 @@ func (rt *Router) handleBulkState(w http.ResponseWriter, r *http.Request) {
 	// straight to the driver, no hook. `record` implements no write hook at
 	// all, so in production this is a pass-through.
 	set := db.Document{"state": req.State}
-	if claims, ok := auth.ClaimsFrom(ctx); ok && claims.Subject != "" && bulkStateTakes[req.State] {
+	claims, hasClaims := auth.ClaimsFrom(ctx)
+	human := hasClaims && claims.Subject != ""
+	if human && bulkStateTakes[req.State] {
 		for k, v := range ownership.Take(claims.Subject, claims.Method, time.Now().Unix()) {
+			set[k] = v
+		}
+	}
+	// The resolution hold follows the single-record close / open / esc: a
+	// human close arms it, a re-open or escalation ends it
+	// (internal/resolutionhold).
+	switch {
+	case req.State == "close" && human:
+		for k, v := range resolutionhold.Start(time.Now().Unix(), rt.resolutionHold(ctx)) {
+			set[k] = v
+		}
+	case req.State == "open" || req.State == "esc":
+		for k, v := range resolutionhold.Clear() {
 			set[k] = v
 		}
 	}
@@ -220,9 +240,9 @@ func (rt *Router) handleBulkState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	summary := req.State
+	summary := req.State + sourceTag(req.Source)
 	if req.Message != "" {
-		summary = req.State + ": " + req.Message
+		summary += ": " + req.Message
 	}
 	rt.auditBulk(ctx, recordCollection, "bulk_state", cond, matched, summary)
 
@@ -265,6 +285,8 @@ type bulkOwnerRequest struct {
 	Assignee       string `json:"assignee"`
 	AssigneeMethod string `json:"assignee_method"`
 	Message        string `json:"message"`
+	// Source is the optional tool tag, recorded in the audit summary.
+	Source string `json:"source"`
 }
 
 // bulkOwnerResponse is the JSON envelope bulk_owner returns. matched counts
@@ -349,6 +371,9 @@ func (rt *Router) handleBulkOwner(w http.ResponseWriter, r *http.Request) {
 	summary := req.Action
 	if req.Action == "assign" {
 		summary += " " + req.Assignee
+	}
+	summary += sourceTag(req.Source)
+	if req.Action == "assign" {
 		open := andCond(cond, condition.Not(condition.Equals("state", "close")))
 		// assign leaves state alone, so the same condition still selects the
 		// assigned rows after the write, which is what auditBulk re-queries.
@@ -426,6 +451,33 @@ func (rt *Router) escalateAfter(ctx context.Context) time.Duration {
 		return rt.Config.Housekeeper.EscalateAfter.AsDuration()
 	}
 	return schema.DefaultHousekeeper().EscalateAfter.AsDuration()
+}
+
+// sourceTag renders an optional tool tag for an audit summary: " [snooze-skill]",
+// or "" when none was given. Clamped like the comment `source` field.
+func sourceTag(src string) string {
+	src = strings.TrimSpace(strings.ReplaceAll(src, "\x00", ""))
+	if src == "" {
+		return ""
+	}
+	if r := []rune(src); len(r) > snoozetypes.MaxSourceLen {
+		src = string(r[:snoozetypes.MaxSourceLen])
+	}
+	return " [" + src + "]"
+}
+
+// resolutionHold resolves the live housekeeping.resolution_hold window with the
+// same preference order as escalateAfter. Zero is honoured: it disables the hold.
+func (rt *Router) resolutionHold(ctx context.Context) time.Duration {
+	if rsh, ok := rt.Host.(plugins.RuntimeSettingsHost); ok {
+		if rs := rsh.RuntimeSettings(); rs != nil {
+			return rs.ResolutionHold(ctx)
+		}
+	}
+	if rt.Config != nil {
+		return rt.Config.Housekeeper.ResolutionHold.AsDuration()
+	}
+	return schema.DefaultResolutionHold
 }
 
 // andCond conjoins a (possibly match-all) ?q condition with an extra

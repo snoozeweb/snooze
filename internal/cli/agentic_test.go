@@ -111,7 +111,14 @@ func TestRecordAgenticGetAndClear(t *testing.T) {
 
 	out, _, err := executeCmd(t, rt, "record", "agentic", "get", "u-1")
 	require.NoError(t, err)
-	require.Contains(t, out, "root_cause")
+	require.Contains(t, out, "Summary\n  disk full")
+
+	rtJSON, _, _ := newTestRuntime(t, srv)
+	rtJSON.flags.Token = "tok"
+	rtJSON.flags.Server = srv.URL
+	out, _, err = executeCmd(t, rtJSON, "record", "agentic", "get", "u-1", "--json")
+	require.NoError(t, err)
+	require.Contains(t, out, `"root_cause"`, "--json keeps the raw subtree")
 
 	rt2, _, _ := newTestRuntime(t, srv)
 	rt2.flags.Token = "tok"

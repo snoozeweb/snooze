@@ -9,6 +9,9 @@
 // comments on that issue instead, optionally raising its priority when severity
 // rose and transitioning it back out of a Done status. See escalate.go.
 //
+// When the alert closes, the issue hears about it too: a comment saying who
+// closed it (and what fixed it), plus an optional transition. See close.go.
+//
 // Auto-close on JIRA-side resolution is still the optional snooze-jira daemon's
 // job (internal/components/jira): it needs to poll JIRA, which an in-process
 // notifier does not do.
@@ -94,8 +97,8 @@ func (p *Plugin) PostInit(_ context.Context, host plugins.Host) error {
 
 // Send delivers a firing record to JIRA. On a first delivery it creates an
 // issue and remembers its key; on a re-escalation of the same alert it updates
-// that issue rather than creating a second one. Close events are a no-op —
-// auto-close is the snooze-jira daemon's responsibility.
+// that issue rather than creating a second one. Close events never reach Send
+// (the dispatcher does not page on a close); they arrive through NotifyClose.
 func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugins.NotificationPayload) error {
 	if rec.State == "close" {
 		return nil
@@ -333,6 +336,14 @@ type config struct {
 	EscalationComment string
 	// LinkType is the issue-link type used when OnEscalation is "new".
 	LinkType string
+
+	// OnClose is what to do on the issue when the alert closes: "comment"
+	// (default) or "skip". See close.go.
+	OnClose string
+	// CloseTransition is the status (or transition name, or numeric transition
+	// id) the issue is moved to when the alert closes. Empty — the default —
+	// leaves the issue's status alone.
+	CloseTransition string
 }
 
 func configFromMeta(meta map[string]any) (config, error) {
@@ -344,6 +355,7 @@ func configFromMeta(meta map[string]any) (config, error) {
 		OnEscalation: escalateReopen,
 		ReopenStatus: defaultReopenStatus,
 		LinkType:     defaultLinkType,
+		OnClose:      closeComment,
 	}
 	if meta == nil {
 		return cfg, fmt.Errorf("jira_url is required")
@@ -398,6 +410,16 @@ func configFromMeta(meta map[string]any) (config, error) {
 	if v := metaString(meta, "link_type"); v != "" {
 		cfg.LinkType = v
 	}
+	// Rejected when unrecognised, for the same reason as on_escalation.
+	switch v := strings.ToLower(strings.TrimSpace(metaString(meta, "on_close"))); v {
+	case closeComment, closeSkip:
+		cfg.OnClose = v
+	case "":
+		// keep the default
+	default:
+		return cfg, fmt.Errorf("on_close %q is not one of comment/skip", v)
+	}
+	cfg.CloseTransition = strings.TrimSpace(metaString(meta, "close_transition"))
 	return cfg, nil
 }
 

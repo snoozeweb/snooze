@@ -4,13 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/ownership"
+	"github.com/snoozeweb/snooze/internal/resolutionhold"
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
@@ -267,4 +270,32 @@ func TestBulkOwner_Release(t *testing.T) {
 		got[a["object_id"]] = true
 	}
 	require.True(t, got[uids[0]] && got[uids[1]])
+}
+
+// A bulk close by a human arms the resolution hold like the single-record
+// close; a bulk open ends it.
+func TestBulkState_ResolutionHold(t *testing.T) {
+	t.Parallel()
+	r, d := bulkHarness(t, false)
+	uids := seedOwnerRecords(t, d, db.Document{"host": "h1", "state": "ack"})
+	q := encodeQ(t, condition.Equals("host", "h1"))
+
+	rec := bulkReq(t, r, "/api/v1/record/bulk_state?q="+q, map[string]any{"state": "close"}, "rw_record")
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	doc := getRecord(t, d, uids[0])
+	until, _ := doc[resolutionhold.FieldUntil].(int64)
+	if f, ok := doc[resolutionhold.FieldUntil].(float64); ok {
+		until = int64(f)
+	}
+	require.Greater(t, until, time.Now().Unix(), "human bulk close arms a hold in the future")
+
+	rec = bulkReq(t, r, "/api/v1/record/bulk_state?q="+q, map[string]any{"state": "open"}, "rw_record")
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.EqualValues(t, 0, getRecord(t, d, uids[0])[resolutionhold.FieldUntil])
+}
+
+func TestSourceTag(t *testing.T) {
+	require.Equal(t, "", sourceTag("  "))
+	require.Equal(t, " [snooze-skill]", sourceTag("snooze-skill"))
+	require.Len(t, []rune(sourceTag(strings.Repeat("é", 100))), 64+3)
 }

@@ -32,6 +32,7 @@ func newRecordAssignCmd() *cobra.Command {
 		},
 	}
 	c.Flags().StringVarP(&message, "message", "m", "", "Comment message (defaults to a generic note)")
+	registerSourceFlag(c)
 	c.Flags().StringVar(&userMethod, "user-method", "",
 		"Auth method of <user> (local, ldap, oidc, …); only needed when the login exists for several methods")
 	return c
@@ -51,6 +52,7 @@ func newRecordReleaseCmd() *cobra.Command {
 		},
 	}
 	c.Flags().StringVarP(&message, "message", "m", "", "Comment message (defaults to a generic note)")
+	registerSourceFlag(c)
 	return c
 }
 
@@ -137,6 +139,7 @@ func (b *bulkTarget) register(c *cobra.Command) {
 	c.Flags().StringVarP(&b.condition, "condition", "c", "", "JSON condition selecting the alerts")
 	c.Flags().BoolVar(&b.all, "all", false, "Target every alert of the tenant (instead of -c)")
 	c.Flags().StringVarP(&b.message, "message", "m", "", "Note recorded once in the audit summary")
+	registerSourceFlag(c)
 }
 
 // path returns the bulk endpoint URL with the target condition, refusing an
@@ -176,6 +179,9 @@ func postBulk(cmd *cobra.Command, target *bulkTarget, endpoint string, body map[
 	}
 	if target.message != "" {
 		body["message"] = target.message
+	}
+	if src := sourceFrom(cmd); src != "" {
+		body["source"] = src
 	}
 	var resp bulkResult
 	if err := cl.Post(cmd.Context(), path, body, &resp); err != nil {

@@ -8,6 +8,10 @@ import "time"
 // before the unshelve-timeout sweep returns the alert to open.
 const DefaultShelveTimeout = 4 * time.Hour
 
+// DefaultResolutionHold is how long a re-fire of an alert an operator closed as
+// fixed keeps it closed (see internal/resolutionhold).
+const DefaultResolutionHold = 2 * time.Hour
+
 // Housekeeper carries the periodic-cleanup tunables. Durations are stored as
 // :type:`Duration` so they accept both Go-style strings and the bare seconds
 // emitted by the legacy Python YAML.
@@ -44,6 +48,14 @@ type Housekeeper struct {
 	// operator picked in the shelve dialog is the one the unshelve-timeout sweep
 	// enforces when it reverts the alert from "shelved" to "open". Default 4h.
 	ShelveTimeout Duration `koanf:"shelve_timeout"`
+	// ResolutionHold is how long, after an operator closes an alert whose
+	// agentic verdict is resolved or self_resolved, a re-fire of the same
+	// aggregate keeps it closed — no re-open, no owner clear, no
+	// re-notification — instead of re-opening it. It covers a source that keeps
+	// firing for a while after the fix (a rule over a look-back window). The
+	// source reporting recovery ends the hold early; a re-fire after the
+	// window re-opens as usual. Default 2h; 0 disables the hold.
+	ResolutionHold Duration `koanf:"resolution_hold"`
 }
 
 // DefaultHousekeeper returns the Python defaults.
@@ -65,5 +77,6 @@ func DefaultHousekeeper() Housekeeper {
 		AckTimeout:             Duration(24 * time.Hour),
 		EscalateAfter:          Duration(0),
 		ShelveTimeout:          Duration(DefaultShelveTimeout),
+		ResolutionHold:         Duration(DefaultResolutionHold),
 	}
 }

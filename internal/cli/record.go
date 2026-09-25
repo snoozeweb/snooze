@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -145,6 +147,14 @@ func newRecordShowCmd() *cobra.Command {
 			if rec == nil {
 				return fmt.Errorf("no record found with uid %s", args[0])
 			}
+			// The analysis is a large nested subtree; in the human view it is
+			// one digest line pointing at `record agentic get`, which renders it
+			// properly. --json keeps the full document.
+			if rt.flags == nil || !rt.flags.JSON {
+				if a, ok := rec["agentic"].(map[string]any); ok {
+					rec["agentic"] = agenticSummaryLine(a, args[0])
+				}
+			}
 			return renderDoc(cmd, rt, rec)
 		},
 	}
@@ -162,6 +172,7 @@ func newRecordAckCmd() *cobra.Command {
 		},
 	}
 	c.Flags().StringVarP(&message, "message", "m", "", "Comment message (defaults to a generic note)")
+	registerSourceFlag(c)
 	return c
 }
 
@@ -177,6 +188,7 @@ func newRecordCloseCmd() *cobra.Command {
 		},
 	}
 	c.Flags().StringVarP(&message, "message", "m", "", "Comment message (defaults to a generic note)")
+	registerSourceFlag(c)
 	return c
 }
 
@@ -231,6 +243,9 @@ func postRecordComment(cmd *cobra.Command, uid, ctype, message, defaultMsg strin
 	body["name"] = name
 	body["method"] = method
 	body["message"] = message
+	if src := sourceFrom(cmd); src != "" {
+		body["source"] = src
+	}
 	var resp any
 	if err := cl.Post(cmd.Context(), "/api/v1/comment", body, &resp); err != nil {
 		return err
@@ -256,6 +271,29 @@ func postRecordComment(cmd *cobra.Command, uid, ctype, message, defaultMsg strin
 	}
 	_, _ = fmt.Fprintln(cmd.OutOrStdout(), line)
 	return nil
+}
+
+// sourceEnv names the environment variable that sets the default --source of
+// every command that writes to an alert, so an agent or skill can tag all its
+// writes once instead of on every call.
+const sourceEnv = "SNOOZE_SOURCE"
+
+// registerSourceFlag adds --source to a command that writes a timeline entry
+// (or a bulk audit row): the tool or agent acting on the user's behalf. The
+// server keeps the authenticated user as the actor and records this next to it,
+// so a human at the CLI and an agent sharing an account stay distinguishable.
+func registerSourceFlag(c *cobra.Command) {
+	c.Flags().String("source", os.Getenv(sourceEnv),
+		"Tool/agent tag recorded next to your login on the timeline (default $"+sourceEnv+")")
+}
+
+// sourceFrom returns the command's --source value, "" when unset or absent.
+func sourceFrom(cmd *cobra.Command) string {
+	f := cmd.Flags().Lookup("source")
+	if f == nil {
+		return ""
+	}
+	return strings.TrimSpace(f.Value.String())
 }
 
 // fetchRecordByUID issues GET /api/v1/record/?q=base64(["=","uid",<uid>])&limit=1

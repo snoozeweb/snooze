@@ -279,6 +279,12 @@ setting_form:
         description: 'Default length of a timed shelve, used when the shelve comment does not name its own duration (Go duration string, e.g. "4h"). A shelve posted from the UI carries the window the operator picked and overrides this; the minute-cadence sweep enforces whichever deadline was stamped. Does not affect the legacy permanent shelve.'
         default_value: '4h'
         group: 'housekeeping'
+    housekeeping.resolution_hold:
+        display_name: 'Resolution hold'
+        component: 'String'
+        description: 'After an operator closes an alert whose analysis verdict is resolved or self_resolved, how long a re-fire of the same alert keeps it closed instead of re-opening, clearing its owner and re-notifying (Go duration string, e.g. "2h"). Covers a source that keeps firing for a while after the fix. The source reporting recovery ends the hold early. Set 0 to disable.'
+        default_value: '2h'
+        group: 'housekeeping'
     # --- Ingest ---------------------------------------------------------------
     ingest.allow:
         display_name: 'Alert intake enabled'

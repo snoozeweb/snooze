@@ -1286,6 +1286,13 @@ paths:
                 message:
                   type: string
                   description: Recorded once in the audit summary.
+                source:
+                  type: string
+                  maxLength: 64
+                  description: |
+                    Optional tag naming the tool or agent acting on the
+                    caller's behalf (e.g. `snooze-skill`); recorded in the audit
+                    summary as ` [<source>]`.
       responses:
         '200':
           description: Bulk state-change counts.
@@ -1344,6 +1351,13 @@ paths:
                 message:
                   type: string
                   description: Recorded once in the audit summary.
+                source:
+                  type: string
+                  maxLength: 64
+                  description: |
+                    Optional tag naming the tool or agent acting on the
+                    caller's behalf (e.g. `snooze-skill`); recorded in the audit
+                    summary as ` [<source>]`.
       responses:
         '200':
           description: Bulk ownership counts.
@@ -3539,6 +3553,25 @@ components:
         previous_owner_method:
           type: string
           description: Auth method of `previous_owner`.
+        resolution_hold_until:
+          type: integer
+          format: int64
+          readOnly: true
+          description: |
+            Resolution-hold deadline (epoch seconds). Stamped by a human close
+            as `now + housekeeping.resolution_hold`. While it has not passed and
+            the analysis verdict (`agentic.remediation_plan.status`) is
+            `resolved` or `self_resolved`, a re-fire of the same aggregate keeps
+            the record closed — no re-open, no owner clear, no notification.
+            Written `0` by an automatic close, a re-open, an escalation, and the
+            source reporting recovery during the hold. An alert payload cannot
+            set it.
+        resolution_hold_noted:
+          type: boolean
+          readOnly: true
+          description: |
+            Whether the timeline already carries the "kept closed" note for the
+            current hold (one note per hold).
         rules:
           type: array
           items: {type: string}
@@ -3647,6 +3680,15 @@ components:
         message:
           type: string
           description: Free-form note. Must not be empty when present.
+        source:
+          type: string
+          maxLength: 64
+          description: |
+            Optional tag naming the tool or agent that posted the comment on the
+            user's behalf (e.g. `snooze-skill`, `alert-rca`), like
+            `agentic.analysis.source`. Informational: `user` stays the
+            authoritative actor. The CLI sends it from `--source` /
+            `$SNOOZE_SOURCE`.
         duration:
           type: integer
           format: int64

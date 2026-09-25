@@ -52,6 +52,13 @@ func TestDefaultHousekeeper_ShelveTimeout(t *testing.T) {
 	require.Equal(t, 4*time.Hour, h.ShelveTimeout.AsDuration())
 }
 
+// TestDefaultHousekeeper_ResolutionHold pins the resolution-hold default: a
+// re-fire within 2h of an operator closing an alert as fixed keeps it closed.
+func TestDefaultHousekeeper_ResolutionHold(t *testing.T) {
+	h := DefaultHousekeeper()
+	require.Equal(t, 2*time.Hour, h.ResolutionHold.AsDuration())
+}
+
 // TestDefaultHousekeeper_CleanupNotificationLog pins the delivery-log
 // retention default at 30 days (720h), the window the cleanup_notificationlog
 // job prunes on.

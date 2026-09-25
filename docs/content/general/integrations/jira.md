@@ -13,7 +13,7 @@ This integration has two modes:
 
 The built-in `jira` notifier is configured entirely in the Snooze web UI under **Notifications → Actions → New → JIRA**. It calls the JIRA Cloud REST API v3 directly from the Snooze server process — no separate daemon, no extra config file.
 
-**What it does:** on an alert's first delivery it creates one JIRA issue and remembers its key. On a [re-escalation](../escalation.md) of the same alert it **comments on that issue instead of opening a second one**, raising the priority if severity rose and transitioning the ticket back out of a Done status. What is not handled here is the reverse direction: resolving the ticket in JIRA does not close the Snooze alert — that needs the daemon below. It appears in the Actions gallery under **Ticketing**, alongside ServiceNow.
+**What it does:** on an alert's first delivery it creates one JIRA issue and remembers its key. On a [re-escalation](../escalation.md) of the same alert it **comments on that issue instead of opening a second one**, raising the priority if severity rose and transitioning the ticket back out of a Done status. When the alert **closes**, it [comments on the ticket](#on-alert-close) and can transition it. What is not handled here is the reverse direction: resolving the ticket in JIRA does not close the Snooze alert — that needs the daemon below. It appears in the Actions gallery under **Ticketing**, alongside ServiceNow.
 
 ### Re-escalation
 
@@ -26,6 +26,26 @@ The built-in `jira` notifier is configured entirely in the Snooze web UI under *
 
 If the recorded ticket has been deleted, the next escalation creates a fresh one
 rather than silently dropping the alert.
+
+### On alert close {#on-alert-close}
+
+A close is not a page, so it never goes through the notification routing.
+Instead, when an alert that this action opened a ticket for closes — by a
+person, a chat command, or automatically when the source recovers — the ticket
+hears about it:
+
+| Field | Effect |
+|---|---|
+| **On alert close** (`on_close`) | `comment` (default) posts who closed the alert (or that it closed automatically, and why), the alert, and the latest `Resolved: …` note from its timeline. `skip` leaves the ticket untouched. |
+| **Close transition** (`close_transition`) | Optional. The status (or transition name, or numeric transition id) to move the ticket to after the comment, e.g. `Done`. Blank — the default — leaves the status alone. Skipped when the ticket is already resolved. |
+
+It runs in the background: a JIRA error never undoes the close; it is written
+to the alert's timeline instead (*Close not synced to action "…": …*), which is
+where you would notice a ticket left open. Each close is synced once (the
+handle records `close_synced_at`). A close that came *from* JIRA — the
+[daemon](#advanced-bidirectional-daemon) closing the alert because the ticket
+was resolved — is not echoed back. Bulk state changes do not sync (they fan out
+nothing per record).
 
 **Action fields** (configured in the Actions editor):
 
@@ -40,6 +60,8 @@ rather than silently dropping the alert.
 | `summary` | no | **Ticket title.** Plain text, or a Go `text/template` over the record fields (default: `[{{ .Severity }}] {{ .Host }} - {{ .Message }}`). |
 | `description` | no | Go `text/template` for the issue description. When blank, a structured ADF description is generated. |
 | `labels` | no | Comma-separated labels applied to every new issue (default: `snooze`). |
+| `on_close` | no | `comment` (default) or `skip` — see [On alert close](#on-alert-close). |
+| `close_transition` | no | Status / transition name / transition id applied when the alert closes (default: none). |
 | `timeout` | no | Per-request timeout as a Go duration (default: `10s`). |
 
 Use the **Send test** button in the Actions editor to create a sample issue and confirm the connection works end-to-end.

@@ -13,6 +13,9 @@ export type Comment = {
   /** Auth method of the author — or the chat-ops channel (teams/jira/mcp)
    *  that relayed it, which is why avatars look people up by login first. */
   method?: string;
+  /** The tool or agent that posted it on the user's behalf ("snooze-skill"),
+   *  shown next to the author. Informational — `user` is the actor. */
+  source?: string;
   /** type=="assign": the login the alert was handed to, and its method. */
   assignee?: string;
   assignee_method?: string;

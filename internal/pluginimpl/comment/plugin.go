@@ -14,7 +14,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/condition"
@@ -22,6 +24,7 @@ import (
 	"github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/ownership"
 	"github.com/snoozeweb/snooze/internal/plugins"
+	"github.com/snoozeweb/snooze/internal/resolutionhold"
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
@@ -106,6 +109,10 @@ func (p *Plugin) Schema() any {
 			// unambiguous in the tenant; GuardWrite fills it in.
 			"assignee":        map[string]any{"type": "string"},
 			"assignee_method": map[string]any{"type": "string"},
+			// The tool or agent that posted the comment on the user's behalf
+			// ("snooze-skill", "alert-rca"), like agentic.source. Client-supplied
+			// and informational: `user` stays the authoritative actor.
+			"source": map[string]any{"type": "string", "maxLength": snoozetypes.MaxSourceLen},
 		},
 		"additionalProperties": true,
 	}
@@ -126,6 +133,17 @@ func (p *Plugin) Validate(obj map[string]any) error {
 	if v, ok := obj["record_uid"]; ok {
 		if s, _ := v.(string); s == "" {
 			return errors.New("comment: record_uid must not be empty")
+		}
+	}
+	if v, ok := obj["source"]; ok && v != nil {
+		src, isString := v.(string)
+		switch {
+		case !isString:
+			return errors.New("comment: source must be a string")
+		case utf8.RuneCountInString(src) > snoozetypes.MaxSourceLen:
+			return fmt.Errorf("comment: source must be at most %d characters", snoozetypes.MaxSourceLen)
+		case strings.ContainsRune(src, 0):
+			return errors.New("comment: source must not contain the NUL character")
 		}
 	}
 	// An assign names its new owner; without one there is nothing to assign.
@@ -313,11 +331,28 @@ func (p *Plugin) AfterCreate(ctx context.Context, docs []map[string]any) error {
 				for k, v := range ownership.ReopenTimers(now, escalateAfter) {
 					patch[k] = v
 				}
+				// Back in play: any resolution hold from an earlier close ends.
+				for k, v := range resolutionhold.Clear() {
+					patch[k] = v
+				}
 			case "close":
 				// Terminal: nothing left to expire, escalate, or unshelve.
 				patch["ack_until"] = int64(0)
 				patch["escalate_at"] = int64(0)
 				patch["shelve_until"] = int64(0)
+				// A human close arms the resolution hold, so a source that keeps
+				// firing for a while after the fix does not re-open the alert and
+				// page again (internal/resolutionhold). The verdict is checked on
+				// the re-fire, not here: the analysis may be marked resolved just
+				// before or just after the close. A user-less close (an
+				// auto-comment) arms nothing.
+				hold := time.Duration(0)
+				if user, _ := doc["user"].(string); user != "" {
+					hold = p.resolutionHold(ctx)
+				}
+				for k, v := range resolutionhold.Start(now, hold) {
+					patch[k] = v
+				}
 			case "shelve":
 				// Park the alert in "shelved" and stamp the auto-return deadline.
 				// The unshelve-timeout sweep reverts it once now passes this.
@@ -393,6 +428,16 @@ func (p *Plugin) AfterCreate(ctx context.Context, docs []map[string]any) error {
 		// other transition.
 		if commentType == "esc" {
 			p.renotify(ctx, uid)
+		}
+		// A close is not a page, so the dispatcher never re-sends it; notifiers
+		// that opened a ticket for this alert hear about it here instead
+		// (plugins.CloseNotifier). Detached and best-effort.
+		if commentType == "close" {
+			user, _ := doc["user"].(string)
+			channel, _ := doc["method"].(string)
+			plugins.DispatchClose(ctx, p.host, uid, plugins.CloseEvent{
+				Actor: user, Channel: channel, At: time.Unix(now, 0).UTC(),
+			})
 		}
 	}
 	return nil
@@ -568,6 +613,25 @@ func (p *Plugin) lifecycleTimeouts(ctx context.Context) (ackTimeout, escalateAft
 		escalateAfter = cfg.Housekeeper.EscalateAfter.AsDuration()
 	}
 	return ackTimeout, escalateAfter
+}
+
+// resolutionHold resolves the live housekeeping.resolution_hold window a human
+// close arms, with the same preference order as lifecycleTimeouts: runtime
+// settings, then the file-config baseline, then the schema default. A zero from
+// either tier is honoured — it disables the hold.
+func (p *Plugin) resolutionHold(ctx context.Context) time.Duration {
+	if p.host == nil {
+		return schema.DefaultResolutionHold
+	}
+	if rsh, ok := p.host.(plugins.RuntimeSettingsHost); ok {
+		if rs := rsh.RuntimeSettings(); rs != nil {
+			return rs.ResolutionHold(ctx)
+		}
+	}
+	if cfg := p.host.Config(); cfg != nil {
+		return cfg.Housekeeper.ResolutionHold.AsDuration()
+	}
+	return schema.DefaultResolutionHold
 }
 
 // shelveTimeout resolves the live timed-shelve window the shelve stamping uses,

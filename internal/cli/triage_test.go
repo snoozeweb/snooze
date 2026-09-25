@@ -233,3 +233,65 @@ func TestRecordAgenticStatusRejects(t *testing.T) {
 		})
 	}
 }
+
+// --source (or $SNOOZE_SOURCE) tags every timeline write with the tool acting
+// on the user's behalf; with neither, no source is sent.
+func TestRecordWritesCarrySource(t *testing.T) {
+	for name, tc := range map[string]struct {
+		env  string
+		args []string
+		want any
+	}{
+		"flag":            {args: []string{"close", "u-1", "--source", "snooze-skill"}, want: "snooze-skill"},
+		"env default":     {env: "alert-rca", args: []string{"ack", "u-1"}, want: "alert-rca"},
+		"flag beats env":  {env: "alert-rca", args: []string{"comment", "u-1", "-m", "x", "--source", "me"}, want: "me"},
+		"assign":          {args: []string{"assign", "u-1", "bob", "--source", "snooze-skill"}, want: "snooze-skill"},
+		"none by default": {args: []string{"release", "u-1"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv(sourceEnv, tc.env)
+			var got map[string]any
+			srv := ownershipServer(t, "", &got)
+			defer srv.Close()
+			rt, _, _ := newTestRuntime(t, srv)
+			rt.flags.Token = "tok"
+
+			_, _, err := executeCmd(t, rt, append([]string{"record"}, tc.args...)...)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got["source"])
+		})
+	}
+}
+
+func TestRecordBulkCarriesSource(t *testing.T) {
+	t.Setenv(sourceEnv, "")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		require.Equal(t, "snooze-skill", body["source"])
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"matched":1,"updated":1,"state":"close"}`))
+	}))
+	defer srv.Close()
+	rt, _, _ := newTestRuntime(t, srv)
+	rt.flags.Token = "tok"
+	_, _, err := executeCmd(t, rt, "record", "bulk", "state", "close", "--all", "--source", "snooze-skill")
+	require.NoError(t, err)
+}
+
+func TestRecordCommentsShowSource(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[
+			{"type":"close","user":"snooze","source":"snooze-skill","message":"Resolved via the snooze skill","date_epoch":1790000000},
+			{"type":"ack","user":"snooze","message":"by hand","date_epoch":1790000060}]}`))
+	}))
+	defer srv.Close()
+	rt, _, _ := newTestRuntime(t, srv)
+	rt.flags.Token = "tok"
+
+	out, _, err := executeCmd(t, rt, "record", "comments", "u-1")
+	require.NoError(t, err)
+	require.Regexp(t, `close\s+snooze \(snooze-skill\)\s+Resolved via the snooze skill`, out)
+	require.Regexp(t, `ack\s+snooze\s+by hand`, out)
+}

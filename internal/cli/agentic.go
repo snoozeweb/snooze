@@ -37,7 +37,7 @@ func newRecordAgenticCmd() *cobra.Command {
 func newAgenticGetCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "get <uid>",
-		Short: "Show the agentic analysis stored on an alert",
+		Short: "Show the agentic analysis stored on an alert (--json for the raw subtree)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rt := runtimeFrom(cmd.Context())
@@ -49,7 +49,15 @@ func newAgenticGetCmd() *cobra.Command {
 			if err := cl.Get(cmd.Context(), agenticPath(args[0]), &resp); err != nil {
 				return renderAgenticError(cmd, err)
 			}
-			return renderAny(cmd, rt, resp.Agentic)
+			if rt.flags != nil && rt.flags.JSON {
+				return renderAny(cmd, rt, resp.Agentic)
+			}
+			a, ok := decodeAgentic(resp.Agentic)
+			if !ok {
+				return renderAny(cmd, rt, resp.Agentic)
+			}
+			renderAgentic(cmd.OutOrStdout(), a)
+			return nil
 		},
 	}
 }
@@ -104,8 +112,8 @@ func newAgenticSetCmd() *cobra.Command {
 			return nil
 		},
 	}
-	c.Flags().StringVar(&source, "source", "snooze-cli",
-		"Tool tag recorded in analysis.source (ignored when the payload sets its own)")
+	c.Flags().StringVar(&source, "source", envOrDefault(sourceEnv, "snooze-cli"),
+		"Tool tag recorded in analysis.source (ignored when the payload sets its own; default $"+sourceEnv+" or snooze-cli)")
 	c.Flags().StringVarP(&file, "file", "f", "",
 		"Read the JSON payload from a file, or - for stdin")
 	return c
@@ -179,7 +187,8 @@ func newAgenticStatusCmd() *cobra.Command {
 			return nil
 		},
 	}
-	c.Flags().StringVar(&source, "source", "snooze-cli", "Tool tag recorded in analysis.source")
+	c.Flags().StringVar(&source, "source", envOrDefault(sourceEnv, "snooze-cli"),
+		"Tool tag recorded in analysis.source (default $"+sourceEnv+" or snooze-cli)")
 	return c
 }
 

@@ -78,6 +78,18 @@ action_form:
         component: String
         default_value: 'Relates'
         description: 'Issue-link type used to connect the follow-up ticket to the original, used only when On re-escalation is "new".'
+    on_close:
+        display_name: On alert close
+        component: Selector
+        default_value: 'comment'
+        options:
+            - {text: 'Comment on the ticket (recommended)', value: comment}
+            - {text: 'Do nothing in JIRA',                   value: skip}
+        description: 'What to do on the ticket when the alert closes. "comment" posts who closed it (or that the source recovered) and the latest "Resolved:" note from the alert timeline, then applies Close transition when one is set. A close that came from JIRA itself (the snooze-jira daemon) is never echoed back.'
+    close_transition:
+        display_name: Close transition
+        component: String
+        description: 'Optional. Status (or transition name, or numeric transition id) the ticket is moved to when the alert closes, e.g. "Done". Blank leaves the ticket status alone. Skipped when the ticket is already resolved; when the workflow offers no such transition the comment is still posted and the failure is noted on the alert timeline.'
     timeout:
         display_name: Timeout
         component: String

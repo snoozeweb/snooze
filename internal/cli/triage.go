@@ -160,6 +160,7 @@ func newRecordReopenCmd() *cobra.Command {
 		},
 	}
 	c.Flags().StringVarP(&message, "message", "m", "", "Comment message (defaults to a generic note)")
+	registerSourceFlag(c)
 	return c
 }
 
@@ -175,6 +176,7 @@ func newRecordEscalateCmd() *cobra.Command {
 		},
 	}
 	c.Flags().StringVarP(&message, "message", "m", "", "Comment message (defaults to a generic note)")
+	registerSourceFlag(c)
 	return c
 }
 
@@ -194,6 +196,7 @@ func newRecordCommentCmd() *cobra.Command {
 		},
 	}
 	c.Flags().StringVarP(&message, "message", "m", "", "The note (required)")
+	registerSourceFlag(c)
 	return c
 }
 
@@ -271,13 +274,20 @@ func commentType(c map[string]any) string {
 	return "comment"
 }
 
-// commentAuthor names who wrote a comment; user-less (automatic) lifecycle
+// commentAuthor names who wrote a comment, followed by the tool tag in
+// parentheses when the comment carries one; user-less (automatic) lifecycle
 // comments read as "system", as they do in the web timeline.
 func commentAuthor(c map[string]any) string {
+	who := "system"
 	if u, _ := c["user"].(string); u != "" {
-		return u
+		who = u
 	}
-	return "system"
+	// The tool that acted on the user's behalf, when it said so: a human at
+	// the CLI and an agent sharing one account read differently.
+	if src, _ := c["source"].(string); src != "" {
+		who += " (" + src + ")"
+	}
+	return who
 }
 
 // commentText is the one-line message, with the assignee spelled out on an
