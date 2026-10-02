@@ -1259,3 +1259,169 @@ func TestSnoozeCRUD_InvalidFilterIs422(t *testing.T) {
 		`{"name":"release","time_constraints":{"datetime":[{"from":"2026-09-21T19:01:42Z","until":"2026-09-21T21:01:42Z"}]}}`)
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 }
+
+// seedRows writes records built from free-form documents and returns their
+// uids in order.
+func seedRows(t *testing.T, h *stubHost, docs ...db.Document) []string {
+	t.Helper()
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+	res, err := h.driver.Write(ctx, recordCollection, docs, db.WriteOptions{UpdateTime: true})
+	require.NoError(t, err)
+	require.Len(t, res.Added, len(docs))
+	return res.Added
+}
+
+// storedRow reads one record back.
+func storedRow(t *testing.T, h *stubHost, uid string) db.Document {
+	t.Helper()
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+	doc, err := h.driver.GetOne(ctx, recordCollection, db.Document{"uid": uid})
+	require.NoError(t, err)
+	return doc
+}
+
+// commentsOf returns the timeline entries stored for a record.
+func commentsOf(t *testing.T, h *stubHost, uid string) []db.Document {
+	t.Helper()
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+	docs, _, err := h.driver.Search(ctx, "comment", condition.Equals("record_uid", uid), db.Page{})
+	require.NoError(t, err)
+	return docs
+}
+
+// TestSnoozeReconcile_ReleasesOpenRows: an open row whose silence ended was
+// never notified while silenced, and the aggregate throttle window opened on
+// that silenced occurrence. The reconcile therefore leaves a release marker
+// (so the next occurrence is let through to notification, see
+// TestSnoozeFilter_Release) and one timeline line saying why the row is back
+// in the alerts list. A closed row needs neither: its next occurrence is a
+// re-open, which notifies anyway, and narrating a closed alert is noise.
+func TestSnoozeReconcile_ReleasesOpenRows(t *testing.T) {
+	t.Parallel()
+	checkReconcileReleasesOpenRows(t, newStubHost(t))
+}
+
+// checkReconcileReleasesOpenRows is the body of
+// TestSnoozeReconcile_ReleasesOpenRows, over any backend's host.
+func checkReconcileReleasesOpenRows(t *testing.T, h *stubHost) {
+	t.Helper()
+	now := time.Date(2026, 10, 1, 20, 0, 0, 0, time.UTC)
+	writeRule(t, h, db.Document{"name": "live", "condition": []any{"=", "a", "1"}})
+	writeRule(t, h, db.Document{"name": "release window", "condition": []any{"=", "a", "1"},
+		"time_constraints": map[string]any{"datetime": []any{map[string]any{
+			"from":  now.Add(-2 * time.Hour).Format(time.RFC3339),
+			"until": now.Add(-time.Hour).Format(time.RFC3339),
+		}}}})
+	writeRule(t, h, db.Document{"name": "paused", "condition": []any{"=", "a", "1"}, "enabled": false})
+	p := newPlugin(t, h, func() time.Time { return now })
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+
+	uids := seedRows(t, h,
+		db.Document{"name": "open-deleted", "snoozed": "OVH release"},
+		db.Document{"name": "closed-deleted", "snoozed": "OVH release", "state": "close"},
+		db.Document{"name": "open-expired", "snoozed": "release window", "state": "open"},
+		db.Document{"name": "acked-disabled", "snoozed": "paused", "state": "ack", "comment_count": int64(2)},
+		db.Document{"name": "open-live", "snoozed": "live"},
+	)
+
+	cleared, err := p.ReconcileSuppression(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 4, cleared)
+
+	wantReason := map[int]string{0: "deleted", 2: "expired", 3: "disabled"}
+	wantName := map[int]string{0: "OVH release", 2: "release window", 3: "paused"}
+	for i, reason := range wantReason {
+		row := storedRow(t, h, uids[i])
+		require.NotContains(t, row, "snoozed", "row %d", i)
+		require.Equal(t, wantName[i], row["snooze_released"], "row %d keeps a release marker", i)
+		cs := commentsOf(t, h, uids[i])
+		require.Len(t, cs, 1, "row %d gets one timeline line", i)
+		require.Equal(t, "comment", cs[0]["type"])
+		require.Equal(t, true, cs[0]["auto"])
+		msg, _ := cs[0]["message"].(string)
+		require.Contains(t, msg, wantName[i])
+		require.Contains(t, msg, reason)
+	}
+	require.EqualValues(t, 1, storedRow(t, h, uids[0])["comment_count"])
+	require.EqualValues(t, 3, storedRow(t, h, uids[3])["comment_count"])
+
+	closed := storedRow(t, h, uids[1])
+	require.NotContains(t, closed, "snoozed")
+	require.NotContains(t, closed, "snooze_released")
+	require.Empty(t, commentsOf(t, h, uids[1]))
+
+	live := storedRow(t, h, uids[4])
+	require.Equal(t, "live", live["snoozed"])
+	require.NotContains(t, live, "snooze_released")
+	require.Empty(t, commentsOf(t, h, uids[4]))
+
+	// Idempotent: nothing left to clear, nothing narrated twice.
+	cleared, err = p.ReconcileSuppression(ctx)
+	require.NoError(t, err)
+	require.Zero(t, cleared)
+	require.Len(t, commentsOf(t, h, uids[0]), 1)
+}
+
+// TestSnoozeFilter_Release pins when the owner lets a held record through.
+// The pipeline calls Filter on a record an earlier plugin stopped with an
+// abort-and-persist verdict — aggregaterule's throttle, above all. If that
+// record was silenced (it carries `snoozed`, or the release marker the
+// reconcile left) and no filter covers it any more, the throttle window it is
+// held in opened on an occurrence nobody was notified about, so the owner
+// answers Release. Everywhere else it does not.
+func TestSnoozeFilter_Release(t *testing.T) {
+	t.Parallel()
+	h := newStubHost(t)
+	writeRule(t, h, db.Document{"name": "WAF", "condition": []any{"=", "process", "WAF alerts"}})
+	p := newPlugin(t, h, nil)
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+
+	t.Run("carried attribution, no filter covers it", func(t *testing.T) {
+		uid := seedRows(t, h, db.Document{"snoozed": "gone"})[0]
+		res, err := p.Filter(ctx, snoozetypes.Record{UID: uid, State: "open", Extra: map[string]any{"snoozed": "gone"}})
+		require.NoError(t, err)
+		require.Equal(t, plugins.ActionContinue, res.Action)
+		require.True(t, res.Release)
+		require.NotContains(t, res.Record.Extra, "snoozed")
+		require.NotContains(t, storedRow(t, h, uid), "snoozed")
+	})
+
+	t.Run("release marker left by the reconcile", func(t *testing.T) {
+		uid := seedRows(t, h, db.Document{"snooze_released": "gone"})[0]
+		res, err := p.Filter(ctx, snoozetypes.Record{UID: uid, State: "open", Extra: map[string]any{"snooze_released": "gone"}})
+		require.NoError(t, err)
+		require.True(t, res.Release)
+		require.NotContains(t, res.Record.Extra, "snooze_released")
+		require.NotContains(t, storedRow(t, h, uid), "snooze_released", "a release is spent once")
+	})
+
+	t.Run("never silenced", func(t *testing.T) {
+		res, err := p.Filter(ctx, snoozetypes.Record{State: "open"})
+		require.NoError(t, err)
+		require.Equal(t, plugins.ActionContinue, res.Action)
+		require.False(t, res.Release, "an ordinary throttled duplicate stays throttled")
+	})
+
+	t.Run("silenced again", func(t *testing.T) {
+		uid := seedRows(t, h, db.Document{"snooze_released": "gone"})[0]
+		res, err := p.Filter(ctx, snoozetypes.Record{UID: uid, State: "open", Process: "WAF alerts",
+			Extra: map[string]any{"snooze_released": "gone"}})
+		require.NoError(t, err)
+		require.Equal(t, plugins.ActionAbortWrite, res.Action)
+		require.False(t, res.Release)
+		require.Equal(t, "WAF", res.Record.Extra["snoozed"])
+		require.NotContains(t, res.Record.Extra, "snooze_released")
+		require.NotContains(t, storedRow(t, h, uid), "snooze_released")
+	})
+
+	t.Run("ordinary pass clears the marker without a release", func(t *testing.T) {
+		// Process runs when nothing held the record: it reaches notification
+		// on its own, so there is nothing to release — only the marker to spend.
+		uid := seedRows(t, h, db.Document{"snooze_released": "gone"})[0]
+		res, err := p.Process(ctx, snoozetypes.Record{UID: uid, State: "open", Extra: map[string]any{"snooze_released": "gone"}})
+		require.NoError(t, err)
+		require.Equal(t, plugins.ActionContinue, res.Action)
+		require.False(t, res.Release)
+		require.NotContains(t, storedRow(t, h, uid), "snooze_released")
+	})
+}

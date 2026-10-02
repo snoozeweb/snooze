@@ -545,6 +545,51 @@ func TestProcessRecord_AbortWrite_FilterKeepsFreshTimestamp(t *testing.T) {
 	require.True(t, drv.lastWriteOpts(recordCollection).UpdateTime)
 }
 
+// TestProcessRecord_AbortUpdate_FilterRelease_ResumesPipeline: a Filter that
+// answers Release is saying "the hold that stopped this record was standing
+// in for my suppression, and that suppression is over" — a throttled
+// duplicate of an alert that was silenced, and so never notified, when the
+// throttle window opened. The record must resume the ordinary loop after the
+// filter, reach the plugins behind it, and be written with Continue semantics
+// so the throttle window restarts at the first real notification.
+func TestProcessRecord_AbortUpdate_FilterRelease_ResumesPipeline(t *testing.T) {
+	t.Parallel()
+	agg := &fakeProcessor{name: "aggregaterule", result: plugins.Result{Action: plugins.ActionAbortUpdate}}
+	snz := &fakeFilter{
+		fakeProcessor: fakeProcessor{name: "snooze"},
+		filterResult:  plugins.Result{Action: plugins.ActionContinue, Release: true},
+	}
+	notif := &fakeProcessor{name: "notification"}
+	c, drv := newPipelineCore(t, agg, snz, notif)
+
+	out, action, err := c.ProcessRecord(pctx(), snoozetypes.Record{UID: "uid-release"})
+	require.NoError(t, err)
+	require.Equal(t, plugins.ActionContinue, action, "a released record completes the pipeline")
+	require.Equal(t, 1, snz.filterCalls)
+	require.Equal(t, 0, snz.calls, "the releasing filter must not also run as a processor")
+	require.Equal(t, 1, notif.calls, "the plugins behind the filter run")
+	require.Equal(t, []string{"aggregaterule", "snooze", "notification"}, out.Plugins)
+	require.Equal(t, 1, drv.writeCount(recordCollection))
+	require.True(t, drv.lastWriteOpts(recordCollection).UpdateTime,
+		"a released record is written like a pass-through, restarting the throttle window")
+}
+
+// TestProcessRecord_Release_IgnoredOutsideTheFilterPass: Release only means
+// something on the abort-and-persist path. A processor returning it from an
+// ordinary Process call is just continuing.
+func TestProcessRecord_Release_IgnoredOutsideTheFilterPass(t *testing.T) {
+	t.Parallel()
+	p1 := &fakeProcessor{name: "snooze", result: plugins.Result{Action: plugins.ActionContinue, Release: true}}
+	notif := &fakeProcessor{name: "notification"}
+	c, drv := newPipelineCore(t, p1, notif)
+
+	_, action, err := c.ProcessRecord(pctx(), snoozetypes.Record{UID: "uid-release-plain"})
+	require.NoError(t, err)
+	require.Equal(t, plugins.ActionContinue, action)
+	require.Equal(t, 1, notif.calls)
+	require.Equal(t, 1, drv.writeCount(recordCollection))
+}
+
 // TestProcessRecord_Abort_SkipsFilters: ActionAbort persists nothing, so there
 // is no write for a filter to have an opinion about.
 func TestProcessRecord_Abort_SkipsFilters(t *testing.T) {

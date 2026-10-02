@@ -758,6 +758,7 @@ func trendString(cmp int) string {
 var carryForwardFields = map[string]bool{
 	// Owned by the snooze plugin; ferried, never interpreted here.
 	"snoozed":           true,
+	"snooze_released":   true,
 	"escalation_count":  true,
 	"escalated_at":      true,
 	"escalation_reason": true,

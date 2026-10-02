@@ -317,3 +317,92 @@ func TestRecoveryOfASilencedAlert_KeepsAttributionAndReachesNotification(t *test
 	require.Equal(t, "WAF processes", stored["snoozed"])
 	require.Contains(t, stored["plugins"], "notification")
 }
+
+// silencedThenReleased is the shared prologue of the release tests below: a
+// filter silences the first occurrence of the WAF alert, so the aggregate's
+// day-long throttle window opens on an occurrence nobody was notified about.
+// It returns the core (with a counting notification stage appended), the
+// driver, the snooze plugin, the record's uid, and the notification probe.
+func silencedThenReleased(t *testing.T) (*Core, db.Driver, *snoozeplugin.Plugin, context.Context, string, *fakeProcessor) {
+	t.Helper()
+	c, drv, snz, ctx := newThrottleCore(t, 3)
+	notif := &fakeProcessor{name: "notification"}
+	c.processOrder = append(c.processOrder, notif)
+
+	_, err := drv.Write(ctx, "snooze", []db.Document{{
+		"name": "OVH release", "condition": []any{"=", "process", "WAF alerts"}, "enabled": true,
+	}}, db.WriteOptions{})
+	require.NoError(t, err)
+	require.NoError(t, snz.Reload(ctx))
+
+	_, action, err := c.ProcessRecord(ctx, wafAlert())
+	require.NoError(t, err)
+	require.Equal(t, plugins.ActionAbortWrite, action)
+	require.Zero(t, notif.calls, "a silenced first occurrence is not notified")
+	rows, _, err := drv.Search(ctx, recordCollection, condition.Cond{}, db.Page{})
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	uid, _ := rows[0]["uid"].(string)
+	require.NotEmpty(t, uid)
+
+	_, err = drv.Delete(ctx, "snooze", condition.Equals("name", "OVH release"), false)
+	require.NoError(t, err)
+	require.NoError(t, snz.Reload(ctx))
+	return c, drv, snz, ctx, uid, notif
+}
+
+// TestSilenceDeleted_NextThrottledOccurrenceNotifies is the live case from
+// 2026-10-01: a release filter silenced "Deployment down" alerts on the OVH
+// cluster, then was deleted, and the reconcile put the rows back in the alerts
+// list. The throttle window had opened on the silenced occurrence, so a repeat
+// inside it was a throttled duplicate — visible, but never notified, for up to
+// a day. Alertmanager's rule is the right one: when a silence ends, an alert
+// that is still firing gets notified. The reconcile leaves a release marker,
+// and the first occurrence after it goes through to notification exactly once.
+func TestSilenceDeleted_NextThrottledOccurrenceNotifies(t *testing.T) {
+	t.Parallel()
+	c, drv, snz, ctx, uid, notif := silencedThenReleased(t)
+
+	cleared, err := snz.ReconcileSuppression(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, cleared)
+
+	_, action, err := c.ProcessRecord(ctx, wafAlert())
+	require.NoError(t, err)
+	require.Equal(t, plugins.ActionContinue, action, "the released occurrence completes the pipeline")
+	require.Equal(t, 1, notif.calls, "the first occurrence after the silence ended is notified")
+
+	stored, err := drv.GetOne(ctx, recordCollection, db.Document{"uid": uid})
+	require.NoError(t, err)
+	require.NotContains(t, stored, "snoozed")
+	require.NotContains(t, stored, "snooze_released", "the release is spent once notified")
+
+	// The throttle window now runs from that notification.
+	_, action, err = c.ProcessRecord(ctx, wafAlert())
+	require.NoError(t, err)
+	require.Equal(t, plugins.ActionAbortUpdate, action)
+	require.Equal(t, 1, notif.calls, "later duplicates are throttled as usual")
+}
+
+// TestSilenceEnded_BeforeReconcile_ThrottledOccurrenceNotifies covers the gap
+// before the minute sweep runs (or a filter whose condition stopped matching):
+// the throttled duplicate still carries `snoozed`, the filter pass finds no
+// filter covering it, and the owner releases it.
+func TestSilenceEnded_BeforeReconcile_ThrottledOccurrenceNotifies(t *testing.T) {
+	t.Parallel()
+	c, drv, _, ctx, uid, notif := silencedThenReleased(t)
+
+	_, action, err := c.ProcessRecord(ctx, wafAlert())
+	require.NoError(t, err)
+	require.Equal(t, plugins.ActionContinue, action)
+	require.Equal(t, 1, notif.calls)
+
+	stored, err := drv.GetOne(ctx, recordCollection, db.Document{"uid": uid})
+	require.NoError(t, err)
+	require.NotContains(t, stored, "snoozed")
+
+	_, action, err = c.ProcessRecord(ctx, wafAlert())
+	require.NoError(t, err)
+	require.Equal(t, plugins.ActionAbortUpdate, action)
+	require.Equal(t, 1, notif.calls)
+}

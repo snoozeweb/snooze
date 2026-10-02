@@ -381,6 +381,16 @@
 
 ### Fixed
 
+- **An alert still firing when its snooze filter ends is notified.** A silenced
+  occurrence started the aggregate throttle window, so after the filter was
+  deleted, disabled or expired, the alert came back to the alerts list but its
+  repeats were throttled duplicates — not notified for up to a day (the
+  "Host and Message" throttle). Now the first occurrence after the silence ends
+  goes through to notification once, and the throttle restarts from it. Open
+  alerts released when a filter goes away carry `snooze_released: <filter>`
+  until then, and get one timeline line saying the filter ended and that they
+  were not notified while silenced. New pipeline verdict for filters:
+  `plugins.Result.Release`.
 - **API-key actions are owned by the key's owner.** Acknowledging or closing an
   alert with an API key (single or `bulk_state`) stamped `owner_method: apikey`,
   which names no user — the owner showed no picture and `--owner` / assignment

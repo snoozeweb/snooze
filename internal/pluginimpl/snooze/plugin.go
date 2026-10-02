@@ -31,6 +31,13 @@
 // Being the owner only works if the plugin actually runs on every occurrence
 // that gets persisted, which is why it also implements plugins.Filter.
 //
+// The two CLEAR branches also end a silence, and a silenced alert was never
+// notified while its aggregate throttle window ran on. So when the filter pass
+// clears an attribution — or the `snooze_released` marker ReconcileSuppression
+// leaves on an open row it un-silences — on a record an earlier plugin is
+// holding, it answers plugins.Result.Release and the record goes on to
+// notification once. The marker is spent by the next pass that sees it.
+//
 // Re-deciding on every occurrence cannot help a row that never fires again, so
 // the owner also reconciles stored attributions against the filters that can
 // still silence anything (ReconcileSuppression): after an API delete or edit
@@ -78,6 +85,16 @@ const (
 	// rule that silenced the alert. Nothing outside this package may write or
 	// delete it — see plugins.SuppressionOwner.
 	attributionField = "snoozed"
+	// releasedField is the release marker, also owned here: the name of a
+	// filter whose silence ended (deleted, expired, disabled) while the
+	// record was still open. Such a record was never notified while silenced,
+	// and its aggregate throttle window opened on that silenced occurrence, so
+	// the next occurrence must be let through to notification — see
+	// plugins.Result.Release. ReconcileSuppression sets it; the next pass that
+	// sees it spends it.
+	releasedField = "snooze_released"
+	// commentCollection holds the record timelines.
+	commentCollection = "comment"
 )
 
 func init() {
@@ -218,8 +235,15 @@ func (p *Plugin) SuppressionField() string { return attributionField }
 // plugin that held it, and the dashboard's Snoozed series counts where the
 // pipeline stopped, so the filter pass records no alert_snoozed stat. The
 // filter's Hits counter still counts it: Hits measures what a filter covers.
+//
+// The other difference is the release. A held record that was silenced —
+// carrying `snoozed`, or the release marker ReconcileSuppression left — and
+// that no filter covers any more is answered with Release: the throttle
+// window holding it opened on an occurrence nobody was notified about, and the
+// silence that justified that is over. Alertmanager behaves the same way: an
+// alert still firing when its silence ends is notified.
 func (p *Plugin) Filter(ctx context.Context, rec snoozetypes.Record) (plugins.Result, error) {
-	return p.decide(ctx, rec, false)
+	return p.decide(ctx, rec, true)
 }
 
 // Process walks the cached rules in load order. The first enabled rule that
@@ -234,12 +258,13 @@ func (p *Plugin) Filter(ctx context.Context, rec snoozetypes.Record) (plugins.Re
 // keep, set or clear, never "leave it to someone else". See the package doc
 // for the table and for the outage that made the ownership explicit.
 func (p *Plugin) Process(ctx context.Context, rec snoozetypes.Record) (plugins.Result, error) {
-	return p.decide(ctx, rec, true)
+	return p.decide(ctx, rec, false)
 }
 
-// decide is the shared body of Process and Filter; recordStat says whether a
-// match is recorded as an alert_snoozed stat (see Filter for why not always).
-func (p *Plugin) decide(ctx context.Context, rec snoozetypes.Record, recordStat bool) (plugins.Result, error) {
+// decide is the shared body of Process and Filter; filterPass says which one
+// is asking. Only the filter pass releases, and only an ordinary pass records
+// a match as an alert_snoozed stat (see Filter for both).
+func (p *Plugin) decide(ctx context.Context, rec snoozetypes.Record, filterPass bool) (plugins.Result, error) {
 	now := p.now()
 	asMap := recordToMap(rec)
 
@@ -296,8 +321,9 @@ func (p *Plugin) decide(ctx context.Context, rec snoozetypes.Record, recordStat 
 		sev := strings.ToLower(strings.TrimSpace(rec.Severity))
 		for _, b := range bypass {
 			if sev == b {
-				p.clearAttribution(ctx, host, &rec)
-				return plugins.Result{Action: plugins.ActionContinue, Record: rec}, nil
+				wasSilenced := p.clearAttribution(ctx, host, &rec, attributionField, releasedField)
+				return plugins.Result{Action: plugins.ActionContinue, Record: rec,
+					Release: filterPass && wasSilenced && rec.State != "close"}, nil
 			}
 		}
 	}
@@ -316,9 +342,14 @@ func (p *Plugin) decide(ctx context.Context, rec snoozetypes.Record, recordStat 
 			rec.Extra = map[string]any{}
 		}
 		rec.Extra[attributionField] = r.Name
+		if !r.Discard {
+			// Silenced again before the release was spent: the marker would
+			// otherwise outlive the silence that superseded it.
+			p.clearAttribution(ctx, host, &rec, releasedField)
+		}
 
 		// Persist alert_snoozed metric for dashboard aggregation.
-		if recordStat {
+		if !filterPass {
 			plugins.RecordStat(ctx, host, rec.DateEpoch, "alert_snoozed", map[string]string{"name": r.Name}, 1)
 		}
 
@@ -337,41 +368,52 @@ func (p *Plugin) decide(ctx context.Context, rec snoozetypes.Record, recordStat 
 	}
 	// ATTRIBUTION: clear. No rule covers this record any more — because it
 	// changed, because the window closed, or because the filter was deleted —
-	// so it must go back to being a visible alert.
-	p.clearAttribution(ctx, host, &rec)
-	return plugins.Result{Action: plugins.ActionContinue, Record: rec}, nil
+	// so it must go back to being a visible alert. If it was silenced and an
+	// earlier plugin is holding it, release it to notification (see Filter);
+	// a close is never held for that reason, so it is not released.
+	wasSilenced := p.clearAttribution(ctx, host, &rec, attributionField, releasedField)
+	return plugins.Result{Action: plugins.ActionContinue, Record: rec,
+		Release: filterPass && wasSilenced && rec.State != "close"}, nil
 }
 
-// clearAttribution removes the attribution from the in-flight record and from
-// the stored row.
+// clearAttribution removes the given owned fields (the attribution, the
+// release marker) from the in-flight record and from the stored row, and
+// reports whether the record carried any of them.
 //
 // Both halves are needed: dropping the key from rec keeps it out of everything
 // downstream and out of the document the pipeline writes, but that write is a
 // MERGE — it cannot remove a key already in storage — so the stored row needs
 // an explicit unset.
 //
-// It is a no-op unless the in-flight record actually carries an attribution,
-// which only happens when aggregaterule ferried one forward from an existing
+// It is a no-op unless the in-flight record actually carries one of them,
+// which only happens when aggregaterule ferried it forward from an existing
 // row. A first occurrence therefore costs nothing, and the DB round-trip is
 // paid only on the occurrence that genuinely changes the answer.
-func (p *Plugin) clearAttribution(ctx context.Context, host plugins.Host, rec *snoozetypes.Record) {
+func (p *Plugin) clearAttribution(ctx context.Context, host plugins.Host, rec *snoozetypes.Record, fields ...string) bool {
 	if rec.Extra == nil {
-		return
+		return false
 	}
-	if _, carried := rec.Extra[attributionField]; !carried {
-		return
-	}
-	delete(rec.Extra, attributionField)
-	if rec.UID == "" || host == nil || host.DB() == nil {
-		return
-	}
-	if _, err := host.DB().UnsetFields(ctx, recordCollection,
-		[]string{attributionField}, condition.Equals("uid", rec.UID)); err != nil {
-		if lg := host.Logger(); lg != nil {
-			lg.Warn("snooze: clear stale attribution",
-				"uid", rec.UID, "err", err)
+	var carried []string
+	for _, f := range fields {
+		if _, ok := rec.Extra[f]; ok {
+			carried = append(carried, f)
+			delete(rec.Extra, f)
 		}
 	}
+	if len(carried) == 0 {
+		return false
+	}
+	if rec.UID == "" || host == nil || host.DB() == nil {
+		return true
+	}
+	if _, err := host.DB().UnsetFields(ctx, recordCollection,
+		carried, condition.Equals("uid", rec.UID)); err != nil {
+		if lg := host.Logger(); lg != nil {
+			lg.Warn("snooze: clear stale attribution",
+				"uid", rec.UID, "fields", carried, "err", err)
+		}
+	}
+	return true
 }
 
 // ReconcileSuppression implements plugins.SuppressionOwner: for the tenant in
@@ -385,6 +427,14 @@ func (p *Plugin) clearAttribution(ctx context.Context, host plugins.Host, rec *s
 // rows re-decide on their next occurrence, and clearing them here would pull
 // every quiet overnight alert into the list each morning.
 //
+// An open row it clears also gets the release marker and one timeline line.
+// The row was never notified while silenced and now shows up in the alerts
+// list with no new occurrence, so the line says why; the marker makes its next
+// occurrence notify even inside the aggregate throttle window (see Filter). A
+// closed row gets neither: its next occurrence is a re-open, which notifies on
+// its own. Cost: one record query per sweep, as before; the writes happen
+// once, only for rows that are actually released, in batches.
+//
 // The live set is read from the database, not the in-memory cache, so the
 // answer never lags a syncer reload.
 func (p *Plugin) ReconcileSuppression(ctx context.Context) (int, error) {
@@ -394,18 +444,34 @@ func (p *Plugin) ReconcileSuppression(ctx context.Context) (int, error) {
 	if host == nil || host.DB() == nil {
 		return 0, nil
 	}
-	docs, _, err := host.DB().Search(ctx, collectionName, condition.Cond{}, db.Page{})
+	d := host.DB()
+	docs, _, err := d.Search(ctx, collectionName, condition.Cond{}, db.Page{})
 	if err != nil {
 		return 0, fmt.Errorf("snooze: reconcile: list filters: %w", err)
 	}
 	now := p.now()
 	var live []condition.Cond
-	for _, d := range docs {
-		r, err := docToRule(d)
-		if err != nil || !r.Enabled || r.Name == "" {
+	// why names the reason a filter that still exists silences nothing; a
+	// name missing from it no longer exists at all.
+	why := map[string]string{}
+	for _, doc := range docs {
+		name, _ := doc["name"].(string)
+		r, err := docToRule(doc)
+		switch {
+		case name == "":
+			continue
+		case err != nil:
+			why[name] = "is invalid"
+			continue
+		case !r.Enabled:
+			why[name] = "was disabled"
 			continue
 		}
-		if status, _ := classify(d["time_constraints"], now); status == "" || status == statusExpired {
+		if status, _ := classify(doc["time_constraints"], now); status == "" {
+			why[name] = "is invalid"
+			continue
+		} else if status == statusExpired {
+			why[name] = "expired"
 			continue
 		}
 		live = append(live, condition.Equals(attributionField, r.Name))
@@ -414,16 +480,116 @@ func (p *Plugin) ReconcileSuppression(ctx context.Context) (int, error) {
 	if len(live) > 0 {
 		stale = condition.And(stale, condition.Not(condition.Or(live...)))
 	}
-	n, err := host.DB().UnsetFields(ctx, recordCollection, []string{attributionField}, stale)
+	rows, _, err := d.Search(ctx, recordCollection, stale, db.Page{})
 	if err != nil {
-		return 0, fmt.Errorf("snooze: reconcile: clear stale attribution: %w", err)
+		return 0, fmt.Errorf("snooze: reconcile: find stale attribution: %w", err)
 	}
-	if n > 0 {
-		if lg := host.Logger(); lg != nil {
-			lg.Info("snooze: cleared attribution of filters that no longer silence", "records", n)
+	if len(rows) == 0 {
+		return 0, nil
+	}
+
+	all := make([]string, 0, len(rows))
+	released := map[string][]string{} // filter name → open row uids
+	for _, row := range rows {
+		uid, _ := row["uid"].(string)
+		if uid == "" {
+			continue
+		}
+		all = append(all, uid)
+		if state, _ := row["state"].(string); state == "close" {
+			continue
+		}
+		name, _ := row[attributionField].(string)
+		released[name] = append(released[name], uid)
+	}
+
+	// Marker first, attribution second: a failure in between leaves the
+	// attribution in place for the next sweep to retry.
+	for name, uids := range released {
+		if err := forUIDs(uids, func(c condition.Cond) error {
+			_, err := d.SetFields(ctx, recordCollection, db.Document{releasedField: name}, c)
+			return err
+		}); err != nil {
+			return 0, fmt.Errorf("snooze: reconcile: mark released: %w", err)
 		}
 	}
-	return n, nil
+	cleared := 0
+	if err := forUIDs(all, func(c condition.Cond) error {
+		n, err := d.UnsetFields(ctx, recordCollection, []string{attributionField}, c)
+		cleared += n
+		return err
+	}); err != nil {
+		return 0, fmt.Errorf("snooze: reconcile: clear stale attribution: %w", err)
+	}
+	p.narrateRelease(ctx, host, released, why, now)
+
+	if lg := host.Logger(); lg != nil {
+		lg.Info("snooze: cleared attribution of filters that no longer silence", "records", cleared)
+	}
+	return cleared, nil
+}
+
+// narrateRelease writes the one timeline line per released row, in one bulk
+// insert, and bumps the rows' comment_count to match. Best-effort: the
+// release itself has already landed, and a missing line must not undo it.
+func (p *Plugin) narrateRelease(ctx context.Context, host plugins.Host, released map[string][]string, why map[string]string, now time.Time) {
+	d := host.DB()
+	var comments []db.Document
+	var uids []string
+	for name, rows := range released {
+		reason, ok := why[name]
+		if !ok {
+			reason = "was deleted or renamed"
+		}
+		msg := fmt.Sprintf("Snooze filter %q %s — the alert is no longer silenced. "+
+			"It was not notified while silenced; its next occurrence will be.", name, reason)
+		for _, uid := range rows {
+			comments = append(comments, db.Document{
+				"record_uid": uid,
+				"type":       "comment",
+				"message":    msg,
+				"date_epoch": now.Unix(),
+				"auto":       true,
+			})
+			uids = append(uids, uid)
+		}
+	}
+	if len(comments) == 0 {
+		return
+	}
+	warn := func(msg string, err error) {
+		if lg := host.Logger(); lg != nil {
+			lg.Warn(msg, "records", len(uids), "err", err)
+		}
+	}
+	if _, err := d.Write(ctx, commentCollection, comments, db.WriteOptions{UpdateTime: true}); err != nil {
+		warn("snooze: reconcile: write release comments", err)
+		return
+	}
+	if err := forUIDs(uids, func(c condition.Cond) error {
+		_, err := d.IncMany(ctx, recordCollection, "comment_count", c, 1)
+		return err
+	}); err != nil {
+		warn("snooze: reconcile: bump comment_count", err)
+	}
+}
+
+// uidBatch bounds the OR-of-uids conditions built by forUIDs.
+const uidBatch = 200
+
+// forUIDs calls fn with a condition matching each batch of uids.
+func forUIDs(uids []string, fn func(condition.Cond) error) error {
+	for start := 0; start < len(uids); start += uidBatch {
+		end := min(start+uidBatch, len(uids))
+		match := make([]condition.Cond, 0, end-start)
+		for _, uid := range uids[start:end] {
+			match = append(match, condition.Equals("uid", uid))
+		}
+		if err := fn(condition.Or(match...)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // AfterDelete reconciles as soon as a filter is deleted through the API, so

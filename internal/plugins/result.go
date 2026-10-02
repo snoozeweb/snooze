@@ -56,6 +56,17 @@ type Result struct {
 	// transition that was not stored. Each runs under the pipeline's
 	// tenant-scoped context and must be best-effort: it cannot fail the record.
 	AfterPersist []func(context.Context)
+	// Release is meaningful only from Filter.Filter, on the abort-and-persist
+	// path: the plugin that held the record (aggregaterule's throttle, in
+	// practice) was holding an alert this filter had silenced, and that
+	// silence is over. A held duplicate inside a throttle window that opened
+	// on a silenced — never notified — occurrence would otherwise stay
+	// un-notified for the rest of the window. With Release the record resumes
+	// the ordinary loop right after the filter, so the plugins behind it
+	// (notification) run, and it is written with pass-through semantics, so
+	// the throttle window restarts from that first real notification.
+	// Action must be ActionContinue. Ignored everywhere else.
+	Release bool
 }
 
 // NotificationPayload is the rendered content a Notifier consumes.

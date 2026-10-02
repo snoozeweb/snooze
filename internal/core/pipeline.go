@@ -82,7 +82,8 @@ func (c *Core) processRecordInner(ctx context.Context, rec snoozetypes.Record) (
 	// afterPersist collects every plugin's plugins.Result.AfterPersist effects;
 	// they run once the record is written and are dropped if it is discarded.
 	var afterPersist []func(context.Context)
-	for i, p := range c.processOrder {
+	for i := 0; i < len(c.processOrder); i++ {
+		p := c.processOrder[i]
 		name := p.Name()
 		rec.Plugins = append(rec.Plugins, name)
 
@@ -122,16 +123,25 @@ func (c *Core) processRecordInner(ctx context.Context, rec snoozetypes.Record) (
 			// plugins.Filter. A Filter that drops the record cancels the
 			// write; anything else keeps this plugin's write semantics
 			// (abort_write bumps date_epoch, abort_update does not).
-			filtered, fx, drop, fname, ferr := c.runFilters(ctx, rec, i+1)
+			filtered, fx, verdict, fname, ferr := c.runFilters(ctx, rec, i+1)
 			rec = filtered
 			if ferr != nil {
 				return c.abortWithException(ctx, rec, fname, ferr, afterPersist)
 			}
 			afterPersist = append(afterPersist, fx...)
-			if drop {
+			if verdict.drop {
 				c.recordHit(fname, plugins.ActionAbort)
 				c.recordStatHit(ctx, rec)
 				return rec, plugins.ActionAbort, nil
+			}
+			if verdict.release >= 0 {
+				// The hold was standing in for a suppression that has
+				// ended (see plugins.Result.Release): resume the ordinary
+				// loop after the releasing filter. Plugins between the
+				// holder and that filter are not Filters, and were
+				// skipped by the hold — the default order has none.
+				i = verdict.release
+				continue
 			}
 			updateTime := res.Action == plugins.ActionAbortWrite
 			if err := c.writeRecord(ctx, rec, updateTime); err != nil {
@@ -161,21 +171,23 @@ func (c *Core) processRecordInner(ctx context.Context, rec snoozetypes.Record) (
 // runFilters gives every plugins.Filter processor at or after index start a
 // say on a record whose pipeline run was cut short by an abort-and-persist
 // verdict. It returns the (possibly mutated) record, the filters'
-// plugins.Result.AfterPersist effects, whether the record must be dropped
-// instead of written, and — when a filter errored — that filter's name and the
-// error.
+// plugins.Result.AfterPersist effects, the pass's verdict (drop the record
+// instead of writing it, or release it back into the ordinary loop), and —
+// when a filter errored — that filter's name and the error.
 //
 // The pass is deliberately narrow: it runs only on the abort-and-persist
 // paths, never instead of the normal loop, so a plugin is never asked twice
 // about the same record. Plugins that do not implement Filter are skipped —
 // they are not suppression decisions, and their side effects (notifications,
 // above all) must stay suppressed by the abort.
-func (c *Core) runFilters(ctx context.Context, rec snoozetypes.Record, start int) (snoozetypes.Record, []func(context.Context), bool, string, error) {
+func (c *Core) runFilters(ctx context.Context, rec snoozetypes.Record, start int) (snoozetypes.Record, []func(context.Context), filterVerdict, string, error) {
+	none := filterVerdict{release: -1}
 	if start < 0 || start >= len(c.processOrder) {
-		return rec, nil, false, "", nil
+		return rec, nil, none, "", nil
 	}
 	var fx []func(context.Context)
-	for _, p := range c.processOrder[start:] {
+	for idx := start; idx < len(c.processOrder); idx++ {
+		p := c.processOrder[idx]
 		f, ok := p.(plugins.Filter)
 		if !ok {
 			continue
@@ -191,15 +203,28 @@ func (c *Core) runFilters(ctx context.Context, rec snoozetypes.Record, start int
 				Observe(time.Since(startFilter).Seconds())
 		}
 		if err != nil {
-			return rec, nil, false, name, err
+			return rec, nil, none, name, err
 		}
 		rec = res.Record
 		if res.Action == plugins.ActionAbort {
-			return rec, nil, true, name, nil
+			return rec, nil, filterVerdict{drop: true, release: -1}, name, nil
 		}
 		fx = append(fx, res.AfterPersist...)
+		if res.Release && res.Action == plugins.ActionContinue {
+			// The remaining Filters run as ordinary processors once the
+			// loop resumes, so none is asked twice.
+			return rec, fx, filterVerdict{release: idx}, "", nil
+		}
 	}
-	return rec, fx, false, "", nil
+	return rec, fx, none, "", nil
+}
+
+// filterVerdict is what the filter pass decided about a held record: drop it
+// (a filter discarded it), release it (release is the index of the filter
+// that let it through; -1 for none), or neither — keep the holder's write.
+type filterVerdict struct {
+	drop    bool
+	release int
 }
 
 // abortWithException is the shared failure path for a processor (or filter)

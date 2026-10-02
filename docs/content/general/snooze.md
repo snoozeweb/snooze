@@ -121,6 +121,31 @@ by the minute-cadence `reconcile_suppression` housekeeping sweep, which also
 covers a cluster peer that re-stamped a filter's name just after it was
 deleted.
 
+A released alert that is still **open** also gets one line on its timeline —
+for example `Snooze filter "OVH release" was deleted — the alert is no longer
+silenced. It was not notified while silenced; its next occurrence will be.` —
+so a row that reappears in the alerts list without a new occurrence explains
+itself. Closed alerts are released silently. The sweep costs one record query
+per minute; the timeline lines are written once, in bulk, only for the rows
+actually released.
+
+### The first occurrence after a silence ends is notified
+
+A silenced alert was never notified, but its [aggregate
+rule](./aggregaterules.md)'s throttle window started on that silenced
+occurrence. Without special handling, an alert still firing when its silence
+ends would be stored as a throttled duplicate — back in the alerts list, but
+not notified until the throttle window ran out, up to a day later.
+
+So the first occurrence after the silence ends goes through to your
+[notifications](./notifications.md), whatever the throttle says, and the
+throttle window restarts from that notification. Later repeats are throttled as
+usual. This is how Alertmanager treats an expired silence too. It applies
+whether the silence ended through the release above (the alert carries
+`snooze_released: <filter name>` until its next occurrence) or by its next
+occurrence simply matching no filter any more. A recovery (`close`) is never
+released this way; it is notified like any close.
+
 ## Web interface
 
 ![](./images/web_snooze.png)

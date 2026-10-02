@@ -3632,6 +3632,13 @@ components:
           description: |
             Name of the snooze rule that silenced this alert, when one matched.
             Present only on snoozed alerts; absent otherwise.
+        snooze_released:
+          type: string
+          description: |
+            Name of the snooze rule whose silence ended (deleted, disabled,
+            renamed or expired) while this alert was still open. Its next
+            occurrence is notified even inside the aggregate throttle window,
+            and the field is removed. Absent otherwise.
         notifications:
           type: array
           items: {type: string}
