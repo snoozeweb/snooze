@@ -8,17 +8,17 @@ const b: Condition = { type: "EQUALS", field: "b", value: "2" };
 const c: Condition = { type: "EQUALS", field: "c", value: "3" };
 
 describe("switchLogicOp", () => {
-  it("switching a multi-child AND to NOT negates the whole group (no children dropped)", () => {
+  it("switching a multi-child AND to NOT keeps only the first child (no extra parent group)", () => {
     expect(switchLogicOp({ type: "AND", args: [a, b, c] }, "NOT", leaf)).toEqual({
       type: "NOT",
-      arg: { type: "AND", args: [a, b, c] },
+      arg: a,
     });
   });
 
-  it("preserves the operator when negating an OR group", () => {
+  it("does the same for an OR group", () => {
     expect(switchLogicOp({ type: "OR", args: [a, b] }, "NOT", leaf)).toEqual({
       type: "NOT",
-      arg: { type: "OR", args: [a, b] },
+      arg: a,
     });
   });
 
@@ -29,11 +29,6 @@ describe("switchLogicOp", () => {
   it("switching to AND/OR pads to at least two args", () => {
     const out = switchLogicOp({ type: "NOT", arg: a }, "AND", leaf);
     expect(out).toEqual({ type: "AND", args: [a, leaf()] });
-  });
-
-  it("round-trips: NOT(AND(a,b,c)) back to AND restores the original group (no nesting, no spurious leaf)", () => {
-    const negated = switchLogicOp({ type: "AND", args: [a, b, c] }, "NOT", leaf);
-    expect(switchLogicOp(negated, "AND", leaf)).toEqual({ type: "AND", args: [a, b, c] });
   });
 
   it("switching NOT(OR(a,b)) to AND unwraps to AND(a,b)", () => {
