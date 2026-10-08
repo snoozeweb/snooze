@@ -1,2114 +1,388 @@
-## Unreleased
+## v2.6.0
 
 ### Added
 
-- **Resolution hold.** When a person closes an alert whose analysis verdict is
-  `resolved` or `self_resolved`, a re-fire of the same alert within
-  `housekeeping.resolution_hold` (default 2h, `0` disables, live-editable in
-  Settings) keeps it closed instead of re-opening it, clearing its owner and
-  notifying again — a rule over a look-back window no longer pages for a
-  problem that is already fixed. The occurrence is still counted and the
-  timeline notes the hold once; the source reporting recovery ends it early, and
-  a re-fire at a higher severity is never held. Stored on the record as
-  `resolution_hold_until` / `resolution_hold_noted`; bulk close and open follow
-  the single-record rules.
-- **JIRA tickets hear about the close.** When an alert the `jira` notifier
-  opened a ticket for closes (by a person, a chat command, or automatically),
-  the ticket gets a comment saying who closed it — or that the source
-  recovered — with the latest `Resolved: …` note from the alert timeline, and
-  optionally a transition (new action fields `on_close`: `comment` (default) /
-  `skip`, and `close_transition`: a status, transition name or id; blank by
-  default). Runs in the background: a JIRA failure is written to the alert
-  timeline and never undoes the close; a close that came from JIRA itself is not
-  echoed back. Other notifiers can opt in through the new
-  `plugins.CloseNotifier` interface.
-- **API keys in the CLI.** `client.yaml` takes a `credentials.token` (a
-  personal `snz_…` API key, or any bearer token) that replaces the
-  username/password login; precedence is `--token` > `$SNOOZE_TOKEN` > the file.
-  New `snooze apikey create|list|revoke` manage your keys (create shows the key
-  once, with the `client.yaml` snippet, and makes you choose the permissions —
-  there is no "grant everything" default), `snooze whoami` shows who the server
-  sees, and `--owner me` asks the server when the credential is an API key. The
-  CLI warns when a `client.yaml` holding a secret is readable by other users. A
-  rejected API key is final (`snoozeclient.ErrAPIKeyRejected`): the client no
-  longer falls back to logging in with a username/password from the same file.
-- **`GET /api/v1/user/me`** returns the verified caller identity — name, login
-  method, `via` (`session` / `apikey`), tenant, roles, effective permissions,
-  and for a key its uid, name, prefix and expiry.
-- **Tool attribution on the timeline.** Comments accept an optional `source`
-  (the tool or agent acting on the user's behalf, ≤ 64 characters), shown next
-  to the author in the web timeline (*snooze via snooze-skill*) and in
-  `snooze record comments` (`snooze (snooze-skill)`); `bulk_state` and
-  `bulk_owner` accept it for the audit summary. Every CLI command that writes to
-  an alert (`ack`, `close`, `reopen`, `escalate`, `comment`, `assign`,
-  `release`, `bulk …`) gains `--source`, defaulting to the new
-  `$SNOOZE_SOURCE`, which `record agentic set|status` also fall back to.
-
-- **Alert ownership.** Every alert can now have an owner, so you can see at a
-  glance who is working on what. Acknowledging or closing an alert makes you
-  its owner (from the UI, chat commands, the MCP server or `bulk_state`), and
-  two new actions, **Assign to…** and **Release**, hand an alert to someone
-  else or give it back (releasing an acknowledged alert returns it to `open`).
-  Re-opening or re-escalating an alert clears the owner, and so does every
-  automatic comeback: a closed alert received again, an aggregate-rule
-  re-escalation, an expired acknowledgement or the escalation timeout. The last
-  owner then stays visible as a faded avatar. An automatic close on an OK
-  severity keeps the owner. The alert list gains an **Owner** column (in the
-  default layout, after State) and a row of avatars next to the tabs that
-  filters by owner — you first, then everyone who owns something in the
-  current tab, then *Unowned*; it combines with the tabs and is kept in the
-  URL (`?owner=`). The owner is stored as plain record fields (`owner`,
-  `owner_method`, `owner_since`, `previous_owner`, `previous_owner_method`),
-  usable in queries and notification conditions. New endpoints:
-  `POST /api/v1/record/bulk_owner` and `GET /api/v1/record/owners`; comments
-  gain the `assign` and `release` types. The `snooze` CLI gains
-  `record assign` / `release` / `owners`, `record bulk state|assign|release`
-  (which require `-c <condition>` or an explicit `--all`) and an `owner`
-  column in `record list`. Run `snooze-server migrate owners`
-  once after upgrading to derive owners for existing alerts from their
-  acknowledgements and closes.
-- **Profile pictures.** Users can upload a profile picture from their Profile
-  page (cropped and resized in the browser, re-encoded to PNG by the server);
-  users without one get coloured initials. Pictures show in the Owner column,
-  the owner filter, the alert timeline and the sidebar. New endpoints:
-  `PUT`/`DELETE /api/v1/user/me/avatar`, `GET /api/v1/avatar/{method}/{name}`,
-  and `GET /api/v1/people`, a directory of the tenant's enabled users readable
-  by any signed-in user. CLI: `snooze people` and
-  `snooze avatar set|get|remove`.
-- **`resolved` analysis verdict.** `remediation_plan.status` accepts a fourth
-  value, `resolved`: a fix was applied (by a person or an agent), as opposed
-  to `self_resolved`, which recovered on its own. It is what a resolver writes
-  after acting on an `action_required` plan (e.g.
-  `snooze record agentic status <uid> resolved`). The web UI shows it as a
-  *Resolved* chip and dot in the closed-state colour, and the dashboard's
-  Verdict filter gains the option. `snooze record agentic status <uid>
-  <status>` changes just the verdict of a stored analysis (read, modify, write
-  back; needs `rw_protected`).
-- **`snooze` CLI triage commands.** `record list` gains filters — `--active`
-  (the web Alerts tab), `--state`, `--host`, `--severity`,
-  `--owner me|none|<login>`, `-c` — and always lists newest first;
-  `record comments <uid>` prints the timeline, `record comment <uid> -m`
-  adds a note, and `record reopen` / `record escalate` complete the
-  lifecycle.
-
-- **Agentic analysis on alerts, and the protected-field concept behind it.**
-  An alert can now carry a machine-authored `agentic` subtree — `root_cause`
-  (summary, scope, evidence, `confidence: high|medium|low`),
-  `remediation_plan` (ordered `steps` and `rollback`, each
-  `{action, command?, risk: low|medium|high}`, plus `automatable`), and a
-  server-stamped `analysis` provenance block (`at`, `by`, `source`) that a
-  client may not supply. It is written through one endpoint —
-  `GET`/`PUT`/`DELETE /api/v1/record/{uid}/agentic` — which validates strictly
-  (unknown fields rejected; every violation returned at once in
-  `error.details`, keyed by JSON path), replaces rather than merges, and
-  leaves `date_epoch` alone so analysing an old alert does not make it look
-  freshly seen. Also exposed as `snooze record agentic {get,set,clear}` (with
-  client-side validation, so a malformed payload never leaves the machine) and
-  as the `get_alert_analysis` / `set_alert_analysis` MCP tools.
-
-  `agentic` is the first **protected field** (`internal/protected`): a
-  recursively-protected document key that only that endpoint may write.
-  Ingestion **strips** a protected field an inbound alert carries (logging a
-  warning) so a noisy sender cannot break its own alerting; the generic CRUD
-  surface, `bulk_update`'s `set`, rule modifications (`SET`, `DELETE`,
-  `ARRAY_APPEND`, `ARRAY_DELETE`, `REGEX_SUB`, `REGEX_PARSE` capture groups and
-  `KV_SET`'s `out_field`) and the notifier inject chokepoint
-  (`inject_response`, notify-ref stamps) all **refuse** one — a rule targeting
-  a protected field is rejected when saved and again at runtime, which catches
-  a field name computed from a template. A `PUT` that omits the field carries
-  the stored value forward, so a full replace cannot be a back-door delete, and
-  it fails closed if that read errors rather than silently dropping the field.
-  A re-fire of an analysed alert keeps its analysis (the pipeline's final write
-  is a merge).
-
-  A `PUT`/`PATCH` that echoes a protected field back with its unchanged value
-  is accepted — a read-modify-write client round-tripping the record is not a
-  write — while a different value still 403s. The endpoint's body is capped at
-  512 KiB (derived from the schema maxima); the decoder rejects trailing data
-  after the JSON object, reports type mismatches by JSON path, and refuses
-  strings containing a NUL character.
-
-  Writes require the new **`rw_protected`** permission, checked **literally**:
-  the `rw_all` admin wildcard does NOT satisfy it, so existing admin roles do
-  not silently inherit write access to agent-authored analysis. Reads need
-  only `ro_record`. Both mutations emit an audit row (`agentic_set` /
-  `agentic_clear`). See `general/agentic_analysis.md`.
-
-- **Agentic analysis in the web UI.** The alert inspector gained an
-  **Analysis** tab — cause, scope, evidence, the ordered remediation plan with
-  each step's risk and command — labelled with the confidence
-  (`Analysis · High`), plus a one-line `Cause:` summary in the drawer header;
-  an analysed alert also carries a confidence-coloured dot beside its severity
-  badge in the alerts table. The tab reads for anyone who can read the alert,
-  but **Edit** / **Remove** / **Write analysis** appear only for a session
-  holding `rw_protected` literally — an `rw_all` admin gets the read-only view,
-  the same answer the endpoint gives — and a save replaces the whole analysis,
-  restamping provenance with the signed-in user and `source: snooze-web`. The
-  dashboard gained a second view, **Analyses**, reached from a segmented
-  control beside the page title or from a new **Analysed** tile in the "Right
-  now" strip ("17 of 42 open"): every analysed open alert in one full-width
-  list, newest analysis first. A row is a header bar over two blocks: the alert
-  on the left (severity rail, host, alert name), everything scalar set right on
-  the same line (confidence, step count, `automatable`, when and by whom), and
-  the whole width below given to **the root cause and the remediation plan side
-  by side**. The plan is one aligned grid — ordinal, action, risk — with each
-  command on its own mono line and a risk tag only above `low` (four steps,
-  then `+N more`). Confidence / automatable filters narrow it in
-  place. The ratio against the open backlog is the tile's; the list itself only
-  says something above it when it hits its 500-row ceiling.
-  The view is a deep link (`/web/dashboard?view=analyses`), and any row there —
-  or any other link — opens an alert straight onto its Analysis tab through
-  `/web/alerts?tab=all&record=<uid>&pane=analysis`. The tile and the view are
-  shown only to sessions that can read records. Leaving the inspector's editor
-  by prev/next, a tab switch, or a row
-  that paged out asks before discarding the draft, and a draft can no longer
-  be saved onto the wrong alert.
-
-- **Notification delivery history.** Every actual send an action performs —
-  not just a matched notification — is now recorded as a permanent row in a
-  new tenant-scoped `notificationlog` collection: send time, duration,
-  `success`/`error` (with the error text), the action and notifier used,
-  batching info, the notification(s) that routed it, and a snapshot of every
-  alert covered (host, severity, message, state), so a row still renders after
-  the alert record itself has expired. A misconfigured action (missing,
-  notifier-less, or pointing at an unregistered notifier) now writes a failed
-  row instead of failing silently. A **Deliveries** tab surfaces this on a
-  notification's, an action's and an alert's details drawer; the alert
-  inspector also gets a "Last notified … via …" line. The notifications table
-  gained **Sent** and **Last sent** columns, and the dashboard gained a
-  **Notifications** panel ranking notifications by send count for the current
-  window, linking into the matching Deliveries tab. New settings:
-  `notification.delivery_log` (default on) gates the writes;
-  `housekeeping.cleanup_notificationlog` (default 30 days) governs retention,
-  swept by a fixed daily housekeeper job regardless of the retention window's
-  length. Batched sends (mail/webhook/script with `batch: true`) now report
-  their outcome at flush time instead of at queue time — the record's action
-  status reads `sent` until the batch actually delivers — and a batching
-  action also flushes (`batch_reason: "shutdown"`) on a graceful server stop
-  instead of losing its pending bucket. A misconfigured action's row is
-  rate-limited to one per (notification, action) pair every 10 minutes.
-  `GET`/`POST .../search` on `/api/v1/notificationlog` need `ro_notificationlog`
-  (the seeded **notifications** role now includes it, backfilled onto
-  existing installs); the collection otherwise refuses HTTP writes with `403`
-  — rows come from the dispatcher only, `DELETE` still works with
-  `rw_notificationlog`. **Send test** always delivers immediately, even on a
-  batching action, bypassing the batch bucket entirely and leaving no row,
-  counter bump or record stamp behind.
-
-- **Postgres builds a per-search-field expression index.** Every field a
-  plugin declares in `search_fields` now gets two B-tree expression indexes on
-  its collection's table: a text one (`(data->>'field')`, serving the
-  equality/regex/`IN` predicates) and a PARTIAL guarded-numeric one (the
-  `CASE`-guarded `::numeric` cast, `WHERE … IS NOT NULL`, serving range and
-  equality filters such as the housekeeper's `date_epoch < $1` sweep). The
-  expressions are the same ones the query compiler emits, which is what lets
-  the planner match them; the numeric index is partial because for a
-  text-only field it would otherwise be an all-NULL B-tree paid for on every
-  INSERT. Before this, `search_fields` registration was metadata only and a
-  30-day `notificationlog` meant a sequential scan per page.
-
-  The builds never run on a caller's goroutine. `CREATE INDEX CONCURRENTLY`
-  waits out every transaction older than itself, so an inline build stalls
-  boot for as long as the busiest open transaction lives; the driver queues
-  them for a single background worker instead, on a dedicated non-pooled
-  maintenance connection (visible in `pg_stat_activity` with an
-  `… index-maint` application_name) so a `pool_max_size: 1` deployment is not
-  starved. Passes are serialised across replicas by a session-level advisory
-  lock — the loser skips, since the winner is building the identical set — and
-  an interrupted build's leftover invalid index is dropped and rebuilt rather
-  than skipped forever by `IF NOT EXISTS`. SEARCH scoping is registered
-  synchronously and is never affected by a slow or failed build.
+- **Resolution hold.** A re-fire of an alert closed as `resolved` or `self_resolved` stays closed for `housekeeping.resolution_hold` (default 2h, `0` disables). Higher-severity re-fires still notify.
+- **JIRA close sync.** Closing an alert the `jira` notifier ticketed comments on the ticket and can transition it (`on_close`, `close_transition`). New `plugins.CloseNotifier` interface.
+- **API keys in the CLI.** `credentials.token` in `client.yaml`, `$SNOOZE_TOKEN`, `--token`. New `snooze apikey create|list|revoke`, `snooze whoami`, `--owner me`.
+- **`GET /api/v1/user/me`** returns the verified caller identity.
+- **Tool attribution.** Comments and CLI writes accept a `source` (`--source`, `$SNOOZE_SOURCE`), shown on the timeline.
+- **Alert ownership.** Ack/close set an owner; new Assign and Release actions, owner filter, `POST /api/v1/record/bulk_owner`, `GET /api/v1/record/owners`. Run `snooze-server migrate owners` once after upgrading.
+- **Profile pictures.** Upload from the Profile page; `PUT`/`DELETE /api/v1/user/me/avatar`, `GET /api/v1/avatar/{method}/{name}`, `GET /api/v1/people`. CLI: `snooze people`, `snooze avatar`.
+- **`resolved` verdict** for `remediation_plan.status` (a fix was applied, as opposed to `self_resolved`).
+- **CLI triage.** `record list` filters (`--active`, `--state`, `--host`, `--severity`, `--owner`, `-c`); `record comments`, `comment`, `reopen`, `escalate`.
+- **Agentic analysis.** Alerts can carry an `agentic` subtree (`root_cause`, `remediation_plan`, server-stamped `analysis`), served by `GET`/`PUT`/`DELETE /api/v1/record/{uid}/agentic`, `snooze record agentic`, and the MCP tools. It is the first protected field: ingestion strips it, and CRUD, rules and notifiers refuse it. Writes need the literal `rw_protected` permission (`rw_all` does not grant it); reads need `ro_record`. See `general/agentic_analysis.md`.
+- **Analysis in the web UI.** Inspector Analysis tab, dashboard Analyses view (`/web/dashboard?view=analyses`), and an Analysed tile.
+- **Notification delivery history.** Every send is recorded in `notificationlog`, shown on a Deliveries tab. Settings: `notification.delivery_log` (default on), `housekeeping.cleanup_notificationlog` (30 days). Reads need `ro_notificationlog`.
+- **Postgres search indexes.** Each `search_fields` entry gets expression indexes, built by a background worker.
 
 ### Changed
 
-- **The dashboard's Analyses view keeps closed alerts, and opens on what still
-  needs a person.** Closed analysed alerts stay listed until the housekeeper
-  expires them (`housekeeping.record_ttl`), so `resolved` verdicts and
-  post-mortems are visible; they sort after every alert still in play, say
-  *Closed*, and a new **Closed** filter (*Show* / *Hide*) hides them. The
-  Analysed tile still counts open alerts only. The **Verdict** filter is now a
-  multi-select with a *No verdict* option, opening on Action required +
-  Monitoring + No verdict, with *All* and **Reset to default**. The filters
-  ride in the URL (`confidence`, `automatable`, `verdict`, `closed`, omitted at
-  their default), so a filtered view is a shareable link and Back undoes a
-  change.
-- **`snooze record agentic get` is readable.** It now prints the analysis for a
-  human: provenance, verdict and confidence, scope, summary, wrapped detail,
-  caveats, evidence, and the plan as numbered Now / Follow-up / Rollback steps
-  with each command on its own line. `--json` keeps the raw subtree. `snooze
-  record show` replaces the one-line JSON blob with a digest (verdict ·
-  confidence · summary) pointing at `agentic get`.
-- **Repeats are folded on an alert's Deliveries and Timeline tabs.** An alert
-  that re-notified every quarter of an hour for weeks used to fill 143 pages
-  of identical deliveries and 400 pages of "New escalation" entries. Now
-  consecutive, successful dispatches of one notification to the same actions
-  are one row (`×1,420 · every ~16 min · since Sep 17th 10:46`), and a run of
-  identical automatic timeline entries is one entry. **Show all** lists the
-  members. Failures, a dispatch that opened a new ticket (its link stays on
-  its own row) and anything a person wrote are never folded, and they split
-  the run around them. A ticket key a notifier reports without a link (Jira
-  quoting an existing issue) is now shown too. The Deliveries header now also says how often
-  the alert has been notifying, since when, and when it last sent. New
-  endpoints: `GET /api/v1/notificationlog/runs?alert_uid=` and
-  `GET /api/v1/comment/runs?record_uid=`.
-
-- **Flow chart redrawn, and honest about where a run stopped.** The alert
-  details' Flow tab is now a line of stages with a marker per stage.
-  Using the record's `plugins` trail, it marks the stage where the last
-  occurrence stopped: the snooze that silenced it, or the aggregate that held a
-  throttled repeat. It then greys out everything after, on a dashed line.
-  Before, a throttled repeat was drawn as fully notified, showing an earlier
-  run's notifications. Those are now listed under **Last notified via** as
-  history. The notification stage turns green when it sent and red when an
-  action failed.
-
-- **The alerts table no longer expands a row into its Flow chart.** The
-  per-row chevron and the `F` shortcut are gone. The Flow chart is still in the
-  alert details' **Flow** tab, one click away, and the details header already
-  answers the questions it was opened for: **Silenced** and **Notified**.
-
-- **Alert details header reorganised.** The message now leads (clamped to
-  three lines, with Show more when it is longer), then severity and state, then one
-  aligned list of facts: **Seen** (last seen, first seen and the hit count),
-  **Owner**, **Notified** (in red when the last send failed; click it to open
-  the Deliveries tab), **Silenced** (the snooze that stopped it, linked),
-  **Source** (source, process, and a link back to the originating system from
-  `generatorURL`) and **Labels** (`key=value`, where-it-lives keys first). The
-  state badge says when the state ends on its own ("Acknowledged · reopens in
-  1h 59m", "Shelved · returns in 30m"). The unlabelled timestamp line and the
-  separate source chip are gone.
-- **`first_seen` on alert records.** The aggregate rule now stamps
-  `first_seen` (epoch seconds) when an alert is first seen and never changes
-  it; an alert payload cannot set or move it. Records created before the
-  upgrade have none.
-
-- **Record tab: full height and find.** The inspector's raw record now fills
-  the drawer down to its bottom edge, and a find box above it highlights every
-  match in keys and values; Enter / Shift+Enter (or the arrows) step through
-  them and a counter says where you are.
-
-- **Alert tabs reordered; the Re-escalated tab is gone.** The tabs are now
-  Alerts, Acknowledged, Snoozed, Closed, Shelved, All. Re-escalated and
-  re-opened alerts were already listed under Alerts (or Snoozed), so the
-  separate tab only duplicated them; they keep their re-escalation marking in
-  the row, and an old `?tab=esc` link opens Alerts.
-
-- **Agentic analyses now lead with a verdict, on both the dashboard and the
-  alert inspector.** The contract gains four optional fields:
-  - `root_cause.detail`: the explanation, up to 2000 characters. `summary`
-    goes back to being one sentence.
-  - `root_cause.caveats`: up to 5, 300 characters each.
-  - `remediation_plan.status`: `action_required` | `self_resolved` |
-    `monitoring`.
-  - `steps[].when`: `now` | `follow_up`.
-
-  They are validated like the rest, with messages keyed by JSON path, and are
-  exposed in the OpenAPI spec and the `set_alert_analysis` MCP tool. Existing
-  analyses are unchanged and still render.
-
-  The **inspector's Analysis tab** now reads:
-  - verdict chip → one-line headline → detail;
-  - the plan, split into *Now* and *Follow-up*, marked *Automatable* or
-    *Manual*;
-  - caveats;
-  - folded evidence.
-
-  The duplicated `Cause:` block and the confidence repeated three times are
-  gone. The header keeps one line that points at the tab. **Remove** moved
-  into a ⋯ menu.
-
-  The **dashboard's Analyses view** is now a keyboard-navigable work queue:
-  - rows sort most urgent first, with the alert's state and fired time;
-  - collapsed rows show verdict, headline and a Now / Follow-ups summary;
-  - **Expand** shows the whole analysis, with copy buttons on commands;
-  - filters are single-choice and can be read at a glance;
-  - **Open alert** lets the inspector's previous/next walk the analysed set.
-
-  Across both surfaces:
-  - confidence is a neutral meter instead of a green/amber/red chip;
-  - risk is marked only above `low`;
-  - machine-written analyses are labelled **AI analysis**;
-  - an analysis older than the alert's latest refire says so;
-  - legacy `caveat:` evidence lines are shown as caveats.
-
-  The drawer's tab strip and the filter rows show a fade when they scroll
-  sideways on phones, and touch targets are 44px.
-
-- **`bulk_update` and `bulk_state` now return `403` for collections whose
-  plugin carries a per-document write hook**, unless that plugin opts in by
-  implementing the new `plugins.BulkWriteGuard`. Affected collections:
-  `apikey`, `role`, `user`, `comment`, `savedsearch`, `notificationlog`,
-  `heartbeat`, `aggregaterule`, `tenantmatch`. The per-document hooks are
-  structurally unusable on a whole-query mutation and dangerous when forced
-  onto one: `TransformWrite` runs once on the shared field merge, so the
-  identity fields some transforms stamp (savedsearch's `owner`, comment's
-  `user`/`method`) would be written onto every matched row — a bulk edit that
-  quietly reassigns other people's rows to whoever ran it — while `GuardWrite`
-  is defined per uid and would receive `""`, turning user's last-admin
-  protection, role's reserved-role protection and comment's state-transition
-  checks into no-ops that still look enforced. Refusing is the safe default;
-  a collection becomes bulk-writable again by implementing `GuardBulkWrite`
-  with semantics chosen for a query-wide write. The alerts UI is unaffected:
-  `record` implements no write hook, so bulk ack/close/tag keep working.
-  Retro-applying a snooze goes through the same gate.
-
-### Changed
-
-- **The `snooze` plugin now owns the `snoozed` field outright.** It is the
-  `plugins.SuppressionOwner`: the only code that sets, keeps or clears an
-  alert's suppression attribution, and every branch of its `Process` settles
-  the field explicitly — a matching filter sets it, no match clears it, a
-  bypassed severity clears it (that severity is never silenced, so a stale
-  attribution must not keep it hidden), and a recovery of an alert already on
-  the books keeps it untouched.
-
-  `aggregaterule` previously reached into the record collection and **deleted**
-  `snoozed` itself whenever its own verdict was `continue`, predicting that the
-  snooze plugin was about to re-decide. That prediction is false for a `close`
-  — snooze passes a close against an existing aggregate straight through
-  without re-stamping — so a recovery wiped the attribution and the next
-  occurrence, held by the aggregate throttle, never reached snooze to rebuild
-  it. It now hands the stored value *forward* onto the in-flight record,
-  alongside the notify-ref and escalation context it already ferried, and
-  leaves the decision to the owner. `/api/v1/snooze/{uid}/retro_apply` reads
-  the field name from the owner instead of repeating the literal, so
-  retro-apply and the pipeline cannot disagree about which field means
-  "silenced".
-
-  Operator-visible effect: a filter's **Hits** counter now counts every
-  occurrence it suppresses, throttled repeats included, so it climbs faster
-  than the number of notifications prevented.
+- Analyses view keeps closed alerts and has a multi-select Verdict filter; filters live in the URL.
+- `snooze record agentic get` prints a readable summary; `--json` gives the raw subtree.
+- Repeated deliveries and timeline entries are folded into runs (`GET /api/v1/notificationlog/runs`, `GET /api/v1/comment/runs`).
+- The Flow chart marks where a run stopped (silenced, or held by the throttle).
+- Alert tabs are Alerts, Acknowledged, Snoozed, Closed, Shelved, All. The Re-escalated tab is gone.
+- Analysis contract adds `root_cause.detail`, `root_cause.caveats`, `remediation_plan.status` and `steps[].when`.
+- `bulk_update` and `bulk_state` return `403` for collections with per-document write hooks (apikey, role, user, comment, savedsearch, notificationlog, heartbeat, aggregaterule, tenantmatch) unless the plugin implements `plugins.BulkWriteGuard`.
+- The `snooze` plugin owns the `snoozed` field (`plugins.SuppressionOwner`). A filter's Hits counter now counts throttled repeats too.
+- Alert details header reorganised; `first_seen` stamped on records; record tab fills the drawer and has a find box.
+- Drawers are non-modal side panels instead of blocking scrims.
 
 ### Fixed
 
-- **An alert still firing when its snooze filter ends is notified.** A silenced
-  occurrence started the aggregate throttle window, so after the filter was
-  deleted, disabled or expired, the alert came back to the alerts list but its
-  repeats were throttled duplicates — not notified for up to a day (the
-  "Host and Message" throttle). Now the first occurrence after the silence ends
-  goes through to notification once, and the throttle restarts from it. Open
-  alerts released when a filter goes away carry `snooze_released: <filter>`
-  until then, and get one timeline line saying the filter ended and that they
-  were not notified while silenced. New pipeline verdict for filters:
-  `plugins.Result.Release`.
-- **API-key actions are owned by the key's owner.** Acknowledging or closing an
-  alert with an API key (single or `bulk_state`) stamped `owner_method: apikey`,
-  which names no user — the owner showed no picture and `--owner` / assignment
-  matching treated it as a stranger. It now stamps the owner's login method
-  (claims carry `owner_method` / `key_id` for key requests). The same identity
-  fix applies to listing and revoking your own keys with a key (both matched
-  nothing) and to the "cannot remove platform_admin from yourself" guard. The
-  comment's `method` still records the `apikey` channel.
-
-- **Profile pictures of email logins never showed.** Users whose login is an
-  email address (every OIDC/Entra user) uploaded a picture and still saw their
-  initials: the browser escapes `@` as `%40` in
-  `GET /api/v1/avatar/{method}/{name}` and the server looked the escaped name
-  up verbatim. The route now unescapes both path segments.
-
-- **Initials sat off centre in their disc** — high at 24px, low on the Profile
-  page's large avatar. They are now drawn as SVG text centred on the capitals,
-  the same at every size and pixel density.
-
-- **Snooze and notification tables cut off date windows.** A full datetime
-  range (`2026-07-02 09:00 → 2026-07-09 17:00`) was wider than the Window
-  column and lost its end date; it now breaks onto two lines (`start →`, then
-  the end), the two dates left-aligned. A long weekday list wraps instead of being cut mid-word.
-
-- **The owner and environment filters sat below the alert tabs' labels.** They
-  are now centred on the tab text.
-
-- **Back skipped URL changes.** Switching the dashboard view from the
-  Overview and re-sorting the Analyses view replaced the history entry, so
-  Back left the dashboard instead of undoing them. Every tab strip driven by
-  the URL (Rules, Snoozes, Users, Notifications…) pushed two identical entries
-  per click, so the first Back seemed to do nothing. Both now push exactly one
-  entry. The alert inspector's tab is now in the URL as `?pane=` (`flow`,
-  `analysis`, `deliveries`, `record`), so Back walks the tabs and a copied link
-  reopens on the same one; the older `?analysis=1` still works. Back, a
-  sidebar link or a close with an unsaved analysis draft now asks first.
-- **Every drawer blocked the page it was opened from.** They were modal
-  dialogs: a fixed full-screen scrim at `--z-modal` covered the whole app, so
-  every control behind one was inert — clicking "next page" with the alert
-  inspector open did nothing at all, the click landing on the scrim rather than
-  the pager, and the browser's back gesture was swallowed with it. The same was
-  true of every editor (snoozes, rules, users, notifications, …).
-
-  Drawers are now genuine **side panels**, across the app: non-modal, no scrim,
-  and the shell reserves the open panel's width (`--open-panel-width`, published
-  by the panel itself) instead of letting it cover the page, so the pager, the
-  lifecycle tabs, the search bar and the sort headers all keep working while a
-  panel is open — and a table sheds low-priority columns for the width that is
-  left rather than hiding under the panel. Working in the list no longer closes
-  the panel, which also means a stray click can never skip an editor's
-  unsaved-changes guard; Escape, ✕ and Cancel still close, and a row click still
-  retargets the inspector. Toasts step aside for an open panel rather than
-  landing on its footer buttons.
-
-- **A deep link carrying both `?search=` and `?record=` opened on no
-  inspector, and left a Back button that went nowhere.** The alerts page only
-  filtered its list once the SearchBar's debounced `POST /condition/parse`
-  answered, so the *first* fetch ran unfiltered — page 1 of the newest alerts,
-  which is exactly where the linked uid is not when the link points at an old
-  alert (every row of the dashboard's Analyses view, and any
-  `?search=hash = …` link from a Teams/chat card). The table then closed the
-  drawer as a stale deep link and *pushed* a `?record=`-less URL over the one
-  the operator arrived on: the inspector never opened, and Back returned to a
-  URL the page immediately corrected again. The page now seeds its filter
-  synchronously from the URL with the same DSL parser (re-seeding on
-  back/forward), and a close of a drawer that never resolved to a row
-  **replaces** rather than pushes, so self-corrections stay out of history.
-
-- **A snooze filter had no effect on an alert already inside its aggregate's
-  throttle window.** `aggregaterule` answers a throttled duplicate — and a
-  held-back flapping re-open — with `abort_update`, which persists the record
-  *and* ends the pipeline, so the `snooze` plugin sitting behind it in
-  `core.process_plugins` never ran. With the day-long throttle that long-lived
-  aggregates typically carry, an alert repeating every 30 seconds ignored every
-  matching filter for a full 24 hours: it stayed in the alerts list, open and
-  un-silenced, with `duplicates` ticking up and no notification either.
-
-  Suppression is now decoupled from the aggregation verdict. A processor may
-  implement the new optional `plugins.Filter` interface to declare that its
-  verdict is a suppression decision; whenever an earlier plugin
-  aborts-and-persists, the pipeline gives every remaining `Filter` a say before
-  the write lands. A `discard` filter cancels the write outright, a tagging
-  filter stamps `snoozed`, and the original plugin's write semantics are
-  preserved — a throttled duplicate still persists without re-stamping
-  `date_epoch`, so the suppression pass cannot restart the throttle window it
-  was held by. The `snooze` plugin is the only implementer, and this is what
-  lets it own the field on *every* persisted occurrence rather than only some;
-  plugins that are not suppression decisions (notifications, above all) stay
-  suppressed by the abort exactly as before.
-
-  In production the two defects met in the middle: a flap
-  (`warning → ok → warning`) had the close wipe the attribution and the
-  re-open held as flapping, after which every repeat was throttled for 24h. The
-  row went back to `open` with nothing left saying why it should be hidden.
-
-- **Alerts silenced by a filter that could no longer silence anything stayed
-  hidden for good.** `snoozed` is re-decided on each occurrence, so an alert
-  that never fires again kept it after its filter was deleted, disabled or
-  renamed, or after its time window ended — including every "snooze for 2h"
-  from the MCP and Teams bridges, and every filter the `cleanup_snooze`
-  housekeeping job deletes straight in the database. On the live server one
-  deleted catch-all filter had left 305 such rows, one of them an open
-  critical. The `snooze` plugin now reconciles stored attributions against the
-  filters that can still silence (they exist, are enabled, and their absolute
-  window is not over; a recurring window that is merely closed right now still
-  counts): immediately after an API delete or edit of a filter, and on a new
-  fixed minute-cadence `reconcile_suppression` housekeeping sweep per tenant,
-  which also covers a cluster peer re-stamping a name just after its filter was
-  deleted. The live filter set is read from the database, never a node's cache.
-
-- **A snooze filter the pipeline could not parse was accepted and then
-  silently ignored.** The API stored any `condition` / `time_constraints`
-  (201), and the pipeline dropped the filter at every reload with only a
-  "skipping invalid rule" warning, so it silenced nothing. On 2026-09-21 the
-  `upgrade-prod` release filter for K8S ovh carried `"2026-09-21T19:01:42"` —
-  seconds but no timezone, a form the datetime parser rejects — and never took
-  effect for the whole release. Create / replace / patch on `/api/v1/snooze`
-  now answer `422 validation_error` with the parser's message, using the same
-  parsers the reload applies, so the API and the pipeline cannot disagree.
-
-- **A `discard` snooze filter left phantom lifecycle comments.** When a filter
-  dropped an occurrence of an existing aggregate, `aggregaterule` had already
-  written its "Auto re-opened" / "New escalation" comment, so the timeline
-  narrated a transition that was never stored (and `comment_count` fell out of
-  step with the comments). Processors can now return side effects on
-  `plugins.Result.AfterPersist`, which the pipeline runs only after the record
-  write lands and drops when the record is discarded; the aggregate comments
-  use it.
-
-- **A recovered silenced alert read as "not notified" and stayed in the Snoozed
-  tab.** The recovery (close) of a silenced alert keeps its `snoozed`
-  attribution and passes through to notification. The web flow chart now reads
-  the record's plugin trail and shows "silenced earlier — the recovery passed
-  through" with the notifications it reached, instead of "not reached —
-  silenced upstream"; the **Snoozed** tab now excludes closed alerts, which
-  appear under **Closed**. Because the recovery carries `snoozed`, a
-  notification condition can use `NOT snoozed EXISTS` to skip the recovery of
-  an alert whose firing never paged.
-
-- **Snooze filter hits cost two synchronous database round-trips per match.**
-  Throttled repeats now reach the `snooze` plugin, so this landed on exactly
-  the storm traffic the throttle exists for. The hit counter is now batched
-  through the server's async writer via a new never-upserting
-  `asyncwriter.IncrementExisting` (so a filter deleted before the flush cannot
-  come back as a condition-less phantom that matches everything), falling back
-  to one atomic increment; the old read-modify-write also undercounted
-  concurrent matches.
-
-- **A throttled repeat caught by a snooze filter was counted twice on the
-  dashboard**, once as throttled and once as snoozed. The filter pass on a held
-  occurrence no longer records `alert_snoozed`; the filter's own Hits counter
-  still counts it.
-
-- **The `ro_all` read catch-all now satisfies `ro_*` gates on bespoke routes**
-  (`GET /api/v1/inputs`, the agentic read) exactly as it already did on plugin
-  CRUD routes; it still grants no `rw_*` permission and no literal one.
-
-- **`POST /api/v1/{plugin}/bulk_update` answered 405 for every collection.**
-  The route was only registered in its parameterised form, and chi resolves a
-  static path segment before a parameter sibling: a request to
-  `/api/v1/record/bulk_update` descended into the record plugin's CRUD mount,
-  which has no such sub-path, and never backtracked. (`bulk_state` was
-  unaffected because its path is static.) The alerts table's bulk tag /
-  attribute dialog posts exactly this route, so it could not have worked. The
-  endpoint is now registered statically per plugin, with the parameterised form
-  kept for collections that have no CRUD mount of their own; `tenant` is
-  excluded so the platform gate on the registry cannot be side-stepped through
-  `bulk_update`'s weaker `rw_tenant` check. The existing bulk tests mounted only
-  the bulk routes, which is why the shadowing was invisible to them; the new
-  test mounts both surfaces in the order the router does.
-
-- **Data race between `plugins.WaitBackground` and a subsequent `Build`.**
-  The background pass was tracked by a package-level `sync.WaitGroup`, whose
-  contract forbids `Add` concurrent with `Wait`. A waiter whose context expired
-  stayed parked inside `Wait` (and leaked its goroutine), so the next `Build`'s
-  `Add` raced it — reliably reproducible as an intermittent `-race -shuffle`
-  failure in whichever two `TestBuild_*` tests happened to interleave. Replaced
-  with a mutex-guarded counter and a generation channel: waiters observe the
-  generation current when they started, an abandoned wait parks on a channel
-  instead of a goroutine, and a stray `done()` after `resetForTest` is ignored
-  rather than driving the counter negative.
-
-- **A `notificationlog` write no longer reloads the `notification` plugin's
-  cache.** The syncer's topic-prefix match was a plain string prefix, so a
-  change event on `collection.notificationlog.<tenant>` matched the
-  `collection.notification` subscription too (the longer collection name
-  starts with the shorter one). `TopicMatches` is now delimiter-aware.
-- **Batch buckets are tenant-scoped.** The batching notifiers (mail, webhook,
-  script) key their in-memory flush buckets by tenant, so two tenants sharing
-  the same action no longer flush each other's alerts into one delivery.
-- **`hits` and `last_sent` counters on the notification entry** are stamped by
-  the dispatcher on every successful delivery (one read-modify-write per
-  notification per record, not per action), and are excluded from the diff the
-  editor sends back on save so they never appear as a spurious change.
-- **A concurrent SQLite write no longer fails outright with `SQLITE_BUSY`/`SQLITE_BUSY_SNAPSHOT`.** Every write path reads before it writes (primary-key lookup, read-modify-write patch), and under WAL's default DEFERRED locking that read-then-write promotion is refused instead of retried, bypassing `busy_timeout` entirely. `buildDSN` now sets `_txlock=immediate` and every write path opens its transaction through `beginWrite`, so the write lock is taken up front and a concurrent writer just waits out `busy_timeout` instead of erroring.
-- **A counter-only update on `notification` or `snooze` no longer triggers a
-  full plugin reload.** The read-modify-write that stamps `hits`/`last_sent`
-  (and the snooze rule's own hit counter) on every match used to look like a
-  semantically meaningful change to every syncer backend, so a busy server
-  fed itself a reload storm from its own delivery traffic. SQLite, Postgres
-  and Mongo now share one `IsCounterOnlyPatch` field set and suppress the
-  change notification when a patch touches only those fields — generalized
-  from a `notification`-only, `hits`-only check that would have missed the
-  new `last_sent` counter and the `snooze` collection's own `hits` bump.
-- **Postgres maintenance queries survive non-numeric text.** `record.Validate`
-  accepts any JSON value, so a single row holding `{"ttl":"soon"}` or
-  `{"date_epoch":"yesterday"}` used to abort a whole statement with `invalid
-  input syntax for type numeric` — permanently, since the housekeeper and the
-  inputs page re-run the identical statement every cycle, and the `data ? 'x'`
-  tests that looked protective never were (SQL `AND` has no guaranteed
-  evaluation order). The timeout sweep, audit retention, `SourceActivity`,
-  `ComputeStats` and `Increment` now all project through the same guarded
-  expression: a bad value reads as SQL NULL (or `0` where the query already
-  coalesced a missing key), so the offending row is skipped and every other
-  row is processed. `ComputeStats` gets the same treatment for a `date` that
-  is not a timestamp.
+- Switching a condition group to NOT keeps only its first child.
+- An alert still firing when its snooze filter ends is notified (the throttle no longer hides it).
+- A snooze filter now applies to alerts inside a throttle window (`plugins.Filter`).
+- Alerts silenced by a filter that no longer exists are released (`reconcile_suppression` sweep).
+- A snooze filter the pipeline cannot parse is rejected with `422` instead of silently ignored.
+- A `discard` filter no longer leaves phantom lifecycle comments (`plugins.Result.AfterPersist`).
+- A recovered silenced alert shows as passed through, not "not notified".
+- Snooze hit counts are batched, and a throttled repeat is no longer counted twice on the dashboard.
+- API-key actions are owned by the key's owner.
+- Profile pictures for email logins display (`%40` in avatar paths).
+- Back navigation pushes one history entry per tab change.
+- Deep links with both `?search=` and `?record=` open the inspector.
+- `POST /api/v1/{plugin}/bulk_update` no longer returns 405.
+- `ro_all` satisfies `ro_*` gates on bespoke routes.
+- Data race between `plugins.WaitBackground` and `Build`.
+- Batch buckets, `hits`/`last_sent` counters and `notificationlog` writes are tenant-scoped and no longer trigger reload storms.
+- SQLite concurrent writes wait on `busy_timeout` instead of failing with `SQLITE_BUSY`.
+- Postgres maintenance queries skip rows with non-numeric values instead of aborting.
 
 ## v2.5.0
 
 ### Added
 
-- **The JIRA ticket title is overridable.** The in-process `jira` notifier
-  already rendered its title from the action's **Summary** field; it now
-  clamps the result to JIRA's 255-character limit and falls back to the
-  built-in title (with a warning) instead of dropping the notification when
-  the operator's template fails to render. The `snooze-jira` daemon gained a
-  per-alert override: the `/alert` envelope accepts `summary` (and
-  `summary_template`), taking precedence over `summary_template` in
-  `jira.yaml`, so one webhook action can title its tickets differently from
-  another without a second daemon.
-
-### Fixed
-
-- **A throttled duplicate no longer counts twice.** `duplicates` was bumped
-  twice for every occurrence the aggregate rule held back: once by the merge
-  assignment the pipeline persists (ActionAbortUpdate writes too — it only
-  skips the `date_epoch` stamp) and once more by a queued atomic increment on
-  the same two paths. With a real async writer the increment lands after the
-  write, so a throttled duplicate added 2 — inflating the repeat counter on
-  every aggregated alert (a production record read 197). Without an async
-  writer the old fallback incremented synchronously *before* the write, which
-  then overwrote it, which is why no test caught it. The counter now has one
-  source of truth: the merge assignment. `queueIncrement` and the plugin's
-  private `asyncWriterHost` interface are gone.
-- **The anti-flapping budget refills per throttle window instead of once per
-  record.** `flapping_countdown` was only ever decremented, never restored, so
-  after `flapping` (default 3) watched-field changes in an aggregate's entire
-  lifetime *every* later re-open or re-escalation was dropped as "flapping" —
-  however many quiet hours sat in between. A nightly K8s alert on production
-  had reached -9, so the transition that mattered (`ok => critical`, the alert
-  starting to fire again) was silently held back, with a timeline note
-  claiming notifications were stopped "until throttle expires (0s left)" —
-  a window that had ended a day earlier. Worse, that path aborts without
-  stamping `date_epoch`, so the throttle clock was not restarted either and
-  the next plain repeat 14 seconds later sailed through as a context-free
-  "New escalation". The countdown now refills whenever the aggregate has been
-  quiet for a full throttle window (as the documentation always described) and
-  floors at 0 instead of running away negative. Inside a window the cap is
-  unchanged, and `throttle: -1` still means the budget never refills.
-- **One JIRA ticket per alert again, instead of one per escalation.** The
-  `snooze-jira` daemon recognises an alert it has already ticketed by reading
-  the issue key back off the record, and every leg of that round-trip was
-  broken. The daemon learned the action name — the key that names the record
-  field holding the handle — only from a `snooze_action_name` query parameter
-  that nothing ever set, so it looked under `response_unknown_action` and
-  found nothing; snooze-server now sends `X-Snooze-Action-Name` on every
-  webhook call. And the handle itself sat one level too deep: the daemon
-  answers `{"<alert hash>": {"issue_key": …}}` — one entry per alert, in that
-  shape even for a single alert — and `inject_response` stamped that envelope
-  verbatim, below where every reader looks. The webhook notifier now stamps
-  the record's own entry, and the readers (`plugins.NotifyRef`, the daemon's
-  `findExistingIssue`) see through the old shape so records already stamped
-  keep their ticket. Finally, the body never carried the handle in the first
-  place: `{{ tojson .Record }}` — and the 1.x `{{ __self__ | tojson() }}` that
-  rewrites to it — encoded the record with `encoding/json`, which drops
-  `Record.Extra` (`json:"-"`), so every untyped field went missing from the
-  request body, handles included. `tojson` now encodes a record through
-  `plugins.MarshalRecord`, the same flattening the default body has always
-  used. Observed in production as CG-1811 and CG-1812 opened two minutes
-  apart for the same alert hash.
-- **JIRA priorities are resolved from the live scheme instead of hardcoded
-  English names.** Both the `jira` notifier and the `snooze-jira` daemon
-  shipped a severity → priority map written in English (`critical: High`,
-  `warning: Medium`, …). Priority names are localized per JIRA site and
-  renamable by any admin, so on a site whose priorities are, say, `Critique /
-  Grave / Moyen / Faible`, *every* create failed with
-  `400 priority: the selected priority is invalid` and no ticket was ever
-  opened. Snooze now reads the project's own priority scheme
-  (`GET /issue/createmeta`, falling back to `GET /priority`), maps the
-  severity onto a position in it, and sends the priority **id** — stable and
-  language-independent. The scheme is cached per project (`priority_cache_ttl`,
-  default 1h) and refetched with one retry when JIRA rejects a priority.
-  `priority` / `priority_mapping` become optional overrides accepting an id or
-  a name; a value that names nothing in the scheme is ignored rather than
-  failing the create, and a severity outside Snooze's ladder now omits the
-  field so JIRA applies its own default. New shared package
-  `internal/jirapriority`.
-- **Close transitions could be wedged open by a snooze filter.** A `discard`
-  filter matching the close write for an existing aggregate dropped it
-  entirely, leaving the alert open forever with its snooze attribution
-  stripped. Close transitions of an existing aggregate now pass through all
-  snooze filters unconditionally.
-- **`general.ok_severities` was documented but unenforced.** The field was
-  loaded and shown in the settings UI, but nothing in the Go port consumed
-  it. It is now enforced centrally in the ingest pipeline: a record arriving
-  without an explicit state whose (case-folded) severity is in the list gets
-  `state: close` stamped before the plugin chain runs.
-- **`kv` values could leak between tenants.** The kv plugin cached the whole
-  collection in one flat `dict → key → value` map while the collection itself
-  is tenant-scoped, so each per-tenant reload overwrote the cache wholesale and
-  whichever tenant reloaded last served its values to every other tenant. A
-  `KV_SET` rule modification could therefore resolve to another tenant's value
-  — non-deterministically, since it depended on reload order. The cache is now
-  keyed by tenant and every lookup names one. Notably the DB fallback that the
-  cache exists to optimize was already tenant-correct, so the fast path had
-  been the less safe of the two.
-- **`kv` logged a reload failure every 5 minutes.** kv was the only
-  tenant-scoped plugin whose `Reload` had no naked-context guard, so the
-  tenant-less entry in the syncer's reload fan-out — deliberate, and needed by
-  genuinely global collections — fail-closed with `auth: no tenant in context`
-  and logged a warning on every safety tick and every kv write. It now skips a
-  tenant-less reload like every other tenant-scoped plugin.
-- **`kv` was only hydrated for the default tenant at boot.** Boot's per-tenant
-  cache warm-up walked only the configured process plugins; kv has no `Process`
-  method, so it was never in that list and its sole hydration was `PostInit`
-  under the default-tenant seed context. Boot now also warms every `auto_reload`
-  plugin outside the processor list, mirroring what the syncer does at runtime.
-  A tenant whose bucket is not yet loaded falls back to the tenant-scoped
-  database lookup rather than reporting every key as absent.
-- **Live config reload was silently dead on MongoDB.** Editing a snooze filter,
-  rule, aggregate rule, or notification took effect only after a
-  `snooze-server` restart. The mongo change-stream watcher type-asserted
-  `bson.M` on the nested fields of each event, but the driver decodes nested
-  sub-documents as `bson.D` — so every event lost its `tenant_id`, the syncer
-  reloaded under a tenant-less context, and every tenant-scoped plugin
-  correctly treated that as "nothing to do". Nothing logged, and the
-  hit-counter reload-storm filter was inert for the same reason. Change events
-  now read those fields regardless of the driver's decode shape, and the test
-  stub round-trips fixtures through real BSON so the gap cannot reopen.
-  PostgreSQL and SQLite were unaffected (they stamp the tenant from the
-  writer's context).
-
-### Added
-
-- **`snooze_bypass_severities`** added to the settings catalogue, so it is
-  editable from the web UI (Settings → General) alongside `ok_severities`.
-- **`syncer.reload_safety_interval`** (default `5m`): a periodic full reload of
-  every plugin cache for every active tenant, backstopping change-event
-  delivery so a lost or dropped event cannot leave a cache stale until the next
-  restart. Set a negative duration to disable it.
+- JIRA ticket titles can be overridden (`summary`, `summary_template`); the title is clamped to 255 characters and falls back to the built-in title.
+- Re-escalation reaches every notifier (ticket updates, incident escalation, threaded chat replies).
+- Google Chat records thread ids so slash-commands resolve to the right alert.
+- Sessions renew silently; sign-out revokes the refresh token.
+- Snooze settings `snooze_bypass_severities` and `syncer.reload_safety_interval` (default `5m`, periodic full reload).
+- Web: alert table redesign, manual refresh, snooze from the row, keyboard triage and search in the command palette, accessible failure states, visual refresh.
 
 ### Changed
 
-- `general.ok_severities` and `general.snooze_bypass_severities` are now read
-  from the runtime settings store, falling back to the config file. Editing
-  either from Settings → General applies live, without a restart.
-- The syncer fans a tenant-less change event (a delete carries no full
-  document) out to every active tenant instead of issuing one naked reload that
-  tenant-scoped plugins skip — deleting a filter now takes effect without a
-  restart.
-- A burst of change events can no longer postpone a reload indefinitely: the
-  debounce window still restarts per event but is capped at ten windows.
-- The mongo bus logs when a subscriber's channel is full and an event is
-  dropped (first drop, then every 100th). Previously this was the only
-  unlogged failure point on the reload path.
-
-### Added
-
-- Re-escalation now reaches every notifier: jira/servicenow update the
-  existing ticket, statuspage/opsgenie/pagerduty escalate onto the existing
-  incident, chat outputs thread instead of reposting, and notifiers with no
-  threading concept still escalate urgency in the message.
-- Google Chat records its thread id so inbound slash-commands resolve back to
-  the right alert.
-- Sessions renew silently in the background instead of dying at token expiry;
-  sign-out now revokes the refresh token.
-- Alerts table: message-first layout, honest duplicate counts, prioritised
-  mobile cards, manual refresh button, truncated-cell tooltips, snooze
-  straight from the row.
-- Dashboard leads with the noise-reduction story; counters are bucketed live
-  at ingest instead of snapshotted.
-- Keyboard triage and alert search in the command palette.
-- Accessible, human failure states across the app; an aria-live announcer for
-  polled screens.
-- Visual refresh: split ack/closed hues, warm-paper light theme, unified
-  lifecycle vocabulary across chips/tabs/tiles/legend/timeline, Close
-  de-weighted in favour of Acknowledge, Flow chart always renders the Snooze
-  stage with visible connectors.
+- `general.ok_severities` and `general.snooze_bypass_severities` are read from runtime settings and apply live.
+- Tenant-less change events fan out to every active tenant, so deleting a filter takes effect without a restart.
+- The reload debounce is capped at ten windows.
+- The mongo bus logs dropped subscriber events.
 
 ### Fixed
 
-- SQLite: `Contains`/`In` conditions no longer misfire `json_each` against a
-  non-array field.
-- Snooze filters evaluate oldest-first so first-match-wins is stable.
-- "Create and apply" actually retro-applies now (the create response's shape
-  was misread).
-- Empty alert payloads are rejected instead of creating blank table rows.
-- Various small UI honesty/accessibility fixes: no false "All clear" during
-  an outage, no cropped severity/state badges, no stray scrollbar on the
-  Alerts tab strip, absolute time on timeline hover, 3:1 form-control
-  borders.
-- Alerts table's Sev column no longer wraps the badge onto two lines.
-- Condition editor: switching the operator (e.g. `contains` → `matches`, or
-  via SEARCH, which masks the field) keeps the field and operand you already
-  typed instead of clearing them.
+- A throttled duplicate no longer increments `duplicates` twice.
+- The anti-flapping budget refills per throttle window.
+- One JIRA ticket per alert again (the handle is stamped on the record, `tojson` keeps `Record.Extra`).
+- JIRA priorities come from the project's live priority scheme, not hardcoded English names. New package `internal/jirapriority`.
+- Close transitions are not wedged open by a snooze filter.
+- `general.ok_severities` is enforced in the ingest pipeline.
+- `kv` values no longer leak between tenants, and its reload no longer logs a warning every 5 minutes.
+- Boot hydrates `kv` for every tenant.
+- Live config reload works on MongoDB (change-stream `bson.D` decoding).
+- SQLite and Postgres `Contains`/`In` no longer misfire on non-array fields.
+- Snooze filters evaluate oldest-first.
+- "Create and apply" retro-applies.
+- Empty alert payloads are rejected.
 
 ## v2.4.0
 
 ### Added
 
-- Federation is now a notification action. The standalone **Federation** admin
-  page and the `forward` collection are removed; relaying to a Snooze peer is
-  configured as a **Forward to another Snooze peer** (`snoozepeer`) action on a
-  notification. Deployments with existing `forward` destinations convert them by
-  running `snooze-server migrate forward-to-action` (a one-time, idempotent
-  operator command — it is not run automatically at daemon startup). The
-  `X-Snooze-Loop` loop-prevention contract and the per-node `syncer.hostname`
-  requirement are unchanged.
-
-- **Ingest kill-switch toggle.** A dedicated **Ingest** tab now appears in
-  Settings with an **Alert intake enabled** switch. Disabling it halts all
-  `POST /api/v1/alerts` requests and every webhook receiver (503 Service
-  Unavailable) for the current tenant instantly, matching the documented
-  maintenance-mode workflow. The card has a red left-border accent and a
-  danger Save button; a warning caption appears when intake is paused.
-
-- **API keys — usage display in the console.** The admin keys table now shows
-  "Last used" (sortable, relative time) and "Uses" columns. The self-service
-  profile card shows the last-used age and a "Stale" badge for keys idle for
-  more than 30 days. The admin edit drawer shows a read-only usage summary.
-  (Values are updated at most once per hour per the Plan 08 throttle.)
-
-- **Tenant routing admin UI:** a new **Org matching** page under Admin lets operators manage
-  attribute→tenant routing rules (group / domain / login → tenant slug) via create / edit / delete
-  forms with columns for match type, match value, target tenant, and priority. A duplicate
-  `(match type, match)` pair surfaces a conflict message. A new **Tenant routing** tab in Settings
-  exposes the `tenant_match.fail_closed` safety toggle. The login page shows a hint when org
-  auto-detection is active (`tenant_match_enabled: true` from the server).
-
-- Groups are now manageable in the web console (Admin → Groups): create named cohorts, add/remove
-  `{username, method}` member pairs, and assign roles to the group via the existing Roles editor.
-
-- **Security Audit console.** A new "Security Audit" admin page
-  (`/web/admin/audit`) lists all auth-event audit rows
-  (`login`, `login_failed`, `token refresh`, `logout`) with columns for
-  timestamp, action, username, method, and summary. Free-text filter via the
-  standard condition search bar. The auth-action badge labels were also
-  fixed — they previously rendered as `undefined` in the existing per-object
-  audit timeline.
-
-- **Heartbeats console page.** A new **Heartbeats** page (`/web/heartbeats`) in
-  the **Configure** sidebar group lets operators manage dead-man's-switch
-  heartbeats from the web console: create/edit/delete, browse with a live status
-  badge (`ok` / `slow` / `overdue`), filter by status, and copy-paste the ping URL
-  and token directly from the editor drawer. No backend change (requires Plans 06
-  and 32 in `done/`).
-
-- **Console branding is now consumed by the SPA:** `console.logo` renders in the sidebar and login
-  screen (falling back to the bundled Snooze logo when empty), `console.title` drives the browser
-  tab title (defaulting to `"Snooze"`), `console.audio` plays a cue when new alerts arrive during
-  auto-refresh, `console.clipboard_template` formats the row copy action using `{{field}}`
-  substitution (empty defaults to pretty-printed JSON), and `console.default_filter` pre-fills the
-  alerts SearchBar on a clean load (URL `?search=` still overrides it per session).
-
-- **"Select all N matching this filter" affordance** on the alerts action bar: when the total
-  result count exceeds the visible page and rows are selected, a link expands the bulk scope
-  beyond the visible page to every record matching the current tab and search query.
-- **"Tag / set fields" button** in the alerts action bar opens a dialog for bulk-tagging or
-  merging attributes across a selection (`POST /api/v1/record/bulk_update`); the success toast
-  shows per-op counts (matched / set / tagged / untagged).
-- **Shelve action now posts a `shelve` comment** with a configurable duration (default 4h
-  from the dialog picker) instead of patching `ttl=-1`. Alerts automatically return to open
-  when the duration expires (requires Plan 34 backend). A `ShelveDialog` duration picker
-  (1h / 4h / 8h / 24h / 48h / Custom) replaces the old immediate toggle.
-- **Legacy permanent-exempt action (`ttl=-1`)** preserved under **"Permanent exempt (legacy)"**
-  in the row action menu, clearly labelled to prevent confusion with timed shelve.
-- **Shelved tab** now includes alerts with `state=="shelved"` (new backend model) in addition
-  to the legacy `ttl<0` predicate.
-- **TTL column** shows `"returns in Xh Ym"` for timed-shelved alerts based on `shelve_until`.
-- **Alerts table — action gating:** illegal state transitions (e.g. Acknowledge
-  on an already-acked alert) are now hidden from the kebab menu, quick-action
-  buttons, right-click context menu, and bulk toolbar; the backend 403 remains
-  as a concurrent-change backstop.
-- **Alerts table — lifecycle countdowns:** acked rows now show an "in Xh" expiry
-  countdown when `ack_until` is set; open rows show "escalates in Xh" when
-  `escalate_at` is armed.
-- **Alerts table — trend badge:** a ↑/↓/— indicator in the severity column
-  reflects `trend_indication` stamped by the aggregaterule plugin on every merge.
-- **Comment timeline — system comments:** auto-generated comments from the
-  housekeeper (`auto: true`) are attributed as "System (auto)" and cannot be
-  edited or deleted.
-- **Chat ack/close/re-open from Slack & Telegram message buttons.** The Slack
-  and Telegram notifiers can now render opt-in interactive buttons
-  (`interactive: true` on the action form; default off). New webhook receivers
-  (`POST /api/v1/webhook/slack`, `POST /api/v1/webhook/telegram`) apply the
-  pressed action through the Plan 05 transition guard — writing an attributed
-  comment so the dashboard activity feed records it — and edit the chat message
-  in place. Slack requests are authenticated by the v0 request signature
-  (`slack_interactive.signing_secret`, constant-time HMAC-SHA256 with a 5-minute
-  replay window); Telegram by the `X-Telegram-Bot-Api-Secret-Token` header
-  (`telegram_interactive.secret_token`, constant-time). Both fail closed: an
-  unset secret makes the receiver reject every request (401). An illegal move
-  (e.g. ack of a closed alert) is refused and the chat reply states why.
-- **OIDC provider presets + multiple simultaneous IdPs.** A new optional
-  `provider:` key (`google`/`azure`/`cognito`/`keycloak`/`gitlab`) plus
-  `provider_params` pre-fills the discovery `issuer` from a built-in table, so
-  common providers no longer need a hand-typed issuer URL (an explicit `issuer`
-  still wins). A new optional `oidc_providers.yaml` (a top-level list of OIDC
-  entries) registers several identity providers at once — e.g. corporate Entra
-  plus Google Workspace — each on its own `/api/v1/login/{method}` routes. The
-  legacy single `oidc:` config is unchanged and used as a fallback when
-  `oidc_providers` is empty, so existing deployments are unaffected.
-  `client_secret` stays per-entry, file/env only (never from the DB). GitHub
-  OAuth (no `id_token`) remains out of scope.
-- **Timed shelve with auto-return.** Posting a `shelve` comment transitions an
-  alert to `shelved` and stamps a `shelve_until` epoch. A new minute-cadence
-  housekeeper sweep reverts any shelved alert past its deadline back to `open`
-  and writes an auto-comment. Duration is operator-configurable via
-  `housekeeping.shelve_timeout` (default 4h, live-editable in Settings).
-- **PagerDuty inbound status sync.** A new webhook receiver at
-  `/api/v1/webhook/pagerduty` maps `incident.acknowledge` → `State: "ack"` and
-  `incident.resolve` → `State: "close"` back onto the originating Snooze record
-  (identified by the `dedup_key` / `incident_key` echoed by PagerDuty).
-  Unacknowledge and escalate events re-open the record. The existing PagerDuty
-  outbound notifier is unchanged.
-- **Heartbeat — latency / slow-ping detection.** Heartbeat documents now
-  accept an optional `max_latency` (ms) field. When the ping URL includes
-  `?sent_at=<unix-ms>`, the server records `last_latency = receive_time - sent_at`.
-  If `last_latency > max_latency` while the heartbeat is still within its
-  `interval + grace` window, a lower-severity `"slow"` alert is injected —
-  giving an early-warning signal before the dead-man's switch fully expires.
-  The `status` field (Plan 06) gains a third value: `"slow"`.
-- **Snooze — suppression-bypass severities.** A new `general.snooze_bypass_severities`
-  list (default empty) exempts records whose `severity` matches any entry from all
-  snooze rules. Set it to e.g. `['ok', 'critical']` to ensure recovery and
-  highest-priority events are never silenced by a maintenance window.
-- **aggregaterule**: new record fields `previous_severity` and
-  `trend_indication` (`moreSevere`/`lessSevere`/`noChange`) stamped on every
-  aggregate merge. Severity escalations (`moreSevere`) now bypass the throttle
-  window so a `warning` escalating to `critical` is never silently swallowed.
-- **Attribute-based tenant routing.** A new global `tenant_match` registry lets
-  operators map IdP groups, email domains, or login names to tenant slugs,
-  removing the need for users to know or type their org slug at login. SSO
-  (OIDC/SAML) and LDAP users who authenticate without an explicit `org` are
-  routed to the matched tenant automatically; rules are evaluated by `priority`
-  (first hit wins). The `tenant_match.fail_closed` runtime setting (default
-  `false`) denies an unmatched user with `403` instead of landing them in the
-  `default` tenant. CRUD at `/api/v1/tenant_match` (requires `rw_tenant`).
-- **Server-driven web-console config.** `GET /api/v1/config` exposes org-wide
-  defaults (alert-table columns, default filter, sort, auto-refresh interval,
-  severity rank ladder, and branding: logo/title/new-alert audio/clipboard
-  template) from the runtime `console` settings section, overlaid on the
-  server's code defaults. The endpoint is public and read-only; the SPA fetches
-  it at boot and falls back to its hardcodes when unavailable. Custom severities
-  are placed by **rank** (`console.severity_ranks: {"p1": 2}`) and inherit
-  theme-aware colours automatically — no per-label colour map. The Plan 21
-  severity ladder is the single runtime source of truth (the frontend `RANK`
-  map becomes an offline fallback). Editable from the admin Settings page
-  (Console group).
-- **Alerts — "Acked by" column in the alert list.** The operator who last
-  acknowledged an alert is now stamped directly onto the record as `acked_by`
-  by the comment plugin. The alert list displays this in a new "Acked by"
-  column; the field is cleared automatically when the alert is re-opened or
-  closed.
-- **Stackdriver / Google Cloud Monitoring inbound receiver.** The new
-  `stackdriver` plugin accepts GCP Monitoring incident webhook notifications
-  at `/api/v1/webhook/stackdriver`, mapping incident state (`open` →
-  critical, `acknowledged` → ack, `closed` → ok/close) to Snooze records.
-  The optional `documentation.content` JSON blob overrides any record field
-  before pipeline submission.
-- Server-managed user groups (`GET/POST/PUT/PATCH/DELETE /api/v1/group`):
-  operators can now create named cohorts, add local or LDAP users as members,
-  and assign roles to the group without editing each user's `roles[]` field.
-- **Snooze — window lifecycle status and remaining countdown.** The snooze list
-  now shows a derived *Status* badge (active / pending / expired / always-on)
-  and a *Remaining* countdown column for time-bounded rules. Both are computed
-  server-side at read time from `time_constraints.datetime`; no migration
-  required. The editor gains a **Silence for…** shortcut row (presets 1h / 4h /
-  24h / 7d and a free-text field accepting "2h30m") that sets the absolute
-  datetime window without navigating the date-picker.
-- **Custom source mapping guide.** Operators can now onboard any JSON alert
-  source without writing Go: post to `POST /api/v1/alerts` and use a rule tree
-  to remap foreign field names to canonical Snooze fields. A new
-  `_preserve_raw: true` ingest hint copies all unrecognised keys into the record's
-  `raw` field before rules run, preserving the original payload for audit.
-  See [Custom source mapping](docs/content/general/integrations/custom-source.md).
-- Canonical severity vocabulary in `pkg/snoozetypes` (`DefaultSeverityRank`, `SeverityRank`, `SeverityVariant`, `NormalizeSeverity`, `CompareSeverity`), mirroring the frontend severity ladder. Enables severity-aware re-escalation (Plan 30), suppression bypass (Plan 31), and the server-driven console config (Plan 28).
-- Added server-to-server alert federation: a hot-reloadable "forward" destinations collection relays accepted alerts to downstream Snooze/HTTP peers, with condition scoping, per-destination auth (bearer/basic/apikey), and X-Snooze-Loop loop prevention.
-- SAML2 SP-initiated SSO: redirect-to-IdP, ACS endpoint, assertion→identity group mapping, and an SP metadata endpoint (new `saml` config section).
-- Bulk operations across a query: POST /api/v1/record/bulk_state (ack/close/open/esc) and POST /api/v1/{plugin}/bulk_update (set/tag/untag) apply a mutation to every record matching a ?q condition in one call, with one audit row per affected record.
-- Auth-proxy mode: trust an upstream reverse proxy (oauth2-proxy/Pomerium/mod_auth) to authenticate users via configurable username/groups headers, with optional JIT auto-signup, IP allowlist, and group-based role mapping (config: `auth_proxy.*`, disabled by default).
-- **Timed alert lifecycle — acks now expire and stale alerts auto-escalate.** An acknowledged alert is stamped with a server-controlled `ack_until`; a new minute-cadence housekeeper sweep reverts expired acks back to `open` and, when `housekeeping.escalate_after` is set, flips an alert left unacknowledged past the deadline to `esc` and re-fires its notifications. Closes the gap where a one-shot acked alert was silenced forever. Both timeouts are live-editable in Settings.
-- **Saved searches.** Operators can now bookmark named DSL filters from the
-  Alerts page. Searches are stored per-user/per-tenant at
-  `GET /api/v1/savedsearch` and apply instantly with a single click.
-- **Metrics — live record-count gauge.** Added the `snooze_records` gauge
-  (labelled by `state`) to the Prometheus `/metrics` endpoint. It reports the
-  current number of records in the database grouped by state, summed across all
-  tenants and refreshed on every scrape — graph open-alert backlog growth or
-  alert when the queue exceeds a threshold.
-- **Admin — on-demand housekeeping trigger.**
-  `POST /api/v1/housekeeping/run` (requires `rw_all`) fires every registered
-  cleanup job synchronously and returns per-job results, including errors and
-  durations. `GET /api/v1/housekeeping/status` reports the number of
-  registered jobs. Useful after data floods or to verify a retention change
-  without restarting the server.
-- **Version endpoint.** `GET /api/v1/version` (public, no token required) returns
-  the compiled-in version string, git commit, and build date. Operators can use
-  this to confirm which binary is running on each cluster node; the SPA can
-  display the running version in the UI.
-- **Ingest kill-switch.** A new `ingest.allow` runtime setting (default `true`)
-  lets operators instantly halt all alert intake — both `POST /api/v1/alerts`
-  and every webhook receiver — without a server restart. The switch is
-  per-tenant and responds with `503 Service Unavailable` while disabled.
-- **API keys — last-used tracking.** Each key now records `last_used_at`
-  (Unix epoch) and a `use_count` (lower-bound, throttled to at most one
-  write per hour) updated on every successful authentication. Both fields
-  appear in the key-list response so stale machine keys are easy to identify
-  and prune.
-- **Alert ingest now stamps `source_ip`.** Every record posted to
-  `POST /api/v1/alerts` receives a `source_ip` field (resolved client IP,
-  honouring `X-Forwarded-For` / `X-Real-IP`). Caller-supplied values are
-  preserved. Use the field in Rules to route or filter by collector origin.
-- **Audit — structured auth-event trail.** Login, login-failed, token-refresh,
-  and logout events are now written as queryable rows to the `audit` collection
-  (`object_type: auth`) in addition to the existing HTTP request log lines.
-  Retention follows the standard housekeeper `audit` TTL.
-- **Reject-at-ingest policy processor.** A new `reject` plugin provides a
-  CRUD-managed collection of condition-based policy rules. Alerts matching any
-  enabled rule are aborted before persistence and the sender receives an HTTP
-  422 `policy_rejected` response with the matching rule's name, replacing the
-  previous silent discard behaviour.
-- Reject rules are now managed in the web console under a new **Reject** tab on
-  the Rules page (create/edit/enable/delete with the standard condition editor).
-- **Graylog webhook receiver.** `POST /api/v1/webhook/graylog` ingests
-  Graylog stream-alert HTTP notifications. `stream.title` becomes the record
-  host; `check_result.result_description` the message. Query-string overrides
-  `event`, `environment`, `service`, `severity`, and `event_type` mirror the
-  Alerta Graylog webhook contract.
-- **`pingdom`** — Pingdom uptime state-change webhook receiver. DOWN events
-  produce `warning`/`critical` records; UP events close the prior DOWN via
-  `State="close"`. Mounted at `/api/v1/webhook/pingdom`.
-- **Heartbeat — computed `status` field on list/get responses.** `GET
-  /api/v1/heartbeat` and `GET /api/v1/heartbeat/{uid}` now include a
-  read-time `status` field (`ok` or `overdue`) on every heartbeat document.
-  An optional `?status=` query parameter filters the list to heartbeats
-  matching the supplied value(s). No database migration required.
-- **Alert flow visibility: matched notifications + action outcomes.** Each
-  processed alert now records the notification entries it matched
-  (`record.notifications`) and the outcome of every action they fired
-  (`record.actions`: `success`/`error`(with message)/`skipped`/`pending`/`sent`).
-  The Alerts row-detail panel gains a **Flow** tab beside the Timeline,
-  rendering the pipeline path (input → rules → aggregate, then a branch per
-  matched notification with its own actions, or a terminal snooze box) with
-  green/red action boxes — click a red box for the error. Action-outcome
-  resolution is one merge-write per notifying alert, gated by the new
-  `notification.persist_action_outcomes` flag (default `true`; disable on
-  high-volume SQLite). The demo seed (`core.seed_demo`) now stamps these fields
-  on its sample alerts too — the matched rules, the `Host and Message`
-  aggregate, and the notifications/actions each critical alert fired (with one
-  deliberately-failed Slack delivery on the escalated alert) — so the Flow panel
-  is fully populated out of the box.
-- **Inputs page** (Admin → Inputs): lists every supported alert input with its
-  last-received time, a docs link, and a per-input "how to receive alerts" guide.
-- `GET /api/v1/inputs`: per-source alert activity (max epoch + count within a
-  windowed lookback), gated by `ro_stats`/`rw_stats`.
+- **Federation is a notification action.** The Federation page and `forward` collection are removed; relay to a peer with the `snoozepeer` action. Convert existing destinations with `snooze-server migrate forward-to-action`.
+- **Ingest kill-switch.** Settings → Ingest → *Alert intake enabled* halts `POST /api/v1/alerts` and webhooks with `503`.
+- **Tenant routing.** Admin → Org matching maps groups, domains or logins to tenants (`tenant_match`, `/api/v1/tenant_match`). `tenant_match.fail_closed` denies unmatched users.
+- **Groups** (Admin → Groups, `/api/v1/group`) bundle users and roles.
+- **Security Audit** page for auth events; **Heartbeats** page with status badges.
+- **Console branding** (`console.logo`, `console.title`, `console.audio`, `console.clipboard_template`, `console.default_filter`) is applied by the SPA. `GET /api/v1/config` serves org-wide console defaults.
+- **Bulk actions:** "Select all N matching" and a "Tag / set fields" dialog (`POST /api/v1/record/bulk_update`).
+- **Timed shelve.** A `shelve` comment sets `shelve_until`; alerts return to open after `housekeeping.shelve_timeout` (default 4h).
+- **Lifecycle countdowns and trend badges** on the alerts table; illegal transitions are hidden from menus.
+- **Chat buttons.** Slack and Telegram can render interactive ack/close/re-open buttons (`interactive: true`), signed or secret-checked, fail-closed.
+- **OIDC presets** (`provider:` google/azure/cognito/keycloak/gitlab) and multiple IdPs via `oidc_providers.yaml`.
+- **Acks expire and stale alerts escalate.** `ack_until` reverts expired acks; `housekeeping.escalate_after` escalates unacknowledged alerts.
+- **PagerDuty inbound** webhook (`/api/v1/webhook/pagerduty`) syncs ack/resolve back to records.
+- **Heartbeat latency.** `max_latency` and `?sent_at=` raise a `slow` alert before the heartbeat expires.
+- **Suppression-bypass severities** (`general.snooze_bypass_severities`).
+- **aggregaterule** stamps `previous_severity` and `trend_indication`; escalations bypass the throttle.
+- **Attribute-based tenant routing** and **server-driven console config**.
+- **Acked-by column**, **Stackdriver** receiver, **Graylog** and **Pingdom** receivers.
+- Groups, saved searches, the `snooze_records` gauge, `POST /api/v1/housekeeping/run`, `GET /api/v1/version`, `ingest.allow`, API-key `last_used_at`, and `source_ip` on ingest.
+- Audit rows for login, logout and token refresh; `reject` plugin (HTTP `422 policy_rejected`) with a Reject tab.
+- Alert Flow tab (matched notifications and action outcomes). Gated by `notification.persist_action_outcomes` (default on).
+- Inputs page and `GET /api/v1/inputs`.
 
 ### Fixed
 
-- **Permissions catalog — named `authorization_policy` grants are no longer
-  omitted.** `GET /api/v1/permissions` now also walks the `read` + `write`
-  lists of every plugin's `authorization_policy` (on `route_defaults` and on
-  each per-path `routes` override), so the catalog never silently misses a
-  permission string the authorizer actually honours. The implicit `any`
-  sentinel (and the empty string) stays excluded. Response shape is unchanged
-  — a sorted `{data: []string}`.
-- **Alerts — state-transition comments now validated before they are saved.**
-  Posting an `ack` comment to an already-acknowledged or closed alert, or a
-  `close` comment to a closed alert, now returns a 403 with a clear error
-  message instead of silently applying the nonsensical state change.
-- **New Relic receiver — `acknowledged` alerts now land as `State: "ack"`.**
-  A legacy webhook with `current_state: acknowledged` was previously ingested
-  as a firing record (empty State), causing Snooze to re-notify despite the
-  upstream ack. The legacy-receiver mapping now emits `State: "ack"`, which
-  the notification pipeline suppresses and the aggregaterule plugin re-escalates
-  if the ack lapses. A shared `receiverutil.MapLegacyState` helper is introduced
-  for reuse by future receivers.
-- **Web — the Rules tree is now mobile-responsive.** The drag-and-drop rule
-  hierarchy was the one table that still scrolled sideways on a phone (the
-  v2.3.0 mobile pass card-collapsed every `DataTable` but not the bespoke rules
-  tree). Below a 640px container each rule now reflows into a labeled **card**
-  — name as the title, Condition and Modifications as wrapped fields, and the
-  select / expand / **+ Add** controls in a footer row (the add menu is now
-  always visible on touch instead of hover-revealed). Reordering stays a
-  desktop gesture: the drag handle is hidden on narrow screens. Pure
-  container-query CSS — the ≥640px desktop layout is unchanged.
-
-### Changed
-
-- **Bulk alert actions (ack/close/re-escalate) now call `POST /api/v1/record/bulk_state` once
-  for the entire selection** instead of one `POST /comment` per row; the success toast shows the
-  matched/updated counts. The `comment` action still uses the per-record loop (bulk_state does not
-  write per-alert activity entries).
-- **Housekeeper** — expired API keys and refresh tokens are now purged hourly.
-  The cadence is tunable via `housekeeping.cleanup_apikey` and
-  `housekeeping.cleanup_refresh_token` (both default to `1h`).
-- **Web — table rows are now text-selectable, with a context-menu Copy.**
-  Drag-selecting text inside a table row no longer opens the row (the
-  click-to-open is suppressed while a selection is active), so cell values can
-  finally be highlighted and copied. Right-clicking a row with text selected
-  shows a **Copy** entry at the top of the context menu that copies exactly the
-  highlighted text. The redundant **Open** entry was removed from row context
-  menus — clicking a row already opens it.
+- Named `authorization_policy` grants appear in `GET /api/v1/permissions`.
+- Invalid state transitions (ack on acked, close on closed) return `403`.
+- New Relic `acknowledged` maps to `State: "ack"`.
+- The Rules tree is mobile-responsive.
 
 ### Security
 
-- **Fixed an authentication-bypass in auth-proxy mode (`auth_proxy.enabled=true`).** The
-  `trusted_proxies` IP allowlist was evaluated against `ClientIP`, which reads the
-  client-controllable `X-Forwarded-For` / `X-Real-IP` headers first. An attacker reaching Snooze
-  directly could send `X-Forwarded-For: <a trusted-proxy IP>` together with `X-Forwarded-User: root`
-  to satisfy the allowlist and be trusted as any user, with no token. The allowlist now matches the
-  genuine TCP peer address (`RemoteAddr` captured by a new `CapturePeerIP` middleware mounted before
-  chi's `RealIP`), which ignores all forwarding headers. Audit-log and ingested-record client-IP
-  capture are unchanged (they still honor `X-Forwarded-For`). Only deployments that had explicitly
-  enabled `auth_proxy` were affected; the mode is off by default.
+- Auth-proxy bypass fixed: the `trusted_proxies` allowlist checks the TCP peer address, not the client-settable `X-Forwarded-For` header. Only deployments with `auth_proxy` enabled were affected.
 
 ## v2.3.0
 
 ### Added
 
-- **Mobile-friendly web UI.** The SPA is now usable on phones down to 360px,
-  optimized for on-call triage. Below 1024px the desktop sidebar shell is
-  replaced by a thumb-reachable **bottom-tab bar** (Alerts · Dashboard ·
-  Snoozes · Rules) plus a **More** sheet holding the rest of the navigation,
-  theme toggle, and account actions; data tables collapse into labeled
-  **cards**, editor drawers and the command palette open as **full-screen
-  sheets**, and interactive controls meet the 44px touch-target minimum on
-  coarse pointers. The ≥1024px desktop layout is unchanged. Implemented as a
-  pure CSS/container-query retrofit (new `--bp-sm/md/lg`, `--touch-target`,
-  `--safe-bottom` tokens; one `useIsMobileShell` hook) — no new dependencies.
-- **User API keys.** Users can mint/revoke personal API keys (Profile → API
-  Keys) carrying a subset of their own permissions and an optional, capped
-  expiry; authenticate with `Authorization: Bearer snz_…`. Effective
-  permissions are bounded live by the owner's current roles. New `ro_apikey` /
-  `rw_apikey` permissions gate a tenant-scoped admin **API Keys** page. New
-  config `auth.apikey_max_ttl` (default 365d).
-- **Demo seed on first boot.** Set `SNOOZE_SERVER_CORE_SEED_DEMO=true` (or
-  `core.seed_demo: true` in `core.yaml`) and the bootstrap phase populates a
-  rich demonstration dataset: three environments (production / staging /
-  development with colours and conditions), three extra users (alice.martin,
-  bob.chen, charlie.ops), three rules (Parse Host Components, Day Shift, Night
-  Shift), two actions, two notifications, three snooze filters, 17 alert records
-  in mixed states enriched as if they passed through the full pipeline, five
-  comments, and 14 days of hourly stats counters (alert_hit, alert_snoozed,
-  notification_sent) so the dashboard charts render non-empty time-series on
-  first visit. The seed is idempotent — re-running with the flag enabled is a
-  no-op. Designed for the Render try.snoozeweb.net deployment.
+- Mobile web UI down to 360px: bottom-tab bar, cards, full-screen sheets.
+- User API keys (`snz_…`, Profile → API Keys), `ro_apikey`/`rw_apikey`, `auth.apikey_max_ttl` (365d).
+- Demo seed (`core.seed_demo`, `SNOOZE_SERVER_CORE_SEED_DEMO=true`).
 
 ### Changed
 
-- **Web — Sidebar user chip opens an account menu.** Clicking the avatar/username
-  at the bottom of the left navigation now opens a dropdown with **Profile** and
-  **Log out** shortcuts (mirroring the top-bar user menu), so the two most common
-  account actions are reachable from where the signed-in user is shown.
-- **Web — Settings → OIDC / SSO uses progressive disclosure.** The OIDC tab now
-  behaves like the LDAP tab: only the *Enabled* toggle shows until OIDC is
-  switched on, then the issuer, client, scope and claim settings appear. Stops
-  the tab dumping eight provider fields on operators who haven't enabled SSO.
-- **Web — Dashboard "Alerts over time" shows a selection box while dragging.**
-  Dragging across the chart now paints a translucent accent-coloured band that
-  follows the cursor (Grafana-style), and on release drills into the alerts
-  spanning the **whole** dragged window (first → last bucket) instead of just
-  the bucket under the release point. A plain click still drills into a single
-  bucket.
-- **Web — Rules "Modifications" column shows the full action.** Each badge now
-  reads e.g. `SET environment = prod`, `ARRAY_APPEND tags += urgent`,
-  `REGEX_SUB msg = s/foo/bar/` or `KV_SET owner = owners[host]` instead of the
-  truncated `SET environment`, so the rule's effect is legible without opening
-  the editor.
-- **Web — Alerts search no longer shows a redundant chip.** The active-filters
-  strip dropped the *Search* chip (the search box already displays the query and
-  has its own clear button); the strip now appears only for tab / environment
-  filters.
-- **Web — list-page search is now shareable via the URL.** Pressing Enter on a
-  search query (once it parses cleanly) writes it to the address bar as
-  `?search=…` alongside any other filters, so the filtered view can be
-  bookmarked, shared, and survives a reload; clearing the box drops the
-  parameter. This now applies to **every** list page (Alerts, Rules,
-  Notifications, Snoozes, Users, Roles, Environments, Widgets, Key-Value), not
-  just Alerts — the two tabbed pages (Rules, Notifications) keep an independent
-  query per tab (`?search=` + `?aggSearch=` / `?actionSearch=`). Typing is still
-  kept out of the URL per-keystroke — only the discrete Enter/clear commit
-  updates history, sidestepping the async-navigation dropped-character problem.
+- Sidebar user chip opens an account menu.
+- OIDC settings use progressive disclosure.
+- Dashboard "Alerts over time" supports drag-to-select.
+- Rules "Modifications" shows the full action.
+- List-page search is shareable through `?search=`.
 
 ### Added (web)
 
-- **Web — comment count on alert rows.** A row whose `comment_count > 0` now
-  carries a small count pill on the corner of its actions (`⋯`) button, flagging
-  alerts that already have discussion; the full thread stays in the expandable
-  row detail.
-
----
+- Comment-count pill on alert rows.
 
 ## v2.2.0
 
 ### Added
 
-- **SSO users are now visible and manageable.** OIDC/Microsoft 365 users are
-  provisioned just-in-time on their first login (previously they existed only
-  inside the issued token), so they appear on the Users page under a per-backend
-  tab (e.g. *Microsoft 365*) next to Local/LDAP. Re-login refreshes their groups
-  and last-login without clobbering admin-assigned roles. The Users list shows
-  **effective roles** — group-derived (SSO/LDAP) roles in addition to explicitly
-  assigned ones — so an SSO admin no longer appears role-less, and the Groups
-  column is capped (`+N more`) so a user with many directory groups stays
-  readable.
-- **Enable / disable any user.** Each user carries an `enabled` flag, toggled
-  from the user editor and shown as a Status badge in the list. A disabled user
-  is blocked at login (local **and** SSO) and can no longer refresh an existing
-  session, so access is cut off within the access-token lease. The last enabled
-  `platform_admin` is protected from being disabled.
-- **Group → role mapping is now editable in the UI.** The Role editor gained a
-  **Groups** field (and the roles list a Groups column), so admins can map
-  auth-backend groups / OIDC App Roles (e.g. `GrafanaAdmin`) to a Snooze role
-  from the web UI — previously this field existed only in the database.
-- **OIDC config is now runtime-editable (Settings → OIDC / SSO).** The OIDC
-  connection + claim fields (`enabled`, `issuer`, `client_id`, `redirect_url`,
-  `scopes`, `roles_claim`, `groups_claim`) moved to DB-backed runtime settings
-  with live reload, mirroring the LDAP tab. The `client_secret` stays a
-  file/env secret (never written to the DB) and `method` stays file-config. The
-  login index now evaluates backends under the default tenant so a runtime
-  `enabled` toggle (OIDC or LDAP) surfaces on the login page without a restart.
-
-- **OpenID Connect authentication backend** (Microsoft 365 / Entra ID supported
-  out of the box). Configure via the `oidc` file-config section. Entra App Roles
-  map to Snooze roles through the existing group→role mapping (`Admin` → `admin`).
-- **Login page redesigned:** each enabled auth method is now a button (primary
-  credential form with SSO/alternate methods below) instead of tabs.
-
-- **Multi-tenancy (D1–D10).** A single `snooze-server` now hosts multiple
-  isolated organizations (tenants). Every alert, rule, snooze filter, user,
-  role, notification, and settings document is scoped to a `tenant_id` slug;
-  data from different tenants is never mixed at query time.
-
-- **`default` tenant.** A reserved `default` tenant is seeded automatically
-  at first boot. A brand-new (empty) install needs no migration. An **existing
-  pre-multitenancy database must be backfilled once** with `snooze-server
-  migrate multitenancy` *before* starting the upgraded server — the fail-closed
-  tenant scoping otherwise hides every un-stamped document (see below).
-
-- **`POST /api/v1/tenant`** — create a new tenant (requires `rw_tenant`).
-- **`GET /api/v1/tenant`** — list all tenants (requires `ro_tenant`).
-- **`GET /api/v1/tenant/{id}`** — fetch one tenant (requires `ro_tenant`).
-- **`PATCH /api/v1/tenant/{id}`** — update display name, status, or ingest
-  token (requires `rw_tenant`).
-- **`DELETE /api/v1/tenant/{id}`** — delete a tenant registry document
-  (requires `rw_tenant`; the `default` tenant is undeletable).
-
-- **Per-tenant ingest tokens.** Each tenant carries an opaque `ingest_token`.
-  Supply it as `Authorization: Bearer <token>` (or `?token=<token>`) on
-  `POST /api/v1/alerts` and `POST /api/v1/webhook/*` to route unauthenticated
-  ingestion to that tenant. Absent or unknown tokens fall back to `default`.
-
-- **Login `org` field.** All login endpoints (`/api/v1/login/local`, `/ldap`,
-  `/anonymous`) accept an optional `"org"` field to scope the issued JWT to a
-  specific tenant. Omitting `org` scopes to `default`.
-
-- **`tenant_id` JWT claim.** Issued tokens carry a `tenant_id` claim. Legacy
-  tokens without the claim are accepted and treated as `default`.
-
-- **Platform-tier permissions** `rw_tenant` / `ro_tenant` gate the
-  `/api/v1/tenant` registry routes, independent of any tenant.
-
-- **`platform_admin` seeded role** (holds `rw_tenant` + `ro_tenant`). The root
-  user is assigned this role at bootstrap.
-
-- **`snooze tenant` CLI** with subcommands `create`, `list`, `get`, `update`,
-  `delete`.
-
-- **`snooze-server migrate multitenancy`** — one-shot, idempotent, dedup-safe
-  migration that opens the configured database and backfills `tenant_id="default"`
-  **in place** across every tenant-scoped collection (users and roles included),
-  seeds the `default` tenant document + `platform_admin` role, and grants the
-  root user `platform_admin`. A completion sentinel makes re-runs no-ops. Run it
-  once against an existing pre-multitenancy database before starting the upgraded
-  server.
-
-- **LDAP per-tenant.** LDAP settings are stored in the `settings` collection
-  and are therefore tenant-scoped; each tenant can point to a different
-  directory.
-
-- **Tenant-partitioned plugin caches.** Rule, snooze-filter, aggregate-rule,
-  and notification processor caches are partitioned by tenant; a reload for
-  tenant A does not flush tenant B's cache.
-
-- **Tenant-aware login.** The login page is always multi-tenant aware. Tenants
-  carry a `listed` flag (default true): same-org deployments get an Organization
-  dropdown when more than one tenant is listed; SaaS deployments unlist tenants
-  and share a per-tenant opaque login link (`/web/login?key=…`, rotatable from
-  the tenant page) so the tenant list is never exposed to anonymous visitors.
-  New endpoints: `GET /api/v1/login/tenant?key=` and
-  `POST /api/v1/tenant/{id}/rotate-login-key`.
-
-- **`db.Driver.Writer.Increment` gains a leading `ctx context.Context`.**
-  Asyncwriter coalescing is now tenant-partitioned: stats from different
-  tenants are never merged into the same counter bucket.
-
-- **`RuntimeSettings.InvalidateForTenant(tenantID string)`.** Lets the
-  settings plugin invalidate only the cache partition for the tenant that
-  changed, rather than flushing the entire settings cache.
-
-- **`syncer.Event.Tenant` field.** Syncer events carry the tenant slug;
-  topic names follow the convention `collection.<collection>.<tenant>` for
-  tenant-scoped events and `collection.<collection>` for global events.
-
-- **`housekeeper.ForEachTenant`.** Cleanup jobs iterate active tenants and
-  re-scope per tenant so one tenant's slow cleanup cannot block another.
-
-- **Key-values dictionary tabs (web).** The admin **Key-values** page now shows
-  a tab bar above the search bar — an **All** tab plus one tab per discovered
-  dictionary — that filters the list to the selected dictionary. The bar is
-  hidden when only a single dictionary exists.
+- **Multi-tenancy.** Tenants (`default` seeded), `POST`/`GET`/`PATCH`/`DELETE /api/v1/tenant`, per-tenant ingest tokens, the login `org` field, `tenant_id` JWT claim, `platform_admin` role and `snooze tenant` CLI.
+  - **Upgrade:** run `snooze-server migrate multitenancy` once before starting the upgraded server on an existing database.
+- **Login.** Tenant-aware login page; `GET /api/v1/login/tenant?key=`; `POST /api/v1/tenant/{id}/rotate-login-key`.
+- **SSO users** are provisioned on first login and appear on the Users page, with effective roles.
+- **Enable/disable users.** Disabled users cannot log in or refresh.
+- **Group → role mapping** is editable in the Role editor.
+- **OIDC / Microsoft 365 / Entra** backend (`oidc` config). OIDC settings are runtime-editable.
+- **Login page** shows each enabled method as a button.
+- **Key-values** tabs per dictionary.
 
 ### Changed
 
-- **`GET /api/v1/login`** now returns backend descriptor objects
-  (`{name, kind, display_name, icon}`) instead of a list of strings.
-
-- **`sql.Builder.Convert` and `mongo.Convert`** gain leading `ctx context.Context`
-  and `collection string` parameters. The new parameters drive automatic
-  `tenant_id` predicate injection at the driver layer. All callers updated.
-
-- **Refresh token primary key** is now `["tenant_id", "token_hash"]` so a
-  refresh token in org A cannot clobber a token in org B.
-
-- **User primary key** is `["tenant_id", "name", "method"]`; role PK is
-  `["tenant_id", "name"]`.
-
-- **Settings PK** is `["tenant_id", "name"]`; the settings cache is
-  partitioned by tenant.
-
-- **Alert comment timeline (web UI)** now lists activity newest-first
-  (reverse-chronological), so the most recent comments land on page 1 instead
-  of the last page. The pager gained **« first page** and **» last page** jump
-  buttons alongside the existing previous/next controls.
-
-- **Web UI colour consistency.** The Profile page now colours permissions with
-  the same code as the Roles table (read-write `rw_*` amber vs read-only `ro_*`
-  blue, instead of a flat blue list). Alert-page severity badges use the
-  dashboard's gradated per-severity palette so each severity renders as its own
-  shade. The dashboard "Ack" and "Closed" stat-tile accents are swapped (Ack
-  green, Closed purple), and the "closed" lifecycle now renders as a muted
-  purple badge in the recent-activity feed, the alert state column, and the
-  comment timeline. The reserved `platform_admin` role gets a distinct violet
-  accent in the roles and users tables.
+- `GET /api/v1/login` returns backend descriptor objects.
+- Primary keys are tenant-scoped (users, roles, refresh tokens, settings).
+- Alert comments are newest-first, with first/last page buttons.
+- Colour consistency across permissions, severities and lifecycle states.
 
 ### Fixed
 
-- **`ingest` section now loadable from `ingest.yaml`.** The config loader's
-  `sectionFiles` map was missing an `ingest` entry, so an `ingest.yaml` dropped
-  in the `--config` directory was silently ignored and the section could only be
-  set via `SNOOZE_SERVER_INGEST_*` env vars. It now layers from file like every
-  other section.
-
-- **`web` config section is now honored.** `web.enabled` / `web.path` (and
-  `SNOOZE_SERVER_WEB_*`) were parsed but never consumed — the UI directory came
-  solely from the `--web-dir` flag. The server now serves the UI from the
-  config section; an explicitly passed `--web-dir` still wins (and
-  `--web-dir=""` still disables the UI). The section's default `path` changed
-  from the Python 1.x location `/opt/snooze/web` to `/var/lib/snooze/web`,
-  matching where the deb/rpm install the bundle — migrated 1.x `web.yaml`
-  files carrying the old path should drop or update it.
-
-- **Tenants nav item (web UI)** is now gated by the same rule the backend
-  enforces on `/api/v1/tenant` (`RequirePlatformPerm`): it appears only for
-  users authenticated against the `default` tenant who hold a *literal*
-  `ro_tenant`/`rw_tenant` permission. Previously the sidebar honored the
-  `rw_all` wildcard and ignored tenant origin, so `rw_all` admins and
-  non-default-tenant users saw a Tenants menu whose API calls returned 403.
+- `ingest.yaml` loads from file.
+- The `web` config section is honoured.
+- The Tenants nav item follows the backend's rule.
 
 ### Security
 
-- **Platform-admin integrity (hardening).** Granting or removing the
-  `platform_admin` role now requires a *literal* `rw_tenant` permission (the
-  `rw_all` wildcard no longer suffices); the reserved permissions
-  `rw_tenant`/`ro_tenant` are confined to the seeded `platform_admin` role,
-  which is now API-immutable — it cannot be created, edited (including its
-  group mappings), or deleted through the API; and the server refuses to
-  remove, disable, or delete the last enabled platform admin. Together these
-  close a path by which a default-tenant `rw_all` admin could escalate to
-  platform admin (directly, or indirectly by group-mapping users into the
-  `platform_admin` role) or lock the tenant registry out. Boot logs a warning
-  about any pre-existing role that carries reserved permissions outside
-  `platform_admin`.
+- `platform_admin` is immutable through the API, and granting or removing it requires a literal `rw_tenant`. The last enabled platform admin cannot be removed.
 
 ## v2.1.0
 
 ### Fixed
-- **Aggregate timeline / `comment_count` drift.** The aggregate-rule processor
-  bumped a record's `comment_count` on every lifecycle transition (auto-close,
-  auto-reopen, watch-field re-escalation, re-escalation outside the throttle
-  window) but no longer wrote the matching `comment` document — so the alert
-  timeline (which reads real comment docs by `record_uid`) stayed empty while
-  `comment_count` inflated without bound. Restored the Snooze 1.x behaviour of
-  writing an automatic comment in lockstep with each counter bump, so these
-  transitions show up in the timeline again. (Pre-existing records keep their
-  historical inflated `comment_count`; only events from this release forward
-  produce timeline entries.)
-- **Snoozed alerts stuck out of the Alerts tab after escalating.** An alert
-  snoozed under one severity (e.g. matched a `warning` snooze filter) kept its
-  `snoozed` attribution after re-aggregating into a higher severity, so it
-  stayed hidden from the Alerts tab even though it no longer matched any filter.
-  The aggregate-rule processor now clears a stale `snoozed` whenever a record
-  re-aggregates and continues to the snooze plugin (non-throttled), so the
-  snooze plugin re-asserts it only if the current record still matches.
-  Throttled / flapping / already-closed duplicates abort before the snooze
-  plugin runs and deliberately keep their prior attribution.
-- **Comments now record their author.** Human ack/close/comment actions stamp the
-  authenticated user (and auth method) onto the `comment` document, so the alert
-  timeline shows who acted and "edit your own comment" works. Auto-generated
-  escalation/auto-close comments remain system events (no author).
-- **`database.type: sqlite` no longer fails to boot.** Config validation only
-  accepted `mongo`/`file`/`postgres` and rejected the documented `sqlite`
-  spelling (plus the `pg`/`mongodb` aliases) that the driver layer already
-  supports, so a config copied from the quickstart aborted at startup with a
-  `oneof` error. Validation now accepts every spelling the driver dispatches on.
-- **CLI now defaults to the right server port.** `snooze --server` fell back to
-  `http://localhost:9001` while the server listens on `5200`, so out-of-the-box
-  CLI commands failed to connect. The default (and the `runtime-server` image's
-  `EXPOSE`) are now `5200`.
-- **Runtime `housekeeping.cleanup_aggregate` override is honoured.** Editing the
-  aggregate-cleanup interval in the Settings UI was silently dropped and the
-  live job stayed pinned to the file-config baseline; the override now applies.
-- **`core.enabled_optional_plugins` env override splits on commas.** Setting
-  `SNOOZE_SERVER_CORE_ENABLED_OPTIONAL_PLUGINS=a,b` previously yielded a single
-  `"a,b"` element; it now parses as a list like the other list-valued fields.
-- **`auth.token_algorithm` validation matches the engine.** The schema accepted
-  `HS384`/`HS512`, but the token engine implements only `HS256` and aborted at
-  boot; validation now rejects the unsupported values up front.
-- **Audit-log retention never ran.** The housekeeper's audit cleanup matched
-  `action: "deleted"`, but the API writes the verb `"delete"`, so on every
-  backend `CleanupAuditLogs` matched nothing and the `audit` collection grew
-  unbounded. Fixed the literal; cleanup now prunes a deleted object's trail.
-- **Snooze/notification auto-expiry broken on MongoDB.** The expiry sweep
-  decoded nested documents as `bson.D` but only handled `bson.M`, so it silently
-  found no expired entries and deleted nothing. Expired snoozes and
-  notifications are now cleaned up on Mongo.
-- **Cross-backend retention parity.** `CleanupTimeout` now uniformly keeps a
-  record that has `ttl` but no `date_epoch` (matching the legacy pipeline), and
-  `CleanupAuditLogs` resolves "latest event" by the populated `date_epoch` with
-  identical same-epoch tie semantics across SQLite/Postgres/Mongo (Postgres was
-  previously non-deterministic).
-- **Helm: the server never loaded its mounted config.** The chart set
-  `SNOOZE_SERVER_CONFIG` (which the binary ignores) instead of passing
-  `-config /config`, so the mounted ConfigMap was dead; the SQLite
-  StatefulSet and `docker-compose` also used `SNOOZE_DATABASE_*` env vars the
-  loader drops. Both now use the `-config` flag and the
-  `SNOOZE_SERVER_CORE_DATABASE_*` names.
-- **systemd: the server unit pointed `-config` at a file and SQLite couldn't
-  write.** `-config` now targets the `/etc/snooze/server` directory (created by
-  the rpm/deb packages) and `WorkingDirectory=/var/lib/snooze` lets the default
-  SQLite database land on the writable volume.
-- **Postgres/SQLite immutable-field (`Constant`) check could panic** on a JSON
-  array/object-valued field; the comparison is now panic-safe.
-- **`snooze-server` leaked the message-queue connection at shutdown** (the
-  Postgres/Mongo bus owned a pool/client held for the process lifetime); it is
-  now closed.
+
+- Aggregate timeline and `comment_count` drift: lifecycle transitions write their timeline comment again.
+- Snoozed alerts no longer stuck hidden after re-escalating.
+- Comments record their author.
+- `database.type: sqlite` boots.
+- CLI default port is `5200`.
+- Runtime `housekeeping.cleanup_aggregate` override applies.
+- `core.enabled_optional_plugins` env splits on commas.
+- `auth.token_algorithm` validation matches the engine (`HS256` only).
+- Audit-log retention runs (`delete` verb).
+- Snooze and notification expiry works on MongoDB.
+- Retention parity across SQLite, Postgres and Mongo.
+- Helm and docker-compose load the mounted config.
+- systemd unit `-config` points at a directory; SQLite writes to `/var/lib/snooze`.
+- Immutable-field check no longer panics on arrays or objects.
+- Message-queue connection closes at shutdown.
 
 ### Added
-- **"How to inject alerts" guide on the empty Alerts page.** When no alerts have
-  been ingested yet, the Alerts table now offers a **How to inject alerts**
-  button that opens a modal with copy-pasteable setup snippets for every
-  injection endpoint (REST API, webhook receivers, daemon inputs), each linking
-  to its documentation page. A new "Send your first alert" quickstart page backs
-  it. A filtered or searched empty result shows a distinct "no matches" message
-  instead.
-- **Restore dashboard stat counters.** The dashboard now shows DB-persisted
-  hourly counter series for hits / throttled / snoozed / notifications /
-  action success / action errors, with by-state and top-host breakdowns.
-  Counters accrue forward-only from the first run after upgrade; chart
-  resolution is hourly. Counter writes and the dashboard are gated on
-  `general.metrics_enabled`. Operator-configurable retention via
-  `housekeeping.cleanup_stats` (default `9600h` = 400 days), editable in
-  **Settings → Housekeeping** without a restart.
-- **Dashboard activity feed = real users only.** The "Recent activity" pane now
-  filters to attributed user actions (`EXISTS user`), so escalation/auto-close
-  noise no longer floods it. Every dashboard pane title gained a content icon,
-  and the "Top hosts" pane now ranks hosts by count with legible labels.
-- `db.Driver.UnsetFields(ctx, collection, fields, cond)` — a portable field
-  delete (`$unset` / jsonb `-` / `json_remove`) implemented across all three
-  backends. Unlike a merge write, it truly removes the key so `EXISTS field`
-  stops matching everywhere; covered by the shared dbtest suite and per-backend
-  integration tests.
-- In-process **Microsoft Teams** and **Mattermost** notifier plugins (Incoming
-  Webhook), so chat integrations no longer require a hand-written generic
-  `webhook` action.
-- Branded **integration gallery** in the Actions editor, plus a per-integration
-  **Send test** button (`POST /api/v1/action/test`) and a **setup-docs link**
-  (`doc_url` / `category` plugin metadata).
-- **Brand logos in the Actions integration picker.** The integration gallery and
-  the config-step header now show each notifier's brand mark — Slack, Mattermost,
-  Microsoft Teams, Discord, Telegram, Google Chat, PagerDuty, Opsgenie,
-  Statuspage, Amazon SNS, Twilio, ntfy — instead of a generic category glyph.
-  The marks are vendored single-path glyphs from Simple Icons (CC0) in
-  `web/public/brands.svg`, rendered monochrome in the current theme color (no
-  hard-coded brand colors, so dark/light theming is preserved). Notifiers with no
-  brand mark (mail, webhook, script, …) keep their category glyph.
+
+- "How to inject alerts" guide on the empty Alerts page.
+- Dashboard stat counters with hourly history (`housekeeping.cleanup_stats`, default 400 days).
+- Activity feed shows real users only.
+- `db.Driver.UnsetFields`.
+- In-process Microsoft Teams and Mattermost notifiers.
+- Integration gallery with brand logos, per-integration Send test, and setup-docs links.
 
 ### Changed
-- **Teams notifications link to the All tab.** The `snooze-teams` "View in
-  Snooze" button and host link now point at `/web/alerts?tab=all&search=…`
-  instead of the default Alerts tab. By the time a recipient clicks through, the
-  alert may have been acked, closed, or snoozed — all hidden from the Alerts
-  tab — so the All tab guarantees the record is visible.
-- **Breaking (CLI):** the auxiliary `snooze-*` daemons now share one entry-point
-  contract — config path is `-c` (the old `-config` is removed), `-debug`
-  replaces `-log-level`, logs are text on stderr, and a `version` subcommand is
-  standard. Update any systemd units or scripts that passed `-config`/`-log-level`.
-  (This also fixes units that were already broken by the `-c`/`-config` mismatch.)
-- **Aggregate identity is now severity-independent.** Throttle accepts a scalar
-  **or** a `{value: seconds, …, default: seconds}` map matched against the rule's
-  `watch` values (first match wins). This lets one severity-agnostic rule per
-  problem keep per-value throttle, so `ok`/resolved events reliably close the
-  matching open aggregate instead of leaking into `default`. Creating/updating a
-  rule whose `fields` duplicate another enabled rule's is now rejected (422); the
-  server logs existing duplicates at startup. Merging severity tiers into one
-  rule re-forks those aggregates once.
-- **`auth.token_secret` now takes effect.** Setting it (file config or
-  `SNOOZE_SERVER_AUTH_TOKEN_SECRET`, ≥32 bytes) overrides the auto-generated
-  DB-stored JWT signing key — previously the field was silently ignored. Lets
-  operators pin a shared signing key across a fleet or rotate after a suspected
-  compromise.
-- **`syncer.hostname` and `syncer.sync_interval` now take effect** — they set
-  the cluster-heartbeat node identity and cadence (and the syncer debounce
-  window); both were previously inert. The redundant `syncer.sync_interval_ms`,
-  the unused `syncer.total`, and the inert `housekeeping.renumber_field` knobs
-  were removed (all three were silently ignored at runtime).
+
+- Teams notifications link to the All tab.
+- **Breaking (CLI):** daemons use `-c` (not `-config`), `-debug` (not `-log-level`), and a standard `version` subcommand.
+- Aggregate identity is severity-independent; throttle accepts a per-value map. Duplicate rules are rejected with `422`.
+- `auth.token_secret` takes effect, overriding the DB-stored JWT key.
+- `syncer.hostname` and `syncer.sync_interval` take effect. `syncer.sync_interval_ms`, `syncer.total` and `housekeeping.renumber_field` are removed.
+- Bulk alert actions use one `POST /api/v1/record/bulk_state` call.
+- Housekeeper purges expired API keys and refresh tokens hourly.
+- Table rows are text-selectable, with a context-menu Copy.
 
 ### Internal
-- New `internal/daemon` harness backs every auxiliary binary; `internal/runtime`
-  removed (its `automaxprocs` side effect folded into `internal/daemon`).
-- The Cond→SQL WHERE translation for the Postgres and SQLite backends is now one
-  shared builder (`internal/db/sql`) wired with per-backend dialects, replacing
-  the two duplicated translators; the `internal/db/dbtest` conformance suite is
-  wired into all three driver tests.
+
+- `internal/daemon` harness backs every auxiliary binary.
+- Postgres and SQLite share one Cond→SQL builder (`internal/db/sql`).
 
 ### Documentation
 
-* Migrated the documentation site from Sphinx (reStructuredText) to
-  **Docusaurus 3** (Markdown under `docs/content/`). All pages were converted
-  from RST, cross-references rewritten, and the build enforces zero broken
-  links/anchors (`onBrokenLinks`/`onBrokenAnchors: throw`). Local offline
-  search, and the OpenAPI 3.1 contract rendered as an interactive Redoc page
-  at `/api/`. A new `.github/workflows/docs.yml` builds on every PR and
-  deploys to GitHub Pages on push to `master`. Build locally with
-  `task docs:build` / preview with `task docs:serve`.
+- Docs site migrated from Sphinx to Docusaurus 3 (`docs/content/`), with zero broken links enforced. `task docs:build` and `task docs:serve`.
 
 ### New integrations
 
-A large batch of input and output integrations. Each ships mock unit tests plus
-an env-gated end-to-end test (`task go:test:e2e`) and a documentation page under
-`docs/general/integrations/`. New plugins use `net/http`/stdlib only — no new
-module dependencies.
-
-**Inputs**
-
-* `cloudwatch` — Amazon CloudWatch Alarms via SNS HTTP(S) delivery webhook receiver (auto-confirms subscriptions).
-* `datadog` — Datadog monitor-alert webhook receiver.
-* `azuremonitor` — Azure Monitor Common Alert Schema webhook receiver.
-* `sentry` — Sentry webhook receiver (legacy plugin + modern Integration payloads).
-* `newrelic` — New Relic Alerts webhook receiver (workflow + legacy condition shapes).
-* `heartbeat` — dead-man's-switch plugin: a `heartbeat` collection, an unauthenticated ping endpoint (`/api/v1/webhook/heartbeat?name=<name>`), and a background scanner that fires one alert per missed heartbeat.
-* `snooze-otlp` — daemon: OTLP/HTTP (JSON) receiver converting OpenTelemetry log records into alerts (logs only; HTTP+JSON, no gRPC/protobuf).
-* `snooze-k8s-events` — daemon: watches the Kubernetes core/v1 Event API over plain HTTP (no client-go) and forwards Warning events as alerts, with in-cluster auto-detection and watch reconnect/410 handling.
-
-**Outputs**
-
-* `slack` — Slack notifier (Incoming Webhook + bot token, Block Kit, severity colours, resolve styling).
-* `telegram` — Telegram Bot API notifier (HTML/MarkdownV2).
-* `discord` — Discord webhook notifier (embeds + plain text).
-* `googlechat` — Google Chat outbound notifier (cardsV2 + thread grouping).
-* `pushover` — Pushover mobile-push notifier (severity→priority, emergency retry/expire).
-* `ntfy` — ntfy notifier (public or self-hosted push, bearer/basic auth).
-* `pagerduty` — PagerDuty Events API v2 notifier (trigger/resolve, dedup key from record hash).
-* `opsgenie` — Opsgenie Alert API notifier (create/close by alias, us/eu region).
-* `servicenow` — ServiceNow incident notifier (Table API, Basic auth, create + resolve).
-* `statuspage` — Atlassian Statuspage notifier (create/resolve public incidents).
-* `twilio` — Twilio SMS and automated voice-call notifier (multi-recipient).
-* `sns` — Amazon SNS publish notifier, signed with a hand-rolled AWS SigV4 (stdlib only, no AWS SDK).
-
-**AI / agents**
-
-* `snooze-mcp` — daemon: a Model Context Protocol (MCP) stdio server exposing Snooze alerts and ack/close/comment/snooze actions as tools to AI assistants (Claude Desktop, Cursor).
+- **Inputs:** CloudWatch (SNS), Datadog, Azure Monitor, Sentry, New Relic, `heartbeat` (dead-man's-switch), `snooze-otlp` (OTLP/HTTP logs), `snooze-k8s-events`.
+- **Outputs:** Slack, Telegram, Discord, Google Chat, Pushover, ntfy, PagerDuty, Opsgenie, ServiceNow, Statuspage, Twilio, SNS.
+- **AI:** `snooze-mcp`, a stdio MCP server exposing alerts and actions to assistants.
 
 ### Ingest authentication
 
-* Route authentication is now resolved **per path**: a single plugin can keep its CRUD subtree authenticated while exposing a public sub-path. `AuthorizeRoute(meta, path)` and the webhook mount honour `Metadata.Routes[path].Authentication` instead of only the plugin-wide default.
-* New optional `ingest` bootstrap config section (all fields off by default → 1.5.0 parity):
-  * `ingest.token` — a shared secret required on every `/api/v1/webhook/*` request (`Authorization: Bearer <token>` or `?token=`).
-  * `ingest.sns_verify` — verify Amazon SNS message signatures on the `cloudwatch` receiver (with a SigningCertURL host allow-list / SSRF guard).
-  * `ingest.sentry_secret` — verify the Sentry `sentry-hook-signature` HMAC-SHA256 on the `sentry` receiver.
-* `heartbeat` is now secured properly: its CRUD collection requires operator auth, and the ping (`POST /api/v1/webhook/heartbeat?name=<name>&token=<token>`) is gated by an unguessable per-heartbeat token generated on create.
+- Route authentication resolves per path.
+- New `ingest` section: `ingest.token` (shared bearer for webhooks), `ingest.sns_verify`, `ingest.sentry_secret`.
+- Heartbeat pings require a per-heartbeat token.
 
 ## v2.0.0
 
-v2.0.0 is a ground-up rewrite of snooze from Python to Go, paired with a
-React 19 frontend. The wire contract stays close to the Python API but
-several legacy shapes are gone; see `docs/migration/python-to-go.md` for
-the field-by-field mapping.
+A ground-up rewrite from Python to Go, with a React 19 frontend. See `docs/migration/python-to-go.md` for the field-by-field mapping.
 
-### Backend: Python → Go
+### Changed
 
-* Server, CLI, and the eight auxiliary daemons (`snooze-relp`,
-  `snooze-syslog`, `snooze-snmptrap`, `snooze-smtp`, `snooze-mattermost`,
-  `snooze-googlechat`, `snooze-teams`, `snooze-pacemaker`) are now ten
-  statically-linked Go binaries, distributed as distroless images on
-  Docker Hub (`snoozeweb/snooze-<binary>`).
-* Plugin loader no longer accepts Python modules. Built-ins are
-  compiled in via `internal/pluginimpl/all`; out-of-tree plugins must
-  be forked into the Go tree. Third-party Python plugins from
-  `snoozeweb/snooze_plugins` will not load.
+- **Backend:** Go server, CLI and daemons, distributed as distroless images (`snoozeweb/snooze-<binary>`). Python plugins from `snooze_plugins` no longer load; built-ins are compiled in.
+- **Frontend:** React 19 + Vite 6 + TypeScript replaces Vue 3. Rules and Aggregates, and Notifications and Actions, each merge into one page.
+- **Auth:** `Authorization: Bearer <token>` replaces `JWT <token>`. Sessions use refresh tokens (`/api/v1/login/refresh`, `/login/logout`, lease `auth.refresh_token_lease`, default 7 days).
+- **Root password:** generated and printed once to stderr on first boot. The `root:root` default is gone.
+- **HTTP API:** paginated envelope `{"data", "meta"}`; `GET /api/v1/{plugin}?q=…` replaces positional URLs; error envelope with stable codes; `PUT` replaces, `PATCH` patches, and `replace=true` is gone.
+- **Config:** YAML only in `/etc/snooze/server-go/`. Env vars are `SNOOZE_<SECTION>_<KEY>`. LDAP and housekeeping settings are runtime-editable. Removed: `core.cluster_*`, `web.host_static`.
+- **Storage:** SQLite (pure Go) is the default. Inproc, Postgres LISTEN/NOTIFY and Mongo change-stream buses replace Kombu. Housekeeper also expires snoozes and notifications.
+- **Packaging:** GoReleaser builds, `.deb`/`.rpm`, and a refreshed Helm chart.
 
-### Frontend: Vue → React
+### Removed
 
-* Web UI rewritten in React 19 + Vite 6 + TypeScript, replacing the
-  Vue 3 + CoreUI codebase. Feature parity preserved; sidebar
-  reorganised into Operate / Configure / Admin groups.
-* Rules + Aggregates merged into one page with two tabs. Same for
-  Notifications + Actions.
-* Dashboard charts switched to in-house Chart.js wrappers (Line / Bar /
-  Donut) that read colours from CSS tokens, so the theme toggle works
-  everywhere.
-* Dark and light themes with a per-user toggle (defaults to dark).
-* Command palette (⌘K / Ctrl+K) for jump-to navigation.
-* Cross-tab auth sync: logging out in one tab logs out the others.
-* Auto-refresh on the Alerts page, opt-out per user.
-* In-house SVG icon sprite (45 Lucide-derived glyphs), one cached asset.
-* Node 22+ required (the old Node-14 pin is gone).
+- TinyDB, Kombu, `WritableConfig`, Python dynamic plugin loading, Sphinx docs, Falcon and Waitress.
 
-### HTTP API (breaking)
+### Fixed
 
-* `Authorization: JWT <token>` is no longer accepted. Send
-  `Authorization: Bearer <token>`. Tokens are still HS256 JWTs
-  (`HS384`/`HS512` selectable in `core.yaml`).
-* Paginated responses now use an envelope:
-  `{"data": [...], "meta": {"count", "limit", "offset", "total"}}`.
-  The bare-array shape is gone.
-* Positional list URLs (`/{search}/{perpage}/{pagenb}/{orderby}/{asc}`)
-  are replaced by `GET /api/v1/{plugin}?q=&offset=&limit=&orderby=&asc=`,
-  plus `POST /api/v1/{plugin}/search` for queries that don't fit in a URL.
-* Error envelope is `{"error": {"code", "message", "details",
-  "request_id", "trace_id"}}` with stable string codes
-  (`bad_request`, `unauthorized`, `forbidden`, `not_found`, `conflict`,
-  `validation_error`, `unavailable`, `internal`).
-* CRUD verbs: `POST` to create, `PUT /{uid}` for full replace,
-  `PATCH /{uid}` for partial update, `DELETE` (with `?q=`) for bulk
-  delete. The `replace=true` query parameter is gone.
-* Refresh-token flow for sessions: `/api/v1/login/{local,ldap,anonymous}`
-  returns an access JWT plus a single-use opaque refresh token (32
-  random bytes, stored as SHA-256). `/login/refresh` rotates the pair;
-  `/login/logout` revokes (idempotent). Lease is `auth.refresh_token_lease`
-  (default 7 days). Roles and permissions re-resolve on every refresh.
-* New `GET /api/v1/metadata` and `/{plugin}` endpoints expose each
-  plugin's parsed `metadata.yaml` (forms, widgets, settings catalogue)
-  so the frontend can render typed forms instead of JSON textareas.
-* `snooze-server` gained a `-web-dir` flag (default
-  `/var/lib/snooze/web`) to serve the bundled SPA.
-
-### Configuration (breaking)
-
-* No more YAML hot-reload. `WritableConfig`, the `filelock` dance, and
-  the on-disk-rewriting WebUI form are gone. Runtime-editable settings
-  live in the database via the `settings` plugin.
-* Bootstrap config is YAML only, in `/etc/snooze/server-go/`
-  (`core.yaml`, `general.yaml`, `ldap.yaml`, `housekeeper.yaml`,
-  `notification.yaml`, `syncer.yaml`, `web.yaml`, `auth.yaml`). The
-  legacy `/etc/snooze/server/*.yaml` layout still loads.
-* Env vars are `SNOOZE_<SECTION>_<KEY>` (e.g. `SNOOZE_CORE_PORT=5201`).
-  The flat `DATABASE_URL` shortcut still works.
-* LDAP and housekeeping settings are now runtime-editable. The settings
-  plugin exposes the full `ldap.*` and `housekeeping.*` keysets; the
-  LDAP backend re-reads on every auth, and housekeeper jobs consult
-  the resolver on every fire. Changes in the Settings UI take effect
-  on the next request — no restart.
-* Removed knobs: `core.cluster_*` (replaced by the syncer, on by
-  default), `core.bootstrap` legacy keys (now seeded by the `settings`
-  plugin), `web.host_static` (the Go binary serves the SPA directly).
-
-### Authentication (breaking)
-
-* The Python bootstrap secret was `sha256("root")`. The Go bootstrap
-  generates a 24-byte random password, bcrypt-hashes it, and prints the
-  plaintext **once** to stderr on first start. There is no longer a
-  known default `root:root` credential.
-* Existing local users from upgraded databases are preserved. See
-  `docs/migration/python-to-go.md#root-user-rotation` for how to
-  re-bootstrap a fresh root via the admin Unix socket.
-* `JWT` is no longer a valid method name in the `Authorization` header
-  or the audit log; the canonical wire name is `bearer`.
-
-### Storage & infra
-
-* SQLite backend via `modernc.org/sqlite` (pure-Go, no cgo, JSON1).
-  Single-binary, single-file deployments are possible and are the
-  default for `database.type: sqlite` (legacy alias `file` still maps
-  here).
-* Three backend-native message buses: `inproc`, Postgres `LISTEN/NOTIFY`,
-  and Mongo change streams. The Kombu / amqp-on-mongo bridge is retired
-  and `snooze_kombu_*` collections are untouched.
-* Cluster syncer rides the same channels (or `inproc` for SQLite). The
-  standalone 1Hz polling loop is gone.
-* Telemetry: structured `log/slog` JSON loggers (`api`, `audit`, `core`),
-  OpenTelemetry SDK + OTLP gRPC exporter (`--otel-endpoint`), Prometheus
-  registry at `/metrics`.
-* Housekeeper now expires snoozes and notifications too
-  (`cleanup_snooze`, `cleanup_notification` jobs), in addition to alerts.
-* Packaging: GoReleaser-driven cross-arch releases, signed distroless
-  images, `.deb` + `.rpm` via nfpm, per-binary systemd units, refreshed
-  Helm chart with `database.kind: mongo | postgres | sqlite` (SQLite
-  mode renders a StatefulSet; Postgres keeps the CloudNativePG hand-off
-  from 1.6).
-* Hand-curated `api/openapi.yaml` describes the v1 surface.
-
-### Dropped
-
-* TinyDB (replaced by SQLite/JSON1).
-* `WritableConfig` and the filelock-based YAML mutator.
-* Kombu (`kombu[mongodb]`) and the `snooze_kombu_*` collections.
-* Dynamic Python plugin module loading and the `snooze.plugins.core`
-  entry-point group.
-* Sphinx-based Python API doc generation. Narrative docs remain.
-* Falcon, Pydantic v1, Waitress, the in-process clustering helper.
-
-### Bug fixes
-
-* **Microsoft Teams reply threading restored.** Follow-up notifications now
-  post as replies under the originating alert's Teams message instead of new
-  top-level messages, matching the 1.x bot. Four pipeline gaps were closed:
-  * `notification`: `inject_response` (`response_<action>`) is now stamped on a
-    record's *first* firing. It was keyed on the not-yet-assigned `uid`, so
-    alerts that never re-notified — e.g. `critical` aggregates with a long
-    throttle window — never recorded their Teams message id, and the `response`
-    field was simply absent.
-  * `aggregaterule`: server-injected `response_<action>` fields are carried
-    forward onto the in-memory record on a duplicate match (Python parity), so
-    the notifier can read the recorded message ids. The incoming alert never
-    carries them, so without this they were invisible to the pipeline.
-  * `webhook`: a new `.ReplyToIDs` body-template variable exposes the recorded
-    per-channel message ids, so a Teams action emits `reply_to_ids` without
-    naming the (possibly space-containing) action in the template.
-  * `snooze-teams`: the bridge records the thread *root* id across a reply
-    chain rather than each reply's own id, so every follow-up keeps threading
-    under the original message (Microsoft Graph only allows one reply level).
-  * `snooze-teams`: a threaded follow-up posts a succinct text reply
-    (`New escalation on <time>` + the alert message) instead of repeating the
-    full Adaptive Card the thread root already shows, matching the 1.x bot and
-    Teams' plain-text reply convention.
-* **Action edits apply without a server restart.** The notification dispatcher
-  caches the `action` collection in memory but only subscribed to its own
-  collection's change events, so edits to an action (URL, payload,
-  `inject_response`, …) silently took effect only after a restart. The syncer
-  now also reloads a plugin when a collection it declares as a dependency
-  changes (`ReloadDeps`); the notification plugin declares `action`.
+- Microsoft Teams replies thread under the originating alert.
+- Action edits apply without a restart (`ReloadDeps`).
 
 ## v1.7.0
 
-### Changes
-* Components: `snooze-jira` ported from the standalone Python plugin in
-  `components/jira` to a native Go daemon under `internal/components/jira`
-  (binary `cmd/snooze-jira`). It exposes the same `POST /alert` webhook
-  surface and YAML config keys, plus a bidirectional JIRA poller that
-  closes Snooze records when their JIRA ticket transitions to Done.
-* Core: PostgreSQL backend (experimental). Set `database.type: postgres`
-  in `core.yaml` to opt in; install the driver with
-  `uv sync --extra postgres`. Documents are stored one-table-per-collection
-  in a single `jsonb` column so the schemaless plugin contract is
-  preserved. See `docs/configuration/postgres.rst` for the full config
-  surface and trade-offs versus MongoDB.
-* Tests: the suite is now parametrised over both backends. CI on
-  `ubuntu-latest` uses testcontainers to spin up a real
-  `postgres:16-alpine` for the Postgres branch; the Mongo branch
-  continues to run against mongomock.
-* Helm: new `database.kind: mongo | postgres` selector (default
-  `mongo`, backwards-compatible). When set to `postgres`, the chart
-  provisions a CloudNativePG `Cluster` instead of a MongoDBCommunity
-  replica set; snooze-server reads `DATABASE_URL` from the CNPG
-  app secret. The CNPG operator must be installed in the cluster.
-* Config: `DATABASE_URL` now accepts `postgres://` and `postgresql://`
-  URIs (psycopg-compatible) in addition to `mongodb://`.
+- `snooze-jira` is a native Go daemon, with a bidirectional poller that closes records when their ticket is Done.
+- PostgreSQL backend (experimental) via `database.type: postgres`.
+- Helm `database.kind: mongo | postgres` selector (CloudNativePG).
+- `DATABASE_URL` accepts `postgres://`.
 
 ## v1.6.3
 
-### Bug fixes
-* Fixing a syntax issue which happened when a custom snooze action was trigerred.
+- Fixed a syntax error when a custom snooze action fired.
 
 ## v1.6.2
 
-### Bug fixes
-* Locking the requests dependency to avoid the lack of support for urllib3.
-  See: https://github.com/psf/requests/issues/6432
+- Pinned `requests` to avoid a `urllib3` incompatibility.
 
 ## v1.6.1
 
-### Changes
-* Core: Support for AlertManager webhook
-
-### Bug fixes
-* Core: Properly prevent out-of-path access
-* Core: Allow usrs to properly configure CORS policy
+- AlertManager webhook support.
+- Fixed out-of-path access and CORS configuration.
 
 ## v1.6.0
 
-### Changes
-* Core: Updated grafana webhook for v8.5+
-* Core: Supporting Opentelemetry
-* Core: Simpler logging configuration, and refactored logs
-* Core: Removed the clustering feature, and opted for a regular sync job from the database
-* Core: Better support of environment variables for lists and nested objects
-
-### Bug fixes
-* Web: Updating some deprecated libraries
-* Web: Searching will now reset the current page to the first page
-* Core: Fixed issue regarding regex options for Mongo
-* Core: Nb of arguments mismatch in Modifications WebUI vs Backend
-* Core: Preventing the crash of the delayed action thread in certain cases
-* Core: Fixing processing of nested rules
-* Core: OK for snoozed alerts are now correctly removed from batch send
-* Core: Would not get the username when writing a comment with no Display name
+- Grafana 8.5+ webhook and OpenTelemetry support.
+- Clustering replaced by a periodic DB sync; simpler logging; better env-var support for lists and nested objects.
+- Fixed Mongo regex options, nested rules, batched OK handling, and the flapping counter.
 
 ## v1.5.0
 
-### New features
-* Web: Cliking on the main graph in Dashboard redirects to the corresponding alerts
-* Web: Alerts preview when writing a condition
-* Web: Can set modifications when re-opening an alert
-* Web: New treeview for Rules. Drag&Drop support
-* Web: Drag&Drop support for Environments
-* Web: New Environment bar. Can select multiple ones at the same time
-* Core: Support for Grafana 8.5+ (same webhook)
-* Core: Housekeeper: cleanup rule orphans
-
-### Changes
-* Web: Updated all web packages + NodeJS (10->12)
-* Web: Enabled/Disabled labels replaced with Checkmark/Crossmark
-
-### Bug fixes
-* Core: DB query typo in Actions
-* Core: Batch form would not being displayed if no action was previously created
-* Core: Fixed issue preventing the flapping counter from being reset
-* Core: Fixed duplicate alerts issue in case of burst
+- Dashboard graph drills into alerts; alert preview in conditions; modifications on re-open.
+- Rules tree with drag-and-drop; environment multi-select.
+- Grafana 8.5+ support; housekeeper cleans rule orphans.
 
 ## v1.4.1
 
-### New features
-* Web: Added a frequency display in Notifications
-* Web: Added a batch display in Actions
-* Core: Monitoring endpoint at `/api/health`
-* Core: Nagios/Icinga compatible check script (`check_snooze_server`)
-
-### Changes
-* Core: Code linting and adding type hints
-* Core: Now pre-catching all database errors to give more information about what
-  was the query before throwing an exception
-* Core: Backups can now fail independently on a per-collection basis
-
-### Bug fixes
-* Web: Bad display for Sunday
-* Web: Sort weekdays
-* Web: Could not reset Conditions right member correctly
-* Core: Improving the thread management to prevent rogue threads dying without causing Snooze
-  to die as well.
-* Core: Fixing an issue related to the URL character limit when passing the connection string
-  to kombu. Now it is using a patched transport backend that passes MongoClient()[database]
-  directly.
-* Core: Making sure batched actions are not out to date
-* Core: TinyDB Audit was broken
-* Core: Increasing log file size from 1MB to 100MB
-* Core: Catching issues better within Action thread
-* Core: Pretty big typo in Action class
+- Notification frequency and batch display; `/api/health`; Nagios/Icinga `check_snooze_server`.
+- Fixed thread management and TinyDB audit; more logging detail.
 
 ## v1.4.0
 
-### New features
-* Web: Custom message for no alerts
-* Web: Show current version in Status
-* Core: Supports batched actions
-* Core: Audit logs
-* Core: Supports time constraints over midnight
-* Core: Added daily backups
-* Core: Prevent alerts flapping
-* Env: Switched from pyenv to poetry
-### Bug fixes
-* Web: Removed CoreUI Collapse component
-* Web: Resets current page number when changing tabs
-* Web: Sunday was numbered as 7 instead of 6
-* Web: Trim tags
-* Web: Time related filters correctly updated on refresh
-* Web: Fixed datetime on keyboard input
-* Web: Fixed modals bouncing unexpectedly
-* Core: (!=) Condition will not assume the field exists
-* Core: Properly delete discarded logs
-* Core: Fixed a concurrency issue when reloading plugins
-* Core: Fixed an issue with IN operator for TinyDB
-* Core: Prevent rejecting all PUT and POST data if only one is failing
+- Batched actions, audit logs, daily backups, flapping prevention, time constraints over midnight.
+- Switched to Poetry.
 
 ## v1.3.0
 
-### New features
-* Core/Web: Better handling of strings in conditions and modifications
-* Core/Web: Supports AND/OR condititions with more than 2 arguments
-* Core: New Key-values modification (add fields to an alert based on matching a dictionary)
-* Core: Added rotating logs in /var/log/snooze/snooze-server.log
-* Core: Added `notification_from` field to Alerts when they get re-escalated
-* Core: Resend failed notifications (configurable in Settings)
-* Core: Supports prometheus-client 13.x
-### Bug fixes
-* Web: Fixed a display error when deleting part of a condition
-* Web: Active and Upcoming Snooze filters/Notifications were sometimes wrong
-* Web: Supports history for sorting and paging
-* Core: Avoid loading in memory unnecessary plugin data
-* Core: Fixed an issue with duplicate policies using Replace (lost UID)
-* Core: Better handling of crashed conditions and modifications
-* Core: Fixed a Time Constraints issue with exact matches
-* Core: Triggered notifications in an alert were capped at one item
-* Core: Metrics api endpoint failed to return sometimes
-* Core: Do not retry all actions if only one fails
-* Core: Fixed memory issue with comment related queries
+- AND/OR with more than two arguments; Key-values modification; rotating logs.
+- Failed notifications are resent (configurable).
 
 ## v1.2.0
 
-### New features
-* Web: Better display for some tables
-* Web: Better display for Modifications
-* Web: Set tables to a busy state for each request
-* Core: RegexSub (useful for improving aggregation or scrapping secrets)
-* Core: Prometheus webhook added
-### Bug fixes
-* Web: Could not clear search if the bar was empty
-* Web: Improved Widget + Environment bar display
-* Web: Few display issues
-* Web: Modals and Toasts were not disappearing once faded out
-* Web: Time in Time Constaints was reset when updating
-* Web: Snooze filters Retro apply modal was not showing up
-* Core: Conditions refactoring
+- RegexSub modification; Prometheus webhook.
+- Table and modifications display improvements.
 
 ## v1.1.2
 
-### New features
-* Web: Added Copy selection in tables context menu
-* Web: Added Search selection in tables context menu
-### Bug fixes
-* Web: Values in Modifications were not correctly retrieved in edit mode
-* Web: Mail and Grafana Infos wre not correctly ported to CoreUI 4.x
-* Core: Grafana webhook did not work correctly if tags were empty
-* Core: Conditions were not working if they were null
-* Core: Receiving multiple OK for the same alert now processes the first one only
+- Copy and search selection in table context menus.
 
 ## v1.1.1
 
-### Bug fixes
-* Core: Forced Pymongo < 4.0
+- Pinned PyMongo below 4.0.
 
 ## v1.1.0
 
-### New features
-* Web: Updated from Vue 2.x to 3.x
-* Web: Updated CoreUI from 3.x to 4.x
-* Web: Removed Bootstrap dependency
-* Web: Converted Radio buttons to Switches
-* Web: Added row selector to Tables
-* Core: Added alert_closed metric
-* Core: Added SNOOZE_CLUSTER env variable
-* Core: Separated alerts and comments housekeeping
-* Core: New modification: Regex Parse
-* Added full container deployment (docker-compose.yaml)
-### Bug fixes
-* Core: Could get duplicates if multiple servers were bootstraped at the same time
+- Vue 3 and CoreUI 4 migration; row selector on tables; Regex Parse modification.
+- `alert_closed` metric; `SNOOZE_CLUSTER` env variable; docker-compose deployment.
 
 ## v1.0.17
 
-### New features
-* WebUI Settings: configure severity levels that automatically close alerts
-* Can now configure WebUI tables directly from config files
-* Housekeeper: Also cleanup expired notifications
-### Bug fixes
-* JWT Tokens were not functioning properly
-* Retro actively apply Snooze filters were throwing error messages if no change was made
-* CONTAINS and IN conditions were not working properly if an alert value was empty
-* Stats dashboard stored in TinyDB had chances to lock the DB when being displayed
+- Settings for auto-closing severities; tables configurable from files; expired notifications cleaned up.
 
 ## v1.0.16
 
-### Bug fixes
-* TinyDB was broken since v1.0.11
-* Date was handled incorrectly for TinyDB metric features
-* Github CI fix
+- Fixed TinyDB after v1.0.11.
 
 ## v1.0.15
 
-### New features
-* Storing metrics locally and displaying a dashboard
-* Can configure a default landing page in preferences
-* Keeping track of Last login for all users
-* InfluxDB 2.0 webhook added
-### Bug fixes
-* Do no crash whenever a plugin fails to load
-* Widgets pretty print was not working properly
-* Failed webhook actions did not register as failed properly
+- Local metrics dashboard; default landing page; last-login tracking; InfluxDB 2.0 webhook.
 
 ## v1.0.14
 
-### New features
-* External core plugins support
-* Added a spinner in the webUI when doing a DB query
-* Search in Alerts should be faster
-* Resized Condition box to get more input space
-* Snooze filters can discard alerts
-* Retro apply Snooze filters to all alerts
-### Bug fixes
-* Going back to wsgiref. It was working fine. Waitress is just having issues with TLS
+- External core plugins; snooze filters can discard alerts and be retro-applied.
 
 ## v1.0.13
 
-### Bug fixes
-* Fixed issues from previous version about Waitress
-* Fixed CI to account for pypi delay before building docker image
+- Waitress and CI fixes.
 
 ## v1.0.12
 
-### New features
-* Kapacitor webhook added
-* LDAP: Filtering out groups with group_dn or base_dn
-* Moving Unix socket management out of the falcon API
-* Using Waitress for Unix socket and TCP socket
-* Secrets are now bootstrapped using random numbers and are stored in the backend database
-* Dedicated middleware for logging
-### Bug fixes
-* When changing tabs or refreshing, webUI row tables are not flickering anymore
-* Throttled alerts generated duplicate entries
-* Aggregated alerts now correctly reset their snooze filters fields
+- Kapacitor webhook; generated bootstrap secrets stored in the DB.
 
 ## v1.0.11
 
-### New features
-* Environmnents support! Can be used to create search filters that can be applied on top of any search
-### Bug fixes
-* Wrong version of PyJWT broke LDAP auth
-* Recent change in plugin loading broke plugin processing order
+- Environments (search filters applied on top of any search).
 
 ## v1.0.10
 
-### New features
-* Config option to disable authentication. People will be automatically logged in as root
-* Anonymous login backend. Can be enabled in Settings (or general.yaml config file)
-* Debian package export
-* Webhooks support
-* Grafana webhook added
-* Copy content from any row in the WebUI
-### Changes
-* Plugin refactor. Now even actions are considered core plugins. Scanning snooze/plugins/core folder instead of declaring plugins in core.yaml
-* Moved Patlite plugin to [snooze\_plugins](https://github.com/snoozeweb/snooze_plugins) repository
-### Bug fixes
-* Default authentication backend display order not being respected since 2021-06-30
+- Anonymous login and an auth-disable option; Grafana webhook; Debian packaging.
 
-## v1.0.9 (2021-09-04)
+## v1.0.9
 
-* Admins can use the webUI to manually trigger alerts
-* Added a toggleable button to automatically refresh Alerts display
-* Log in back to the webUI now keeps the initial query
+- Manual alert trigger from the UI; auto-refresh toggle.
 
-## v1.0.8 (2021-08-27)
+## v1.0.8
 
-* Advanced schedule support for Notifications (number of notifications sent, frequency, delay)
-* More environment variables supported (documentation to come later)
-* Can now pass full Record to webhooks using {{ __self__ }} (Jinja template)
-* New Search bar for the WebUI with a powerful [query language](https://github.com/snoozeweb/snooze/blob/master/doc/14_Query_language.md) supported
-* Dockerfile added. Snooze image to come very soon!
-* When re-escalating an alert, can now trigger Modifications. Any actual change to a Record will trigger Notifications again
-* Can now use Jinja templates in Modifications (Rules, Re-escalations)
-* Housekeeper will auto cleanup expired Snooze filters. Parameters supported
-* New view for the Alert Infos tab
+- Notification schedules; Jinja templates in modifications and webhooks; full-record webhooks; new query language.
 
-## v1.0.7 (2021-08-05)
+## v1.0.7
 
-* New feature: Time constraint for notifications. Same as for Snooze filters
-* New feature: Delay for notifications. If an alert gets acknowledged or closed before the delay ends, it does not get notified.
-* New feature: Watchlist for aggregate rules. Bypass aggregation if a specified field gets updated
-* New feature: Webhooks now support CA bundles
+- Notification time constraints and delay; aggregate watchlist; CA bundles for webhooks.
 
-## v1.0.6 (2021-07-29)
+## v1.0.6
 
-* Webhook fixes
-* Added a new feature to webhooks: can now inject HTTP Response to a Record
-* Fixes issue with Conditions NOT and EXISTS not being properly displayed
+- Webhook response injection.
 
-## v1.0.5 (2021-07-27)
+## v1.0.5
 
-* Fixed bugs with aggregates from previous release
-* Reworked alerts lifecycle. Alerts first show up without a state. "open" state can now be entered only whenever reopening a closed alert by user interaction or automatically whenever a closed alert receives a new aggregation
-* New action: Webhook! Can be used by Notification to call a URL. Documentation will come soon
+- Reworked alert lifecycle; webhook action.
 
-## v1.0.4 (2021-07-26)
+## v1.0.4
 
-Transferred Aggregates logic to Records, meaning there is one less collection in the DB and one less menu item to care about. As a bonus, now whenever an aggregated record gets alerted, if the aggregate state was "open" or "ack", it will get automatically re-escalated (before it was creating a new alert)
+- Aggregates merged into records.
 
-## v1.0.3 (2021-07-20)
+## v1.0.3
 
-* Widgets
-* Records lifecycle (open/close)
-* New Snooze filters time constraints (datetime, time, weekdays). Can be mixed together
-* Patlite support
-* More documentation
-* Bugfixes
+- Widgets; record open/close lifecycle; Snooze time constraints; Patlite.
 
-## v1.0.2 (2021-07-09)
+## v1.0.0–v1.0.2
 
-Fixes
-
-## v1.0.0 (2021-07-06)
-
-Initial release
+- Initial release (2021-07-06), followed by small fixes.
